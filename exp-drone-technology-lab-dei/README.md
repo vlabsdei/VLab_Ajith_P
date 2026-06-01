@@ -33,4 +33,4 @@ The 11 experiments covered in this lab are:
 
 SrNo | Name | Faculty or Student | Department| Institute | Email id
 :--|:--|:--|:--|:--|:--|
-1 | Ajith P | [Fill] | [Fill] | [Fill] | ajithasha0085@gmail.com
+1 | Ajith P | Student | ISE | City Engineering College | ajithasha0085@gmail.com
