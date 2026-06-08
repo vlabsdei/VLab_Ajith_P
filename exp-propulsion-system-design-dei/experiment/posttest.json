@@ -1,0 +1,175 @@
+{
+  "version": 2.0,
+  "questions": [
+    {
+      "question": "Q1. In the virtual lab simulation of the thrust stand, why does the motor speed (Loaded RPM) drop below the Free-Spin RPM when a propeller is attached?",
+      "answers": {
+        "a": "The ESC burns out under any load",
+        "b": "Aerodynamic drag torque forces the motor to draw current, causing an internal voltage drop ($I \\cdot R_m$) which reduces the available Back-EMF",
+        "c": "The battery voltage sag increases the no-load speed",
+        "d": "Air density is artificially increased by the software"
+      },
+      "explanations": {
+        "a": "Incorrect — The ESC only burns out if the current rating is exceeded.",
+        "b": "Correct — The aerodynamic drag torque demands a corresponding current draw, leading to an ohmic drop across the internal resistance. This leaves less Back-EMF to drive rotation (n = KV * (V_applied - I * Rm_eff)).",
+        "c": "Incorrect — Battery voltage sag reduces applied voltage, which decreases speed.",
+        "d": "Incorrect — Air density is constant for a given altitude selection."
+      },
+      "correctAnswer": "b",
+      "difficulty": "medium"
+    },
+    {
+      "question": "Q2. What is the physical cause of a 'motor stall' during the aerodynamic bench test?",
+      "answers": {
+        "a": "Current exceeds the ESC rating",
+        "b": "Winding temperature exceeds $150^\\circ\\text{C}$",
+        "c": "The propeller is too large/heavy for the motor, producing more load torque than the motor can generate at a given voltage",
+        "d": "Battery capacity drops below 20%"
+      },
+      "explanations": {
+        "a": "Incorrect — Exceeding the ESC rating causes a thermal shutdown or ESC burn, not a stall.",
+        "b": "Incorrect — Exceeding 150°C causes winding burnout, not a stall.",
+        "c": "Correct — If the propeller is too large, it places a massive aerodynamic torque load. At low throttle/voltage, the motor cannot generate enough electromagnetic torque to overcome this static friction and aerodynamic drag, resulting in a stall.",
+        "d": "Incorrect — Low battery capacity causes lower RPM, but not a stall unless depleted."
+      },
+      "correctAnswer": "c",
+      "difficulty": "easy"
+    },
+    {
+      "question": "Q3. During the flight simulation, what failure mode is triggered if the drone's total weight exceeds its maximum thrust capacity?",
+      "answers": {
+        "a": "Thermal runaway",
+        "b": "Thrust Deficit (the drone remains on the ground even at 100% throttle)",
+        "c": "ESC mosfet short-circuit",
+        "d": "Battery overcharge crash"
+      },
+      "explanations": {
+        "a": "Incorrect — Thermal runaway is caused by sustained high current, not weight directly.",
+        "b": "Correct — If the drone's weight exceeds maximum thrust (T_max * N_motors < M_total * g), the drone experiences a Thrust Deficit and cannot takeoff.",
+        "c": "Incorrect — Heavy weight does not short-circuit the ESC.",
+        "d": "Incorrect — The battery discharges, it does not overcharge during flight."
+      },
+      "correctAnswer": "b",
+      "difficulty": "easy"
+    },
+    {
+      "question": "Q4. What is the critical temperature threshold above which motor windings will suffer insulation breakdown and burn out in the simulator?",
+      "answers": {
+        "a": "$80^\\circ\\text{C}$",
+        "b": "$100^\\circ\\text{C}$",
+        "c": "$120^\\circ\\text{C}$",
+        "d": "$150^\\circ\\text{C}$"
+      },
+      "explanations": {
+        "a": "Incorrect — 80°C is a safe normal operating temperature.",
+        "b": "Incorrect — 100°C is hot, but standard magnet wire can withstand it.",
+        "c": "Incorrect — 120°C is high, but not the breakdown limit.",
+        "d": "Correct — The simulator models insulation breakdown (melting of enamel coating) and thermal runaway once stator winding temperature exceeds 150°C."
+      },
+      "correctAnswer": "d",
+      "difficulty": "easy"
+    },
+    {
+      "question": "Q5. In the efficiency profiling sweep (Module 2), how does the copper loss ($P_{\\mathrm{loss}}$) behave at high throttle percentages?",
+      "answers": {
+        "a": "It decreases to zero",
+        "b": "It grows quadratically ($I^2 R$) and dominates the input power, causing efficiency to plummet",
+        "c": "It remains constant",
+        "d": "It scales linearly with RPM"
+      },
+      "explanations": {
+        "a": "Incorrect — Copper losses grow rapidly as current increases.",
+        "b": "Correct — Ohmic copper losses scale quadratically with current (I^2 * R_motor). At high throttle/torque, the current spikes and copper losses dominate, turning electrical power into heat and reducing efficiency.",
+        "c": "Incorrect — Loss varies significantly with current load.",
+        "d": "Incorrect — The relation is quadratic with current, not linear with RPM."
+      },
+      "correctAnswer": "b",
+      "difficulty": "medium"
+    },
+    {
+      "question": "Q6. In the virtual lab assembly checklist, what warning is triggered if you pair a 210mm frame with 10-inch propellers?",
+      "answers": {
+        "a": "Motor overheat warning",
+        "b": "Propellers overlap collision detection",
+        "c": "Battery voltage sag warning",
+        "d": "ESC current rating warning"
+      },
+      "explanations": {
+        "a": "Incorrect — Overhead warnings happen during operation, not in assembly checklist.",
+        "b": "Correct — The checklist validates physical clearance. 10-inch propellers on a 210mm frame will collide and trigger the 'Propellers Overlap' warning.",
+        "c": "Incorrect — Voltage sag occurs in flight, not during checklist configuration.",
+        "d": "Incorrect — ESC mismatch is not a spatial collision."
+      },
+      "correctAnswer": "b",
+      "difficulty": "easy"
+    },
+    {
+      "question": "Q7. How does convective cooling ($h_{\\mathrm{cooling}}$) protect the motor in flight according to the thermal model?",
+      "answers": {
+        "a": "It reduces winding resistance",
+        "b": "It increases as a function of propeller tip speed and induced inflow, drawing heat away from the motor body",
+        "c": "It stops current flow under high temperatures",
+        "d": "It limits the battery voltage sag"
+      },
+      "explanations": {
+        "a": "Incorrect — Cooling does not change the physical copper resistance profile directly.",
+        "b": "Correct — Convective heat transfer coefficient increases with airflow velocity (wash and tip speed), speeding up heat dissipation from the motor windings to the environment.",
+        "c": "Incorrect — Cooling does not act as a circuit breaker.",
+        "d": "Incorrect — Winding cooling does not affect electrochemical battery voltage sag."
+      },
+      "correctAnswer": "b",
+      "difficulty": "medium"
+    },
+    {
+      "question": "Q8. What happens to the internal resistance of a LiPo cell near depletion (SoC < 0.30) during the flight test?",
+      "answers": {
+        "a": "It drops to zero",
+        "b": "It grows exponentially, causing severe terminal voltage sag under current load",
+        "c": "It stays constant",
+        "d": "It oscillates randomly"
+      },
+      "explanations": {
+        "a": "Incorrect — Depleted cells have higher resistance.",
+        "b": "Correct — At low state of charge, internal cell resistance increases exponentially (R_cell = R_nominal * (1 + 0.25 * e^(5 * (0.3 - SoC)))), causing terminal voltage to sag heavily under load.",
+        "c": "Incorrect — Cell resistance is dynamic and depends on SoC.",
+        "d": "Incorrect — The rise is predictable and monotonic, not random oscillations."
+      },
+      "correctAnswer": "b",
+      "difficulty": "medium"
+    },
+    {
+      "question": "Q9. In the Sankey power flow diagram in Module 2, what does the input electrical power ($P_{\\mathrm{elec}}$) split into?",
+      "answers": {
+        "a": "Back-EMF and torque",
+        "b": "Mechanical shaft power ($P_{\\mathrm{mech}}$) and copper heat loss ($P_{\\mathrm{loss}}$)",
+        "c": "Induced velocity and hover time",
+        "d": "Open-circuit voltage and internal drop"
+      },
+      "explanations": {
+        "a": "Incorrect — Back-EMF is voltage and torque is force, not power terms.",
+        "b": "Correct — The Sankey diagram visualizes power flow: input electrical power divides into output mechanical shaft power and copper resistive heat loss.",
+        "c": "Incorrect — Velocity is a speed term, hover time is duration.",
+        "d": "Incorrect — These are voltage terms, not power terms."
+      },
+      "correctAnswer": "b",
+      "difficulty": "easy"
+    },
+    {
+      "question": "Q10. How is the peak efficiency operating throttle of a drone system typically determined in Module 2?",
+      "answers": {
+        "a": "By reading the maximum current draw on the tachometer",
+        "b": "By running a granular efficiency sweep and finding the throttle with the highest ratio of $P_{\\mathrm{mech}} / P_{\\mathrm{elec}}$",
+        "c": "By choosing the smallest battery cell count",
+        "d": "By flying the drone at maximum altitude"
+      },
+      "explanations": {
+        "a": "Incorrect — High current draw usually corresponds to low efficiency (due to I^2 * R loss).",
+        "b": "Correct — The efficiency sweep plots P_mech / P_elec across a throttle range (30% to 100%) to locate the exact throttle at which the system operates with the highest efficiency.",
+        "c": "Incorrect — Battery cell count changes operating voltage, not sweep profiling.",
+        "d": "Incorrect — Higher altitude reduces efficiency due to lower air density."
+      },
+      "correctAnswer": "b",
+      "difficulty": "medium"
+    }
+  ]
+}
