@@ -16,7 +16,7 @@
         "d": "Incorrect — Air density is constant for a given altitude selection."
       },
       "correctAnswer": "b",
-      "difficulty": "medium"
+      "difficulty": "intermediate"
     },
     {
       "question": "Q2. What is the physical cause of a 'motor stall' during the aerodynamic bench test?",
@@ -33,7 +33,7 @@
         "d": "Incorrect — Low battery capacity causes lower RPM, but not a stall unless depleted."
       },
       "correctAnswer": "c",
-      "difficulty": "easy"
+      "difficulty": "beginner"
     },
     {
       "question": "Q3. During the flight simulation, what failure mode is triggered if the drone's total weight exceeds its maximum thrust capacity?",
@@ -50,7 +50,7 @@
         "d": "Incorrect — The battery discharges, it does not overcharge during flight."
       },
       "correctAnswer": "b",
-      "difficulty": "easy"
+      "difficulty": "beginner"
     },
     {
       "question": "Q4. What is the critical temperature threshold above which motor windings will suffer insulation breakdown and burn out in the simulator?",
@@ -67,7 +67,7 @@
         "d": "Correct — The simulator models insulation breakdown (melting of enamel coating) and thermal runaway once stator winding temperature exceeds 150°C."
       },
       "correctAnswer": "d",
-      "difficulty": "easy"
+      "difficulty": "beginner"
     },
     {
       "question": "Q5. In the efficiency profiling sweep (Module 2), how does the copper loss ($P_{\\mathrm{loss}}$) behave at high throttle percentages?",
@@ -84,7 +84,7 @@
         "d": "Incorrect — The relation is quadratic with current, not linear with RPM."
       },
       "correctAnswer": "b",
-      "difficulty": "medium"
+      "difficulty": "intermediate"
     },
     {
       "question": "Q6. In the virtual lab assembly checklist, what warning is triggered if you pair a 210mm frame with 10-inch propellers?",
@@ -101,7 +101,7 @@
         "d": "Incorrect — ESC mismatch is not a spatial collision."
       },
       "correctAnswer": "b",
-      "difficulty": "easy"
+      "difficulty": "beginner"
     },
     {
       "question": "Q7. How does convective cooling ($h_{\\mathrm{cooling}}$) protect the motor in flight according to the thermal model?",
@@ -118,7 +118,7 @@
         "d": "Incorrect — Winding cooling does not affect electrochemical battery voltage sag."
       },
       "correctAnswer": "b",
-      "difficulty": "medium"
+      "difficulty": "intermediate"
     },
     {
       "question": "Q8. What happens to the internal resistance of a LiPo cell near depletion (SoC < 0.30) during the flight test?",
@@ -135,7 +135,7 @@
         "d": "Incorrect — The rise is predictable and monotonic, not random oscillations."
       },
       "correctAnswer": "b",
-      "difficulty": "medium"
+      "difficulty": "intermediate"
     },
     {
       "question": "Q9. In the Sankey power flow diagram in Module 2, what does the input electrical power ($P_{\\mathrm{elec}}$) split into?",
@@ -152,7 +152,7 @@
         "d": "Incorrect — These are voltage terms, not power terms."
       },
       "correctAnswer": "b",
-      "difficulty": "easy"
+      "difficulty": "beginner"
     },
     {
       "question": "Q10. How is the peak efficiency operating throttle of a drone system typically determined in Module 2?",
@@ -169,7 +169,7 @@
         "d": "Incorrect — Higher altitude reduces efficiency due to lower air density."
       },
       "correctAnswer": "b",
-      "difficulty": "medium"
+      "difficulty": "intermediate"
     }
   ]
 }

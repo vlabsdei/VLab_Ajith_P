@@ -16,7 +16,7 @@
         "d": "Incorrect — Copper losses always occur and do not define the force balance."
       },
       "correctAnswer": "b",
-      "difficulty": "easy"
+      "difficulty": "beginner"
     },
     {
       "question": "Q2. How does propeller diameter ($D$) mathematically affect the aerodynamic thrust ($T$) generated at a constant rotational speed?",
@@ -33,7 +33,7 @@
         "d": "Correct — According to momentum theory and dimensional analysis, thrust scales quartically with diameter (D^4)."
       },
       "correctAnswer": "d",
-      "difficulty": "medium"
+      "difficulty": "intermediate"
     },
     {
       "question": "Q3. Which parameter in a BLDC motor defines the relation between the motor's rotational speed under no-load conditions and the applied voltage?",
@@ -50,7 +50,7 @@
         "d": "Incorrect — No-load current represents internal friction losses."
       },
       "correctAnswer": "b",
-      "difficulty": "easy"
+      "difficulty": "beginner"
     },
     {
       "question": "Q4. What is Back-Electromotive Force (Back-EMF) in a BLDC motor?",
@@ -67,7 +67,7 @@
         "d": "Incorrect — Current rating is a physical winding limit."
       },
       "correctAnswer": "b",
-      "difficulty": "medium"
+      "difficulty": "intermediate"
     },
     {
       "question": "Q5. If the total mass of a quadcopter is $1.6\\text{ kg}$ and gravity is $9.80665\\text{ m/s}^2$, what is the required hover thrust per motor?",
@@ -84,7 +84,7 @@
         "d": "Incorrect — This is the mass, not the force."
       },
       "correctAnswer": "a",
-      "difficulty": "easy"
+      "difficulty": "beginner"
     },
     {
       "question": "Q6. How is the effective voltage ($V_{\\mathrm{applied}}$) across motor windings controlled by the ESC?",
@@ -101,7 +101,7 @@
         "d": "Incorrect — Multirotor motors are typically direct-drive."
       },
       "correctAnswer": "b",
-      "difficulty": "medium"
+      "difficulty": "intermediate"
     },
     {
       "question": "Q7. In a multirotor propulsion system, what is the main source of heat generation in the motors?",
@@ -118,7 +118,7 @@
         "d": "Incorrect — Battery degradation affects internal battery heating, not motor heating."
       },
       "correctAnswer": "b",
-      "difficulty": "medium"
+      "difficulty": "intermediate"
     },
     {
       "question": "Q8. What happens to the air density ($\\rho$) as the operating altitude of a drone increases?",
@@ -135,7 +135,7 @@
         "d": "Incorrect — Lower temperatures do not cause density to spike."
       },
       "correctAnswer": "c",
-      "difficulty": "medium"
+      "difficulty": "intermediate"
     },
     {
       "question": "Q9. What is the standard industry minimum recommended safety margin for maximum thrust compared to required hover thrust?",
@@ -152,7 +152,7 @@
         "d": "Incorrect — 50% is good, but the minimum threshold is 30%."
       },
       "correctAnswer": "c",
-      "difficulty": "easy"
+      "difficulty": "beginner"
     },
     {
       "question": "Q10. How does the open-circuit voltage ($V_{\\mathrm{oc}}$) of a Lithium Polymer (LiPo) cell change during discharge?",
@@ -169,7 +169,7 @@
         "d": "Incorrect — It drops sharply at depletion, not spikes."
       },
       "correctAnswer": "b",
-      "difficulty": "medium"
+      "difficulty": "intermediate"
     }
   ]
 }
