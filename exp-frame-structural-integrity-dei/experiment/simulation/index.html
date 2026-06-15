@@ -1,0 +1,300 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <script>
+    window.addEventListener('unhandledrejection', function (event) {
+      if (event.reason && (String(event.reason.message || event.reason).includes('tabs:outgoing') || String(event.reason.message || event.reason).includes('No Listener'))) {
+        event.preventDefault();
+      }
+    });
+    window.addEventListener('error', function (event) {
+      if (event.message && (event.message.includes('tabs:outgoing') || event.message.includes('No Listener'))) {
+        event.preventDefault();
+      }
+    });
+  </script>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Center of Gravity & Balancing | Drone Technology Virtual Lab</title>
+  <!-- Premium Fonts -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600;700&family=Share+Tech&display=swap" rel="stylesheet">
+  <!-- CSS Stylesheets -->
+  <link rel="stylesheet" href="css/main.css">
+</head>
+<body>
+
+  <!-- Workspace Columns -->
+  <main class="work_zone" id="workspace">
+
+    <!-- Column 1: Config Panel (Left) -->
+    <aside class="cfg_aside" id="configPanel">
+      <div class="pane_lbl" id="configPanelTitle" style="cursor: pointer; display: flex; align-items: center; justify-content: space-between;">
+        <div>
+          <h3 style="font-size: 0.85rem; font-weight: 700; margin-bottom: 2px;">Centre of Gravity configuration</h3>
+          <p class="panel-note" style="margin: 0; font-size: 0.72rem;">Select components and adjust placements to balance the drone.</p>
+        </div>
+        <svg id="configPanelChevron" class="chevron-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="transition: transform 0.2s; color: var(--text-tertiary);"><polyline points="6 9 12 15 18 9"></polyline></svg>
+      </div>
+
+      <div class="config-sections" id="configSections">
+        <!-- Frame Selection -->
+        <div class="config-group">
+          <div class="config-group-title">FRAME / CHASSIS</div>
+          <div class="tiles-grid" id="frameTilesContainer">
+            <!-- Loaded by JS -->
+          </div>
+        </div>
+
+        <!-- Battery Selection -->
+        <div class="config-group">
+          <div class="config-group-title">BATTERY PACK</div>
+          <div class="tiles-grid" id="batteryTilesContainer">
+            <!-- Loaded by JS -->
+          </div>
+        </div>
+
+        <!-- Payload Selection -->
+        <div class="config-group">
+          <div class="config-group-title">SENSORS / PAYLOAD</div>
+          <div class="tiles-grid" id="payloadTilesContainer">
+            <!-- Loaded by JS (Checkboxes) -->
+          </div>
+        </div>
+
+        <!-- Precision Calculations Stack -->
+        <div class="deriv_box" id="leftCalculationsPanel" style="border-top: 1px solid var(--border); padding-top: 12px; margin-top: 8px; display: flex; flex-direction: column;">
+          <h3 class="calculations-section-title">Precision Calculations</h3>
+          <div class="calc-flow" style="flex-direction: column; gap: 8px;">
+            
+            <div class="calc-step" style="padding: 6px 10px; margin-bottom: 2px;">
+              <div class="step-header">
+                <span class="step-num">Σm</span>
+                <h4 style="font-size:0.75rem;">Total Mass</h4>
+              </div>
+              <div class="math-block mono" id="calcTotalMassFormula" style="font-size:0.65rem; padding: 4px; margin-bottom: 2px;">Σm_i</div>
+              <div class="math-eval mono" id="calcTotalMassVal" style="font-size:0.78rem; font-weight:700;">0.00000 g</div>
+            </div>
+
+            <div class="calc-step" style="padding: 6px 10px; margin-bottom: 2px;">
+              <div class="step-header">
+                <span class="step-num">Mx</span>
+                <h4 style="font-size:0.75rem;">X Moment (Σm_i·x_i)</h4>
+              </div>
+              <div class="math-block mono" id="calcMomentXFormula" style="font-size:0.65rem; padding: 4px; margin-bottom: 2px;">Σ(m_i × x_i)</div>
+              <div class="math-eval mono" id="calcMomentXVal" style="font-size:0.78rem; font-weight:700;">0.00000 g·mm</div>
+            </div>
+
+            <div class="calc-step" style="padding: 6px 10px; margin-bottom: 2px;">
+              <div class="step-header">
+                <span class="step-num">My</span>
+                <h4 style="font-size:0.75rem;">Y Moment (Σm_i·y_i)</h4>
+              </div>
+              <div class="math-block mono" id="calcMomentYFormula" style="font-size:0.65rem; padding: 4px; margin-bottom: 2px;">Σ(m_i × y_i)</div>
+              <div class="math-eval mono" id="calcMomentYVal" style="font-size:0.78rem; font-weight:700;">0.00000 g·mm</div>
+            </div>
+
+            <div class="calc-step" style="padding: 6px 10px; margin-bottom: 2px;">
+              <div class="step-header">
+                <span class="step-num">X_cg</span>
+                <h4 style="font-size:0.75rem;">CoG X Coordinate</h4>
+              </div>
+              <div class="math-block mono" style="font-size:0.65rem; padding: 4px; margin-bottom: 2px;">x_CG = Mx / Σm</div>
+              <div class="math-eval mono" id="calcCgXVal" style="font-size:0.78rem; font-weight:700;">0.00000 mm</div>
+            </div>
+
+            <div class="calc-step" style="padding: 6px 10px; margin-bottom: 2px;">
+              <div class="step-header">
+                <span class="step-num">Y_cg</span>
+                <h4 style="font-size:0.75rem;">CoG Y Coordinate</h4>
+              </div>
+              <div class="math-block mono" style="font-size:0.65rem; padding: 4px; margin-bottom: 2px;">y_CG = My / Σm</div>
+              <div class="math-eval mono" id="calcCgYVal" style="font-size:0.78rem; font-weight:700;">0.00000 mm</div>
+            </div>
+
+            <div class="calc-step" style="padding: 6px 10px; margin-bottom: 2px;">
+              <div class="step-header">
+                <span class="step-num">R_cg</span>
+                <h4 style="font-size:0.75rem;">Net CoG Offset (r_cg)</h4>
+              </div>
+              <div class="math-block mono" style="font-size:0.65rem; padding: 4px; margin-bottom: 2px;">r_CG = √(x² + y²)</div>
+              <div class="math-eval mono" id="calcCgRVal" style="font-size:0.78rem; font-weight:700;">0.00000 mm</div>
+            </div>
+
+          </div>
+        </div>
+
+      </div>
+    </aside>
+
+    <!-- Column 2: Viewport & Calculations (Middle) -->
+    <section class="mid_col">
+      <div class="viewport-container" style="padding-bottom: 8px;">
+        <div class="viewport-tabs" role="tablist" style="margin-bottom: 6px;">
+          <button class="vp-tab active" role="tab" aria-selected="true">
+            3D Airframe Balancing Viewport
+          </button>
+        </div>
+
+        <!-- 3D WebGL Viewport -->
+        <div class="cnvs_holder" id="canvasWrapper">
+          <canvas id="droneCanvas" aria-label="3D Viewport"></canvas>
+        </div>
+
+        <!-- Simulation Control Bar -->
+        <div class="sim_ctrls" id="flightControlsBar" style="border-top: 1px solid var(--border); margin-top: 6px; padding: 6px 10px;">
+          <button class="btn_run" id="btnTestFlight">Start Flight Test</button>
+          <div class="sim-controls-note" id="flightStatusText" style="font-family: var(--font-mono); font-size: 0.72rem; font-weight: 600;">System Idle. Ready for flight test.</div>
+        </div>
+      </div>
+
+      <!-- Three Column Dashboard Row -->
+      <div class="three-col-row" style="padding: 0 14px 10px 14px; margin-top: 0; flex: 1; overflow-y: auto;">
+        
+        <!-- Col A: CoG Envelope Scatter Chart -->
+        <div class="three-col-item" style="flex: 1.1; min-height: 190px;">
+          <div class="chart-header" style="margin-bottom: 4px;">
+            <h3 style="font-size: 0.78rem;">CoG Envelope Scatter</h3>
+            <p style="font-size: 0.62rem; color: var(--text-tertiary);">Limits within 10mm aerospace boundary</p>
+          </div>
+          <div class="chart-canvas-wrapper" style="position: relative; flex: 1;">
+            <canvas id="cgEnvelopeCanvas"></canvas>
+          </div>
+        </div>
+
+        <!-- Col B: 2D Blueprint Heatmap-Style Load Distribution Chart -->
+        <div class="three-col-item" style="flex: 1.1; min-height: 190px;">
+          <div class="chart-header" style="margin-bottom: 4px;">
+            <h3 style="font-size: 0.78rem;">2D Load Distribution</h3>
+            <p style="font-size: 0.62rem; color: var(--text-tertiary);">Real-time load share per motor quadrant</p>
+          </div>
+          <div class="chart-canvas-wrapper" style="position: relative; flex: 1; display: flex; align-items: center; justify-content: center; background: #0f172a; border-radius: var(--radius); overflow: hidden; padding: 6px;">
+            <canvas id="droneHeatmapCanvas" style="width: 100%; height: 100%; display: block;"></canvas>
+          </div>
+        </div>
+
+        <!-- Col C: Component Placement Sliders -->
+        <div class="three-col-item" style="flex: 1; min-height: 190px;">
+          <div class="chart-header" style="margin-bottom: 4px;">
+            <h3 style="font-size: 0.78rem;">Placement Tuning</h3>
+            <p style="font-size: 0.62rem; color: var(--text-tertiary);">Adjust positions to modify CoG</p>
+          </div>
+          <div class="config-group" style="gap: 6px; flex: 1; display: flex; flex-direction: column; justify-content: center;">
+            <div class="altitude-control">
+              <div class="alt-row">
+                <label class="alt-label" for="batX" style="font-size:0.7rem;">Battery X</label>
+                <span class="alt-value" id="batXVal" style="font-size:0.7rem; font-family: var(--font-mono);">0 mm</span>
+              </div>
+              <input type="range" id="batX" class="alt-slider" min="-80" max="80" step="1" value="0">
+            </div>
+            <div class="altitude-control">
+              <div class="alt-row">
+                <label class="alt-label" for="batY" style="font-size:0.7rem;">Battery Y</label>
+                <span class="alt-value" id="batYVal" style="font-size:0.7rem; font-family: var(--font-mono);">0 mm</span>
+              </div>
+              <input type="range" id="batY" class="alt-slider" min="-100" max="100" step="1" value="0">
+            </div>
+            <div class="altitude-control" style="border-top: 1px dashed var(--border); padding-top: 4px;">
+              <div class="alt-row">
+                <label class="alt-label" for="payloadX" style="font-size:0.7rem;">Payload X</label>
+                <span class="alt-value" id="payloadXVal" style="font-size:0.7rem; font-family: var(--font-mono);">0 mm</span>
+              </div>
+              <input type="range" id="payloadX" class="alt-slider" min="-80" max="80" step="1" value="0">
+            </div>
+            <div class="altitude-control">
+              <div class="alt-row">
+                <label class="alt-label" for="payloadY" style="font-size:0.7rem;">Payload Y</label>
+                <span class="alt-value" id="payloadYVal" style="font-size:0.7rem; font-family: var(--font-mono);">0 mm</span>
+              </div>
+              <input type="range" id="payloadY" class="alt-slider" min="-100" max="100" step="1" value="0">
+            </div>
+          </div>
+        </div>
+
+      </div>
+    </section>
+
+    <!-- Column 3: Results & Envelope (Right) -->
+    <aside class="right-panel">
+      <!-- Assembly Checklist -->
+      <div class="res_section" style="border-bottom: 1px solid var(--border); padding: 12px 14px; gap: 8px;">
+        <div class="results-header" style="padding-bottom: 4px;">
+          <h2>Assembly & Balancing Checklist</h2>
+        </div>
+        <div class="checklist-container" id="checklistContainer" style="padding: 6px 10px;">
+          <div class="checklist-item" id="chkFrame" style="padding: 4px 0;">
+            <span class="chk-icon pending" style="width: 12px; height: 12px; font-size: 0.6rem;"></span>
+            <span class="checklist-label" style="font-size: 0.75rem;">Select Airframe Frame</span>
+            <span class="checklist-val" id="chkFrameVal" style="font-size: 0.7rem;">Pending</span>
+          </div>
+          <div class="checklist-item" id="chkBattery" style="padding: 4px 0;">
+            <span class="chk-icon pending" style="width: 12px; height: 12px; font-size: 0.6rem;"></span>
+            <span class="checklist-label" style="font-size: 0.75rem;">Select Battery Pack</span>
+            <span class="checklist-val" id="chkBatteryVal" style="font-size: 0.7rem;">Pending</span>
+          </div>
+          <div class="checklist-item" id="chkPayload" style="padding: 4px 0;">
+            <span class="chk-icon pending" style="width: 12px; height: 12px; font-size: 0.6rem;"></span>
+            <span class="checklist-label" style="font-size: 0.75rem;">Select Sensors/Payload</span>
+            <span class="checklist-val" id="chkPayloadVal" style="font-size: 0.7rem;">Pending</span>
+          </div>
+          <div class="checklist-item" id="chkBalance" style="padding: 4px 0;">
+            <span class="chk-icon pending" style="width: 12px; height: 12px; font-size: 0.6rem;"></span>
+            <span class="checklist-label" style="font-size: 0.75rem;">Aero Balance (r_CG &lt; 0.001mm)</span>
+            <span class="checklist-val" id="chkBalanceVal" style="font-size: 0.7rem;">Pending</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Instructor commentary panel -->
+      <div class="commentary-panel" id="liveCommentaryPanel" style="margin: 8px 14px; padding: 10px 12px;">
+        <div class="commentary-icon">
+          <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <circle cx="12" cy="12" r="10"></circle>
+            <line x1="12" y1="16" x2="12" y2="12"></line>
+            <line x1="12" y1="8" x2="12.01" y2="8"></line>
+          </svg>
+        </div>
+        <div class="commentary-content">
+          <h4 class="commentary-title" style="font-size: 0.7rem;">Instructor</h4>
+          <p class="commentary-text" id="liveCommentaryText" style="font-size: 0.75rem; line-height: 1.3;">Configure the drone layout by choosing components and positioning them to balance the frame.</p>
+        </div>
+      </div>
+
+      <!-- Live Flight Vibration Graph -->
+      <div class="res_section" style="border-bottom: 1px solid var(--border); padding: 8px 14px; gap: 4px;">
+        <div class="chart-header">
+          <h3 style="font-size: 0.8rem;">Live IMU Vibration Graph</h3>
+          <p class="chart-desc" style="font-size: 0.62rem; margin-bottom: 4px;">Plots real-time roll/pitch gyro oscillation rates during test flight</p>
+        </div>
+        <div class="vibration-graph-container" style="margin-top: 0; padding: 4px;">
+          <canvas id="vibrationCanvas" style="width: 100%; height: 100px; display: block; background: #0f172a;"></canvas>
+        </div>
+      </div>
+
+      <!-- Optimal CoG readout -->
+      <div class="res_section" style="padding: 8px 14px; gap: 4px;">
+        <h3 style="font-size: 0.8rem;">Optimal CoG Reference</h3>
+        <div class="optimal-cog-badge" id="optimalCogReadout" style="margin-top: 4px; padding: 6px 10px; font-size: 0.75rem;">
+          x_cg: -- | y_cg: --
+        </div>
+      </div>
+
+      <!-- Proceed Action Button -->
+      <div class="panel-actions" style="margin-top: auto; padding: 12px;">
+        <button class="btn_prm" id="btnNextModule" disabled style="padding: 8px 16px; font-size: 0.8rem;">Frame Unbalanced</button>
+      </div>
+    </aside>
+
+  </main>
+
+  <!-- External Library Dependencies -->
+  <script src="https://cdn.jsdelivr.net/npm/three@0.147.0/build/three.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/three@0.147.0/examples/js/controls/OrbitControls.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+
+  <!-- Virtual Lab Scripts -->
+  <script src="js/main.js"></script>
+
+</body>
+</html>

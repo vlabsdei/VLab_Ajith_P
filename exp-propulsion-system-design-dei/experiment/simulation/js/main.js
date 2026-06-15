@@ -1,4 +1,27 @@
+// Suppress external platform-injected extension/sandbox warnings
+window.addEventListener('unhandledrejection', function (event) {
+  if (event.reason && (String(event.reason.message || event.reason).includes('tabs:outgoing.message.ready') || String(event.reason.message || event.reason).includes('No Listener'))) {
+    event.preventDefault();
+  }
+});
+window.addEventListener('error', function (event) {
+  if (event.message && (event.message.includes('tabs:outgoing.message.ready') || event.message.includes('No Listener'))) {
+    event.preventDefault();
+  }
+});
+
 /* global THREE, Chart */
+
+// Global Chart.js Defaults
+if (typeof Chart !== 'undefined') {
+  Chart.defaults.font.family = 'Inter';
+  Chart.defaults.font.size = 10;
+  Chart.defaults.responsive = true;
+  Chart.defaults.maintainAspectRatio = false;
+  if (Chart.defaults.scale && Chart.defaults.scale.grid) {
+    Chart.defaults.scale.grid.color = '#f3f4f6';
+  }
+}
 
 const Calc = (function () {
   'use strict';
@@ -35,9 +58,11 @@ const Calc = (function () {
   }
 
   // Solves the steady-state operating point of the actuator circuit
-  function calc_motor_point(motor, V, D, rho) {
+  function calc_motor_point(motor, V, D, rho, tMotor) {
     const kv = motor.kv;
-    const rm = motor.rm_ohm;
+    const temp = (tMotor !== undefined) ? tMotor : 25.0;
+    // Temperature dependent resistance Rw(T) = Rw0 * (1 + 0.00393 * (T - 20))
+    const rm = motor.rm_ohm * (1.0 + 0.00393 * (temp - 20.0));
     const i0 = motor.i0_a;
 
     const ke = 30.0 / (kv * Math.PI); // back-EMF constant
@@ -77,21 +102,6 @@ const Calc = (function () {
     };
   }
 
-  function get_eff_profile(motor, V_batt, D, rho) {
-    return [0.40, 0.60, 0.80, 1.00].map(function (k) {
-      const op = calc_motor_point(motor, k * V_batt, D, rho);
-      if (!op) {
-        return { throttle_pct: k * 100, efficiency_pct: 0, thrust_n: 0, current_a: 0, power_w: 0 };
-      }
-      return {
-        throttle_pct: k * 100,
-        efficiency_pct: op.eff,
-        thrust_n: op.thrust,
-        current_a: op.curr,
-        power_w: op.p_elec
-      };
-    });
-  }
 
   function get_thrust_sweep(rpm, rho, diameters) {
     const n = rpm / 60.0;
@@ -138,8 +148,8 @@ const Calc = (function () {
     const V = battery.voltage_nominal_v;
     const mah = battery.capacity_mah;
 
-    const u = solve_hover_throttle(motor, V, D, rho, T_motor);
-    const op = calc_motor_point(motor, u * V, D, rho);
+    const u = solve_hover_throttle(motor, V, D, rho, T_motor, 25.0);
+    const op = calc_motor_point(motor, u * V, D, rho, 25.0);
 
     let p_each = 0, i_each = 0;
 
@@ -185,11 +195,11 @@ const Calc = (function () {
     };
   }
 
-  function solve_hover_throttle(motor, V_batt, D, rho, T_req) {
+  function solve_hover_throttle(motor, V_batt, D, rho, T_req, tMotor) {
     let low = 0.0, high = 1.0, throttle = 0.5;
     for (let i = 0; i < 12; i++) {
       throttle = (low + high) / 2.0;
-      const op = calc_motor_point(motor, throttle * V_batt, D, rho);
+      const op = calc_motor_point(motor, throttle * V_batt, D, rho, tMotor);
       if (!op || op.thrust < T_req) {
         low = throttle;
       } else {
@@ -197,10 +207,6 @@ const Calc = (function () {
       }
     }
     return Math.min(Math.max(throttle, 0.0), 1.0);
-  }
-
-  function fmt(val, dec, unit) {
-    return val.toFixed(dec) + (unit ? ' ' + unit : '');
   }
 
   return {
@@ -216,13 +222,11 @@ const Calc = (function () {
     propellerTorque: get_prop_torque,
     requiredRPS: get_req_rps,
     solveOperatingPoint: calc_motor_point,
-    efficiencyProfile: get_eff_profile,
     thrustSweep: get_thrust_sweep,
     massBudget: get_mass_budget,
     hoverFlightTime: est_hover_time,
     propulsionMargin: get_prop_margin,
-    solveHoverThrottle: solve_hover_throttle,
-    fmt: fmt
+    solveHoverThrottle: solve_hover_throttle
   };
 })();
 window.Calc = Calc;
@@ -233,52 +237,32 @@ const Scene = (function () {
   let _rndr, _scn, _cam, _ctrls, _clk;
   let _frameId = null;
   let _tabIdx = 1;
+  let _handleResizeFn = null;
 
   function init() {
     const canvas = document.getElementById('droneCanvas');
     const wrap = document.getElementById('canvasWrapper');
 
-    _scn = new THREE.Scene();
-    _scn.background = new THREE.Color(0xf3f4f6); // Light gray grid backing
+    const base = initBase3DScene(canvas, wrap, {
+      bgColor: 0xf3f4f6,
+      fov: 45,
+      camPos: { x: 0.25, y: 0.18, z: 0.35 },
+      enableShadows: true,
+      ctrls: { minDist: 0.12, maxDist: 5.0, maxPolar: Math.PI * 0.88, target: { x: 0, y: 0.10, z: 0 } },
+      ambientIntensity: 0.60,
+      sunIntensity: 1.0,
+      sunPos: { x: 1.5, y: 3.0, z: 1.5 }
+    });
+    _scn = base.scn;
+    _rndr = base.rndr;
+    _cam = base.cam;
+    _ctrls = base.ctrls;
+    _handleResizeFn = base.handleResize;
 
-    _rndr = new THREE.WebGLRenderer({ canvas: canvas, antialias: true, alpha: false });
-    _rndr.setPixelRatio(Math.min(window.devicePixelRatio, 2));
-    _rndr.shadowMap.enabled = true;
-    _rndr.shadowMap.type = THREE.PCFSoftShadowMap;
-    _rndr.outputEncoding = THREE.sRGBEncoding;
-    _rndr.toneMapping = THREE.ACESFilmicToneMapping;
-    _rndr.toneMappingExposure = 1.0;
-
-    const w = wrap.clientWidth || 600;
-    const h = wrap.clientHeight || 260;
-    _cam = new THREE.PerspectiveCamera(45, w / h, 0.01, 100);
-    _cam.position.set(0.25, 0.18, 0.35);
-
-    _ctrls = new THREE.OrbitControls(_cam, _rndr.domElement);
-    _ctrls.enableDamping = true;
-    _ctrls.dampingFactor = 0.08;
-    _ctrls.minDistance = 0.12;
-    _ctrls.maxDistance = 5.0;
-    _ctrls.maxPolarAngle = Math.PI * 0.88;
-    _ctrls.target.set(0, 0.10, 0);
-    _ctrls.update();
-
-    const ambient = new THREE.AmbientLight(0xffffff, 0.60);
-    _scn.add(ambient);
-
-    const sun = new THREE.DirectionalLight(0xffffff, 1.0);
-    sun.position.set(1.5, 3.0, 1.5);
-    sun.castShadow = true;
-    sun.shadow.mapSize.width = 1024;
-    sun.shadow.mapSize.height = 1024;
-    sun.shadow.camera.near = 0.1;
-    sun.shadow.camera.far = 10;
-    sun.shadow.camera.left = -1.0;
-    sun.shadow.camera.right = 1.0;
-    sun.shadow.camera.top = 1.0;
-    sun.shadow.camera.bottom = -1.0;
-    sun.shadow.bias = -0.0002;
-    _scn.add(sun);
+    // Subtle rim light to make geometry pop
+    const rimLight = new THREE.DirectionalLight(0xdbeafe, 0.45);
+    rimLight.position.set(-1.5, 1.0, -1.5);
+    _scn.add(rimLight);
 
     const hemi = new THREE.HemisphereLight(0xdbeafe, 0xe5e7eb, 0.3);
     _scn.add(hemi);
@@ -303,10 +287,6 @@ const Scene = (function () {
 
     doResize();
     startLoop();
-
-    window.addEventListener('orientationchange', function () {
-      setTimeout(doResize, 100);
-    });
   }
 
   function startLoop() {
@@ -335,14 +315,7 @@ const Scene = (function () {
   }
 
   function doResize() {
-    const wrap = document.getElementById('canvasWrapper');
-    if (!wrap || !_rndr) return;
-    const w = wrap.clientWidth;
-    const h = wrap.clientHeight;
-    if (w === 0 || h === 0) return;
-    _rndr.setSize(w, h, false);
-    _cam.aspect = w / h;
-    _cam.updateProjectionMatrix();
+    if (_handleResizeFn) _handleResizeFn();
   }
 
   function setTabIdx(n) {
@@ -402,6 +375,71 @@ const DroneModel = (function () {
   let _smokeParts = [];
   let _isBurning = false;
   let _spawnTmr = 0.0;
+
+  let _carbonTxtr = null;
+  function getCarbonFiberTexture() {
+    if (_carbonTxtr) return _carbonTxtr;
+    const size = 64;
+    const canvas = document.createElement('canvas');
+    canvas.width = size;
+    canvas.height = size;
+    const ctx = canvas.getContext('2d');
+    
+    ctx.fillStyle = '#151515';
+    ctx.fillRect(0, 0, size, size);
+    
+    ctx.fillStyle = '#262626';
+    const numTiles = 8;
+    const tileSize = size / numTiles;
+    for (let i = 0; i < numTiles; i++) {
+      for (let j = 0; j < numTiles; j++) {
+        if ((i + j) % 2 === 0) {
+          ctx.fillRect(i * tileSize, j * tileSize, tileSize, tileSize);
+        }
+      }
+    }
+    
+    ctx.strokeStyle = '#1e1e1e';
+    ctx.lineWidth = 1;
+    for (let k = 0; k < size; k += 4) {
+      ctx.beginPath();
+      ctx.moveTo(k, 0); ctx.lineTo(k, size);
+      ctx.stroke();
+      ctx.beginPath();
+      ctx.moveTo(0, k); ctx.lineTo(size, k);
+      ctx.stroke();
+    }
+    
+    _carbonTxtr = new THREE.CanvasTexture(canvas);
+    _carbonTxtr.wrapS = THREE.RepeatWrapping;
+    _carbonTxtr.wrapT = THREE.RepeatWrapping;
+    _carbonTxtr.repeat.set(2, 8);
+    return _carbonTxtr;
+  }
+
+  function createRoundedRectShape(w, d, radius) {
+    const shape = new THREE.Shape();
+    const x = -w/2;
+    const y = -d/2;
+    shape.moveTo(x + radius, y);
+    shape.lineTo(x + w - radius, y);
+    shape.quadraticCurveTo(x + w, y, x + w, y + radius);
+    shape.lineTo(x + w, y + d - radius);
+    shape.quadraticCurveTo(x + w, y + d, x + w - radius, y + d);
+    shape.lineTo(x + radius, y + d);
+    shape.quadraticCurveTo(x, y + d, x, y + d - radius);
+    shape.lineTo(x, y + radius);
+    shape.quadraticCurveTo(x, y, x + radius, y);
+    return shape;
+  }
+
+  function createAirfoilShape(chord, thickness) {
+    const shape = new THREE.Shape();
+    shape.moveTo(chord * 0.5, 0);
+    shape.quadraticCurveTo(0, thickness * 1.5, -chord * 0.5, 0);
+    shape.quadraticCurveTo(0, -thickness * 0.2, chord * 0.5, 0);
+    return shape;
+  }
 
   function initLCD() {
     if (_lcdTxtr) return;
@@ -578,32 +616,45 @@ const DroneModel = (function () {
 
   function createBlade(radius, baseChord, directionSign) {
     const blade = new THREE.Group();
-    const steps = 6;
-    const startR = 0.006;
+    const steps = 8;
+    const startR = 0.008;
     const stepL = (radius - startR) / steps;
 
     for (let i = 0; i < steps; i++) {
       const segStart = startR + i * stepL;
-      const segEnd = segStart + stepL;
-      const segMid = (segStart + segEnd) / 2.0;
       const segL = stepL * 1.05;
 
       const t = i / (steps - 1);
-      const segmentChord = baseChord * (1.1 * (1 - t) + 0.4 * t);
-      const segmentThickness = 0.003 * (1 - t) + 0.0006 * t;
-      const pitchAngle = (0.32 * (1 - t) + 0.08 * t) * directionSign;
+      const segmentChord = baseChord * (1.15 * (1 - t) + 0.35 * t);
+      const segmentThickness = 0.0035 * (1 - t) + 0.0006 * t;
+      const pitchAngle = (0.35 * (1 - t) + 0.06 * t) * directionSign;
 
-      const segGeo = new THREE.BoxGeometry(segL, segmentThickness, segmentChord);
+      const airfoil = createAirfoilShape(segmentChord, segmentThickness);
+      const extrudeSettings = {
+        steps: 1,
+        depth: segL,
+        bevelEnabled: false
+      };
+      const segGeo = new THREE.ExtrudeGeometry(airfoil, extrudeSettings);
+      
       const isTip = (i === steps - 1);
       const segMat = isTip 
-        ? createMat(0xef4444, 0.4, 0.1)
-        : createMat(0x282828, 0.45, 0.1);
-        
-      const segMesh = new THREE.Mesh(segGeo, segMat);
-      segMesh.position.x = segMid;
-      segMesh.rotation.x = pitchAngle;
-      segMesh.castShadow = true;
+        ? new THREE.MeshPhysicalMaterial({
+            color: 0xef4444,
+            roughness: 0.1,
+            transmission: 0.7,
+            thickness: 0.002,
+            transparent: true,
+            opacity: 0.85
+          })
+        : createMat(0x282828, 0.4, 0.1);
 
+      const segMesh = new THREE.Mesh(segGeo, segMat);
+      
+      segMesh.rotation.y = -Math.PI / 2;
+      segMesh.rotation.x = pitchAngle;
+      segMesh.position.x = segStart;
+      segMesh.castShadow = true;
       blade.add(segMesh);
     }
 
@@ -645,6 +696,64 @@ const DroneModel = (function () {
       standMesh.receiveShadow = true;
       _droneGrp.add(standMesh);
 
+      const loadCellGeo = new THREE.BoxGeometry(0.012, 0.016, 0.028);
+      const loadCellMat = createMat(0xd1d5db, 0.2, 0.9);
+      const loadCellMesh = new THREE.Mesh(loadCellGeo, loadCellMat);
+      loadCellMesh.position.set(0, standHeight + 0.008, 0);
+      _droneGrp.add(loadCellMesh);
+
+      const gaugeMat = createMat(0xef4444, 0.5, 0.0);
+      const gaugeL = new THREE.Mesh(new THREE.PlaneGeometry(0.001, 0.008), gaugeMat);
+      gaugeL.position.set(-0.0061, standHeight + 0.008, 0);
+      gaugeL.rotation.y = -Math.PI / 2;
+      _droneGrp.add(gaugeL);
+
+      const gaugeR = new THREE.Mesh(new THREE.PlaneGeometry(0.001, 0.008), gaugeMat);
+      gaugeR.position.set(0.0061, standHeight + 0.008, 0);
+      gaugeR.rotation.y = Math.PI / 2;
+      _droneGrp.add(gaugeR);
+
+      const escH = 0.025;
+      const escW = 0.006;
+      const escD = 0.016;
+      const escBoxGeo = new THREE.BoxGeometry(escW, escH, escD);
+      const escBoxMat = createMat(0x0f172a, 0.6, 0.85);
+      const escBox = new THREE.Mesh(escBoxGeo, escBoxMat);
+      escBox.position.set(0.011, standHeight * 0.45, 0);
+      _droneGrp.add(escBox);
+
+      const finGeo = new THREE.BoxGeometry(0.002, escH, 0.0015);
+      const finMat = createMat(0x334155, 0.4, 0.9);
+      for (let f = -3; f <= 3; f++) {
+        const fin = new THREE.Mesh(finGeo, finMat);
+        fin.position.set(0.011 + 0.003, standHeight * 0.45, f * 0.002);
+        _droneGrp.add(fin);
+      }
+
+      const wireMatRed = createMat(0xef4444, 0.7, 0.0);
+      const wireMatBlack = createMat(0x1e293b, 0.7, 0.0);
+      const wireMatBlue = createMat(0x3b82f6, 0.7, 0.0);
+
+      const pwrCableR = new THREE.Mesh(new THREE.CylinderGeometry(0.001, 0.001, standHeight * 0.45, 6), wireMatRed);
+      pwrCableR.position.set(0.008, standHeight * 0.225, 0.004);
+      _droneGrp.add(pwrCableR);
+
+      const pwrCableB = new THREE.Mesh(new THREE.CylinderGeometry(0.001, 0.001, standHeight * 0.45, 6), wireMatBlack);
+      pwrCableB.position.set(0.008, standHeight * 0.225, -0.004);
+      _droneGrp.add(pwrCableB);
+
+      const motorCable1 = new THREE.Mesh(new THREE.CylinderGeometry(0.0008, 0.0008, standHeight * 0.55, 6), wireMatRed);
+      motorCable1.position.set(0.008, standHeight * 0.725, 0.004);
+      _droneGrp.add(motorCable1);
+
+      const motorCable2 = new THREE.Mesh(new THREE.CylinderGeometry(0.0008, 0.0008, standHeight * 0.55, 6), wireMatBlack);
+      motorCable2.position.set(0.008, standHeight * 0.725, 0);
+      _droneGrp.add(motorCable2);
+
+      const motorCable3 = new THREE.Mesh(new THREE.CylinderGeometry(0.0008, 0.0008, standHeight * 0.55, 6), wireMatBlue);
+      motorCable3.position.set(0.008, standHeight * 0.725, -0.004);
+      _droneGrp.add(motorCable3);
+
       const lcdGroup = new THREE.Group();
       lcdGroup.position.set(0.008, 0.075, 0.011);
       lcdGroup.rotation.x = -0.15;
@@ -672,11 +781,11 @@ const DroneModel = (function () {
       const mountGeo = new THREE.CylinderGeometry(0.012, 0.012, 0.006, 12);
       const mountMat = createMat(0x334155, 0.5, 0.5);
       const mountMesh = new THREE.Mesh(mountGeo, mountMat);
-      mountMesh.position.y = standHeight + 0.011;
+      mountMesh.position.y = standHeight + 0.016 + 0.003;
       _droneGrp.add(mountMesh);
 
       if (motor) {
-        const motorY = standHeight + 0.014;
+        const motorY = standHeight + 0.016 + 0.006;
         const bellR = (motor.bell_diameter_mm / 2) / 1000;
         const bellH = motor.bell_height_mm / 1000;
         const bellGeo = new THREE.CylinderGeometry(bellR, bellR * 0.82, bellH, 20);
@@ -686,11 +795,44 @@ const DroneModel = (function () {
         bellMesh.castShadow = true;
         _droneGrp.add(bellMesh);
 
-        const statorGeo = new THREE.CylinderGeometry(bellR * 0.55, bellR * 0.55, bellH * 0.6, 12);
-        const statorMat = createMat(0xd97706, 0.5, 0.4);
-        const statorMesh = new THREE.Mesh(statorGeo, statorMat);
-        statorMesh.position.y = motorY + bellH * 0.3;
-        _droneGrp.add(statorMesh);
+        const shaftGeo = new THREE.CylinderGeometry(0.0015, 0.0015, bellH * 1.5, 8);
+        const shaftMat = createMat(0xe2e8f0, 0.15, 0.95);
+        const shaftMesh = new THREE.Mesh(shaftGeo, shaftMat);
+        shaftMesh.position.y = motorY + bellH * 0.75;
+        _droneGrp.add(shaftMesh);
+
+        const cClipGeo = new THREE.TorusGeometry(0.002, 0.0006, 4, 8);
+        const cClipMesh = new THREE.Mesh(cClipGeo, shaftMat);
+        cClipMesh.position.y = motorY + bellH + 0.001;
+        cClipMesh.rotation.x = Math.PI / 2;
+        _droneGrp.add(cClipMesh);
+
+        const numHoles = 4;
+        const holeGeo = new THREE.CylinderGeometry(bellR * 0.2, bellR * 0.2, 0.0006, 8);
+        const holeMat = createMat(0x0f172a, 0.9, 0.0);
+        for (let h = 0; h < numHoles; h++) {
+          const angle = (h / numHoles) * Math.PI * 2;
+          const holeMesh = new THREE.Mesh(holeGeo, holeMat);
+          holeMesh.position.set(Math.cos(angle) * (bellR * 0.5), motorY + bellH + 0.0002, Math.sin(angle) * (bellR * 0.5));
+          _droneGrp.add(holeMesh);
+        }
+
+        const numCoils = 12;
+        const coilGeo = new THREE.CylinderGeometry(bellR * 0.12, bellR * 0.12, bellH * 0.5, 6);
+        const coilMat = createMat(0xb45309, 0.2, 0.8);
+        for (let c = 0; c < numCoils; c++) {
+          const angle = (c / numCoils) * Math.PI * 2;
+          const coilMesh = new THREE.Mesh(coilGeo, coilMat);
+          coilMesh.position.set(Math.cos(angle) * (bellR * 0.52), motorY + bellH * 0.25, Math.sin(angle) * (bellR * 0.52));
+          _droneGrp.add(coilMesh);
+        }
+
+        const statorCore = new THREE.Mesh(
+          new THREE.CylinderGeometry(bellR * 0.4, bellR * 0.4, bellH * 0.55, 8),
+          createMat(0x475569, 0.5, 0.8)
+        );
+        statorCore.position.y = motorY + bellH * 0.25;
+        _droneGrp.add(statorCore);
 
         if (prop) {
           const propR = prop.diameter_m / 2;
@@ -747,16 +889,30 @@ const DroneModel = (function () {
 
     const frameMat = createMat(hexToInt(frame.color_hex), frame.roughness, frame.metalness);
 
-    const bottomPlateGeo = new THREE.BoxGeometry(bw, 0.002, bz);
+    const plateShape = createRoundedRectShape(bw, bz, Math.min(bw, bz) * 0.12);
+    const extrudeSettings = {
+      steps: 1,
+      depth: 0.002,
+      bevelEnabled: true,
+      bevelThickness: 0.0005,
+      bevelSize: 0.0005,
+      bevelOffset: 0,
+      bevelSegments: 2
+    };
+
+    const bottomPlateGeo = new THREE.ExtrudeGeometry(plateShape, extrudeSettings);
     const bottomPlate = new THREE.Mesh(bottomPlateGeo, frameMat);
-    bottomPlate.position.y = 0;
+    bottomPlate.rotation.x = -Math.PI / 2;
+    bottomPlate.position.y = -0.001;
     bottomPlate.receiveShadow = true;
     bottomPlate.castShadow = true;
     _droneGrp.add(bottomPlate);
 
-    const topPlateGeo = new THREE.BoxGeometry(bw * 0.95, 0.002, bz * 0.95);
+    const topPlateShape = createRoundedRectShape(bw * 0.95, bz * 0.95, Math.min(bw, bz) * 0.12);
+    const topPlateGeo = new THREE.ExtrudeGeometry(topPlateShape, extrudeSettings);
     const topPlate = new THREE.Mesh(topPlateGeo, frameMat);
-    topPlate.position.y = bh;
+    topPlate.rotation.x = -Math.PI / 2;
+    topPlate.position.y = bh - 0.001;
     topPlate.castShadow = true;
     _droneGrp.add(topPlate);
 
@@ -775,7 +931,14 @@ const DroneModel = (function () {
 
     const motorRadius = frame.wheelbase_mm / 2000;
     const armR = (frame.arm_tube_od_mm / 2) / 1000;
-    const armMat = createMat(hexToInt(frame.color_hex), frame.roughness + 0.1, frame.metalness);
+    
+    const carbonTex = getCarbonFiberTexture();
+    const armMat = new THREE.MeshStandardMaterial({
+      color: 0x333333,
+      map: carbonTex,
+      roughness: 0.2,
+      metalness: 0.8
+    });
 
     _armDirs.forEach(function (dir, i) {
       const armGeo = new THREE.CylinderGeometry(armR, armR, motorRadius, 12);
@@ -791,6 +954,21 @@ const DroneModel = (function () {
       const mountMesh = new THREE.Mesh(mountGeo, frameMat);
       mountMesh.position.copy(tipPos);
       _droneGrp.add(mountMesh);
+
+      const screwGeo = new THREE.CylinderGeometry(0.0008, 0.0008, 0.0006, 6);
+      const screwMat = createMat(0x64748b, 0.2, 0.9);
+      const screwDist = armR * 1.5;
+      const screwOffsets = [
+        [-screwDist, -screwDist],
+        [-screwDist, screwDist],
+        [screwDist, -screwDist],
+        [screwDist, screwDist]
+      ];
+      screwOffsets.forEach(function (soff) {
+        const screw = new THREE.Mesh(screwGeo, screwMat);
+        screw.position.set(tipPos.x + soff[0], tipPos.y + 0.0016, tipPos.z + soff[1]);
+        _droneGrp.add(screw);
+      });
 
       const legHeight = 0.12;
       const legGeo = new THREE.CylinderGeometry(0.003, 0.002, legHeight, 6);
@@ -814,12 +992,47 @@ const DroneModel = (function () {
         bellMesh.castShadow = true;
         _droneGrp.add(bellMesh);
 
-        const statorGeo = new THREE.CylinderGeometry(bellR * 0.55, bellR * 0.55, bellH * 0.5, 10);
-        const statorMat = createMat(0xd97706, 0.5, 0.4);
-        const statorMesh = new THREE.Mesh(statorGeo, statorMat);
-        statorMesh.position.copy(tipPos);
-        statorMesh.position.y = motorY + bellH * 0.25;
-        _droneGrp.add(statorMesh);
+        const shaftGeo = new THREE.CylinderGeometry(0.0015, 0.0015, bellH * 1.5, 8);
+        const shaftMat = createMat(0xe2e8f0, 0.15, 0.95);
+        const shaftMesh = new THREE.Mesh(shaftGeo, shaftMat);
+        shaftMesh.position.copy(tipPos);
+        shaftMesh.position.y = motorY + bellH * 0.75;
+        _droneGrp.add(shaftMesh);
+
+        const cClipGeo = new THREE.TorusGeometry(0.002, 0.0006, 4, 8);
+        const cClipMesh = new THREE.Mesh(cClipGeo, shaftMat);
+        cClipMesh.position.copy(tipPos);
+        cClipMesh.position.y = motorY + bellH + 0.001;
+        cClipMesh.rotation.x = Math.PI / 2;
+        _droneGrp.add(cClipMesh);
+
+        const numHoles = 4;
+        const holeGeo = new THREE.CylinderGeometry(bellR * 0.2, bellR * 0.2, 0.0006, 8);
+        const holeMat = createMat(0x0f172a, 0.9, 0.0);
+        for (let h = 0; h < numHoles; h++) {
+          const angle = (h / numHoles) * Math.PI * 2;
+          const holeMesh = new THREE.Mesh(holeGeo, holeMat);
+          holeMesh.position.set(tipPos.x + Math.cos(angle) * (bellR * 0.5), motorY + bellH + 0.0002, tipPos.z + Math.sin(angle) * (bellR * 0.5));
+          _droneGrp.add(holeMesh);
+        }
+
+        const numCoils = 12;
+        const coilGeo = new THREE.CylinderGeometry(bellR * 0.12, bellR * 0.12, bellH * 0.5, 6);
+        const coilMat = createMat(0xb45309, 0.2, 0.8);
+        for (let c = 0; c < numCoils; c++) {
+          const angle = (c / numCoils) * Math.PI * 2;
+          const coilMesh = new THREE.Mesh(coilGeo, coilMat);
+          coilMesh.position.set(tipPos.x + Math.cos(angle) * (bellR * 0.52), motorY + bellH * 0.25, tipPos.z + Math.sin(angle) * (bellR * 0.52));
+          _droneGrp.add(coilMesh);
+        }
+
+        const statorCore = new THREE.Mesh(
+          new THREE.CylinderGeometry(bellR * 0.4, bellR * 0.4, bellH * 0.55, 8),
+          createMat(0x475569, 0.5, 0.8)
+        );
+        statorCore.position.copy(tipPos);
+        statorCore.position.y = motorY + bellH * 0.25;
+        _droneGrp.add(statorCore);
 
         if (prop) {
           const propR = prop.diameter_m / 2;
@@ -886,6 +1099,25 @@ const DroneModel = (function () {
       battMesh.castShadow = true;
       _droneGrp.add(battMesh);
 
+      const xt60Geo = new THREE.BoxGeometry(0.008, 0.006, 0.012);
+      const xt60Mat = createMat(0xeab308, 0.4, 0.1);
+      const xt60Mesh = new THREE.Mesh(xt60Geo, xt60Mat);
+      xt60Mesh.position.set(0, battY, battD / 2 + 0.004);
+      _droneGrp.add(xt60Mesh);
+
+      const wireGeo = new THREE.CylinderGeometry(0.001, 0.001, 0.016, 6);
+      const wireMatRed = createMat(0xef4444, 0.7, 0.0);
+      const wireRed = new THREE.Mesh(wireGeo, wireMatRed);
+      wireRed.position.set(-0.002, battY + 0.002, battD / 2 + 0.009);
+      wireRed.rotation.x = Math.PI / 2;
+      _droneGrp.add(wireRed);
+
+      const wireMatBlack = createMat(0x1e293b, 0.7, 0.0);
+      const wireBlack = new THREE.Mesh(wireGeo, wireMatBlack);
+      wireBlack.position.set(0.002, battY + 0.002, battD / 2 + 0.009);
+      wireBlack.rotation.x = Math.PI / 2;
+      _droneGrp.add(wireBlack);
+
       const padGeo = new THREE.BoxGeometry(battW * 0.9, 0.002, battD * 0.9);
       const padMat = createMat(0x111827, 0.9, 0.0);
       const padMesh = new THREE.Mesh(padGeo, padMat);
@@ -950,13 +1182,32 @@ const DroneModel = (function () {
       rxMesh.position.set(0, 0.003, bz * 0.32);
       _droneGrp.add(rxMesh);
 
-      const antGeo = new THREE.CylinderGeometry(0.0006, 0.0006, 0.045, 4);
       const antMat = createMat(0x111827, 0.9, 0.0);
-      const antMesh = new THREE.Mesh(antGeo, antMat);
-      antMesh.position.set(-0.004, 0.0225, bz * 0.34);
-      antMesh.rotation.x = 0.25;
-      antMesh.rotation.z = -0.15;
-      _droneGrp.add(antMesh);
+      const tipMat = createMat(0xd1d5db, 0.4, 0.8);
+
+      const antLGroup = new THREE.Group();
+      antLGroup.position.set(-0.006, bh, bz * 0.32);
+      const tubeL = new THREE.Mesh(new THREE.CylinderGeometry(0.0008, 0.0008, 0.035, 6), antMat);
+      tubeL.position.y = 0.0175;
+      antLGroup.add(tubeL);
+      const activeL = new THREE.Mesh(new THREE.CylinderGeometry(0.0005, 0.0005, 0.015, 6), tipMat);
+      activeL.position.y = 0.035 + 0.0075;
+      antLGroup.add(activeL);
+      antLGroup.rotation.z = 0.6;
+      antLGroup.rotation.x = 0.3;
+      _droneGrp.add(antLGroup);
+
+      const antRGroup = new THREE.Group();
+      antRGroup.position.set(0.006, bh, bz * 0.32);
+      const tubeR = new THREE.Mesh(new THREE.CylinderGeometry(0.0008, 0.0008, 0.035, 6), antMat);
+      tubeR.position.y = 0.0175;
+      antRGroup.add(tubeR);
+      const activeR = new THREE.Mesh(new THREE.CylinderGeometry(0.0005, 0.0005, 0.015, 6), tipMat);
+      activeR.position.y = 0.035 + 0.0075;
+      antRGroup.add(activeR);
+      antRGroup.rotation.z = -0.6;
+      antRGroup.rotation.x = 0.3;
+      _droneGrp.add(antRGroup);
     }
 
     payloads.forEach(function (p) {
@@ -1342,14 +1593,41 @@ const FlightSim = (function () {
     const frame = _cfg.frame;
 
     const soc_start = _eTot > 0 ? _eRem / _eTot : 1.0;
-    const V_oc_start = cells * (3.5 + 0.7 * soc_start);
+    // LiPo cell OCV curve fit: 3.5 + 0.16*soc + 0.54*soc^2 - 0.45*(1-soc)^4
+    const V_ocv_cell = 3.5 + 0.16 * soc_start + 0.54 * soc_start * soc_start - 0.45 * Math.pow(1.0 - soc_start, 4);
+    const V_oc_start = cells * V_ocv_cell;
     const R_batt = cells * 0.008;
     const V_batt_curr = Math.max(cells * 3.0, V_oc_start - _iLast * R_batt);
 
-    const op_max = Calc.solveOperatingPoint(motor, V_batt_curr, propeller.diameter_m, rho);
+    const op_max = Calc.solveOperatingPoint(motor, V_batt_curr, propeller.diameter_m, rho, _tMotor);
     const T_max = op_max ? op_max.thrust : 0.0;
 
     let thrust = 0.0;
+
+    // RK4 acceleration function declared at function root
+    let currentThrust = 0.0;
+    function getAcc(y, vy) {
+      let actThrust = currentThrust;
+      const standoff = Math.max(y - LAUNCH_ALT, propeller.diameter_m * 0.25);
+      const geTerm = propeller.diameter_m / (4.0 * standoff);
+      if (geTerm < 0.99) {
+        const geMul = Math.min(1.0 / (1.0 - geTerm * geTerm), 1.75);
+        actThrust *= geMul;
+      }
+      const area = Math.PI * 0.25 * propeller.diameter_m * propeller.diameter_m;
+      const v_ind = Math.sqrt(Math.max(0.1, actThrust) / (2.0 * rho * area));
+      const inflow = vy / v_ind;
+      const tDamp = Math.max(0.2, 1.0 - 0.45 * inflow);
+      actThrust *= tDamp;
+
+      let CdA = 0.007;
+      if (frame && frame.body_size_mm && frame.body_size_mm.length >= 3) {
+        CdA = (frame.body_size_mm[0] / 1000.0) * (frame.body_size_mm[2] / 1000.0);
+      }
+      const F_drag = 0.5 * rho * CdA * vy * Math.abs(vy);
+      const netForce = actThrust * MOTORS_COUNT - M_kg * G_FORCE - F_drag;
+      return netForce / M_kg;
+    }
 
     for (let step = 0; step < steps; step++) {
       if (_cutPwr || _isStall) {
@@ -1408,34 +1686,23 @@ const FlightSim = (function () {
       }
 
       thrust = Math.min(thrust, T_max);
-      let actualThrust = thrust;
+      currentThrust = thrust;
 
-      // Ground effect calculation
-      const standoff = Math.max(_yVal - LAUNCH_ALT, propeller.diameter_m * 0.25);
-      const geTerm = propeller.diameter_m / (4.0 * standoff);
-      if (geTerm < 0.99) {
-        const geMul = Math.min(1.0 / (1.0 - geTerm * geTerm), 1.75);
-        actualThrust *= geMul;
-      }
+      const k1_y = _vyVal;
+      const k1_vy = getAcc(_yVal, _vyVal);
 
-      // Induced velocity aerodynamic damping
-      const area = Math.PI * 0.25 * propeller.diameter_m * propeller.diameter_m;
-      const v_ind = Math.sqrt(Math.max(0.1, actualThrust) / (2.0 * rho * area));
-      const inflow = _vyVal / v_ind;
-      const tDamp = Math.max(0.2, 1.0 - 0.45 * inflow);
-      actualThrust *= tDamp;
+      const k2_y = _vyVal + 0.5 * dt_step * k1_vy;
+      const k2_vy = getAcc(_yVal + 0.5 * dt_step * k1_y, k2_y);
 
-      let CdA = 0.007;
-      if (frame && frame.body_size_mm && frame.body_size_mm.length >= 3) {
-        CdA = (frame.body_size_mm[0] / 1000.0) * (frame.body_size_mm[2] / 1000.0);
-      }
-      const F_drag = 0.5 * rho * CdA * _vyVal * Math.abs(_vyVal);
-      const netForce = actualThrust * MOTORS_COUNT - M_kg * G_FORCE - F_drag;
-      const acc = netForce / M_kg;
+      const k3_y = _vyVal + 0.5 * dt_step * k2_vy;
+      const k3_vy = getAcc(_yVal + 0.5 * dt_step * k2_y, k3_y);
 
-      _vyVal += acc * dt_step;
+      const k4_y = _vyVal + dt_step * k3_vy;
+      const k4_vy = getAcc(_yVal + dt_step * k3_y, k4_y);
+
+      _yVal += (dt_step / 6.0) * (k1_y + 2.0 * k2_y + 2.0 * k3_y + k4_y);
+      _vyVal += (dt_step / 6.0) * (k1_vy + 2.0 * k2_vy + 2.0 * k3_vy + k4_vy);
       _vyVal = Math.min(Math.max(_vyVal, -1.0), 1.0);
-      _yVal += _vyVal * dt_step;
 
       if (_yVal <= LAUNCH_ALT) {
         _yVal = LAUNCH_ALT;
@@ -1477,10 +1744,10 @@ const FlightSim = (function () {
     let finalT = (_cutPwr || _isStall) ? 0.0 : thrust;
     let u = 0.0;
     if (finalT > 0.0) {
-      u = Calc.solveHoverThrottle(motor, V_batt_curr, propeller.diameter_m, rho, finalT);
+      u = Calc.solveHoverThrottle(motor, V_batt_curr, propeller.diameter_m, rho, finalT, _tMotor);
     }
 
-    const op = Calc.solveOperatingPoint(motor, u * V_batt_curr, propeller.diameter_m, rho);
+    const op = Calc.solveOperatingPoint(motor, u * V_batt_curr, propeller.diameter_m, rho, _tMotor);
     const current_a = op ? op.curr : 0.0;
     const power_elec_w = op ? op.p_elec : 0.0;
     const rpm = op ? op.rpm : 0.0;
@@ -1492,8 +1759,17 @@ const FlightSim = (function () {
     const p_loss = op ? Math.max(0, op.p_elec - op.p_mech) : 0.0;
     const m_motor = ((_cfg.motor && _cfg.motor.mass_g) ? _cfg.motor.mass_g : 50.0) / 1000.0;
     
-    // First-order thermal mass equation
-    const dT_m = (p_loss - 0.25 * (_tMotor - 25.0)) / (m_motor * 385.0);
+    // Convective cooling from propwash: h = h0 + k * v_ind
+    const area_prop = Math.PI * 0.25 * propeller.diameter_m * propeller.diameter_m;
+    const v_ind_cool = Math.sqrt(Math.max(0.1, finalT) / (2.0 * rho * area_prop));
+    const h0 = 12.0;
+    const k_cool = 4.0;
+    const h_conv = h0 + k_cool * v_ind_cool;
+    const A_motor = 0.006;
+    const Q_out = h_conv * A_motor * (_tMotor - 25.0);
+    const Q_in = p_loss;
+
+    const dT_m = (Q_in - Q_out) / (m_motor * 385.0);
     _tMotor += dT_m * dt_acc;
     
     const esc_limit = (_cfg.esc && _cfg.esc.current_a) ? _cfg.esc.current_a : 30.0;
@@ -1708,6 +1984,97 @@ const FlightSim = (function () {
 })();
 window.FlightSim = FlightSim;
 
+function buildSharedTileGrid(container, items, options) {
+  const parent = typeof container === 'string' ? document.getElementById(container) : container;
+  if (!parent) return;
+  const { isMulti, selectedIds, name, idPrefix, specF, onSelect } = options || {};
+  const selSet = new Set(Array.isArray(selectedIds) ? selectedIds : (selectedIds ? [selectedIds] : []));
+
+  parent.innerHTML = items.map(item => {
+    const active = selSet.has(item.id);
+    const inputId = `${idPrefix}${item.id}`;
+    const escName = String(item.label).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+    return `
+      <label class="component-tile ${active ? 'active selected' : ''}" for="${inputId}">
+        <input type="${isMulti ? 'checkbox' : 'radio'}" name="${name}" id="${inputId}" value="${item.id}" ${active ? 'checked' : ''}>
+        <div class="tile-label">
+          <span class="tile-name">${escName}</span>
+          <span class="tile-spec">${specF(item)}</span>
+        </div>
+      </label>
+    `;
+  }).join('');
+
+  parent.querySelectorAll('input').forEach(inp => {
+    inp.addEventListener('change', () => {
+      const item = items.find(i => i.id === inp.value);
+      if (onSelect && item) onSelect(item, inp.checked);
+      if (!isMulti) {
+        parent.querySelectorAll('.component-tile').forEach(t => t.classList.remove('active', 'selected'));
+        inp.parentElement.classList.add('active', 'selected');
+      } else {
+        inp.parentElement.classList.toggle('active', inp.checked);
+        inp.parentElement.classList.toggle('selected', inp.checked);
+      }
+    });
+  });
+}
+
+function initBase3DScene(canvas, wrapper, options) {
+  const scn = new THREE.Scene();
+  scn.background = new THREE.Color(options.bgColor || 0xf3f4f6);
+  const parent = (typeof wrapper === 'string' ? document.getElementById(wrapper) : wrapper) || canvas.parentElement || canvas;
+  const w = parent.clientWidth || 300, h = parent.clientHeight || 180;
+
+  const cam = new THREE.PerspectiveCamera(options.fov || 45, w / h, 0.01, 100);
+  if (options.camPos) cam.position.set(options.camPos.x, options.camPos.y, options.camPos.z);
+
+  const rndr = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: !!options.alpha });
+  rndr.setSize(w, h, false);
+  rndr.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+
+  if (options.enableShadows) {
+    rndr.shadowMap.enabled = true;
+    rndr.shadowMap.type = THREE.PCFSoftShadowMap;
+    rndr.outputEncoding = THREE.sRGBEncoding;
+    rndr.toneMapping = THREE.ACESFilmicToneMapping;
+    rndr.toneMappingExposure = 1.0;
+  }
+
+  const ctrls = new THREE.OrbitControls(cam, rndr.domElement);
+  ctrls.enableDamping = true;
+  ctrls.dampingFactor = 0.08;
+  if (options.ctrls) {
+    if (options.ctrls.minDist !== undefined) ctrls.minDistance = options.ctrls.minDist;
+    if (options.ctrls.maxDist !== undefined) ctrls.maxDistance = options.ctrls.maxDist;
+    if (options.ctrls.maxPolar !== undefined) ctrls.maxPolarAngle = options.ctrls.maxPolar;
+    if (options.ctrls.target) ctrls.target.set(options.ctrls.target.x, options.ctrls.target.y, options.ctrls.target.z);
+  }
+  ctrls.update();
+
+  scn.add(new THREE.AmbientLight(0xffffff, options.ambientIntensity || 0.6));
+  const sun = new THREE.DirectionalLight(0xffffff, options.sunIntensity || 1.0);
+  sun.position.set(options.sunPos?.x || 1.5, options.sunPos?.y || 3.0, options.sunPos?.z || 1.5);
+  if (options.enableShadows) {
+    sun.castShadow = true;
+    sun.shadow.mapSize.set(1024, 1024);
+    sun.shadow.bias = options.sunBias !== undefined ? options.sunBias : -0.0001;
+  }
+  scn.add(sun);
+
+  const resize = () => {
+    const width = parent.clientWidth, height = parent.clientHeight;
+    if (width === 0 || height === 0) return;
+    rndr.setSize(width, height, false);
+    cam.aspect = width / height;
+    cam.updateProjectionMatrix();
+  };
+  window.addEventListener('resize', resize);
+  window.addEventListener('orientationchange', () => setTimeout(resize, 100));
+
+  return { scn, rndr, cam, ctrls, handleResize: resize };
+}
+
 const UI = (function () {
   'use strict';
 
@@ -1744,30 +2111,14 @@ const UI = (function () {
     grid.className = 'tiles-grid';
     g.appendChild(grid);
 
-    list.forEach(function (item) {
-      const card = document.createElement('label');
-      card.className = 'component-tile';
-      card.htmlFor = 'input_' + cat + '_' + item.id;
-
-      const inp = document.createElement('input');
-      inp.type = isMulti ? 'checkbox' : 'radio';
-      inp.name = 'sel_' + cat;
-      inp.id = 'input_' + cat + '_' + item.id;
-      inp.value = item.id;
-
-      const cardLbl = document.createElement('div');
-      cardLbl.className = 'tile-label';
-      cardLbl.innerHTML =
-        '<span class="tile-name">' + _esc(item.label) + '</span>' +
-        '<span class="tile-spec">' + specF(item) + '</span>';
-
-      card.appendChild(inp);
-      card.appendChild(cardLbl);
-      grid.appendChild(card);
-
-      inp.addEventListener('change', function () {
-        _onSelect(cat, item, isMulti, inp.checked);
-      });
+    buildSharedTileGrid(grid, list, {
+      isMulti: isMulti,
+      name: 'sel_' + cat,
+      idPrefix: 'input_' + cat + '_',
+      specF: specF,
+      onSelect: function (item, checked) {
+        _onSelect(cat, item, isMulti, checked);
+      }
     });
 
     parent.appendChild(g);
@@ -1797,18 +2148,6 @@ const UI = (function () {
     } else {
       selections[cat] = item;
     }
-
-    const inputs = document.getElementsByName('sel_' + cat);
-    inputs.forEach(function (inp) {
-      const tile = inp.parentNode;
-      if (inp.checked) {
-        tile.classList.add('active');
-        tile.classList.add('selected');
-      } else {
-        tile.classList.remove('active');
-        tile.classList.remove('selected');
-      }
-    });
 
     if (window.DroneModel) {
       window.DroneModel.updateFromSelections(selections);
@@ -2018,21 +2357,17 @@ const UI = (function () {
         ]
       },
       options: {
-        responsive: true,
-        maintainAspectRatio: false,
         plugins: {
           legend: {
             position: 'bottom',
-            labels: { font: { family: 'Inter', size: 10 }, boxWidth: 10, padding: 6 }
+            labels: { boxWidth: 10, padding: 6 }
           }
         },
         scales: {
           x: {
-            grid: { color: '#f3f4f6' },
             ticks: { font: { family: 'JetBrains Mono', size: 9 } }
           },
           y: {
-            grid: { color: '#f3f4f6' },
             ticks: { font: { family: 'JetBrains Mono', size: 9 } }
           }
         }
@@ -2146,14 +2481,11 @@ const Mod2UI = (function() {
         }]
       },
       options: {
-        responsive: true,
-        maintainAspectRatio: false,
         scales: {
           x: {
             title: { display: true, text: 'Throttle (%)' },
             min: 30,
-            max: 105,
-            grid: { color: '#f3f4f6' }
+            max: 105
           },
           y: {
             type: 'linear',
@@ -2161,8 +2493,7 @@ const Mod2UI = (function() {
             position: 'left',
             title: { display: true, text: 'Efficiency (%)' },
             min: 0,
-            max: 100,
-            grid: { color: '#f3f4f6' }
+            max: 100
           },
           y1: {
             type: 'linear',
@@ -2178,7 +2509,6 @@ const Mod2UI = (function() {
             display: true,
             labels: {
               boxWidth: 12,
-              font: { size: 10 },
               filter: function(item) {
                 return item.text !== 'Hover Point';
               }
@@ -2219,8 +2549,6 @@ const Mod2UI = (function() {
         }]
       },
       options: {
-        responsive: true,
-        maintainAspectRatio: false,
         plugins: {
           legend: { display: false },
           tooltip: {
@@ -2255,24 +2583,20 @@ const Mod2UI = (function() {
         }]
       },
       options: {
-        responsive: true,
-        maintainAspectRatio: false,
         scales: {
           x: {
             title: { display: true, text: 'Current (A)' },
-            min: 0,
-            grid: { color: '#f3f4f6' }
+            min: 0
           },
           y: {
             type: 'linear',
             display: true,
             title: { display: true, text: 'Thrust (N)' },
-            min: 0,
-            grid: { color: '#f3f4f6' }
+            min: 0
           }
         },
         plugins: {
-          legend: { display: true, labels: { boxWidth: 12, font: { size: 10 } } },
+          legend: { display: true, labels: { boxWidth: 12 } },
           tooltip: {
             callbacks: {
               label: function(ctx) {
@@ -2398,33 +2722,20 @@ const Mod2UI = (function() {
       _unlAnim = null;
     }
 
-    const w = canvas.clientWidth || 300;
-    const h = canvas.clientHeight || 180;
-
-    _unlScn = new THREE.Scene();
-    _unlScn.background = new THREE.Color(0xf3f4f6);
-
-    _unlCam = new THREE.PerspectiveCamera(40, w / h, 0.01, 10);
-    _unlCam.position.set(0.12, 0.10, 0.16);
-
-    _unlRndr = new THREE.WebGLRenderer({ canvas: canvas, antialias: true, alpha: true });
-    _unlRndr.setSize(w, h, false);
-    _unlRndr.setPixelRatio(Math.min(window.devicePixelRatio, 2));
-
-    _unlCtrls = new THREE.OrbitControls(_unlCam, _unlRndr.domElement);
-    _unlCtrls.enableDamping = true;
-    _unlCtrls.dampingFactor = 0.08;
-    _unlCtrls.minDistance = 0.08;
-    _unlCtrls.maxDistance = 1.0;
-    _unlCtrls.target.set(0, 0.005, 0);
-    _unlCtrls.update();
-
-    const ambient = new THREE.AmbientLight(0xffffff, 0.70);
-    _unlScn.add(ambient);
-
-    const sun = new THREE.DirectionalLight(0xffffff, 0.90);
-    sun.position.set(1.0, 2.0, 1.0);
-    _unlScn.add(sun);
+    const base = initBase3DScene(canvas, canvas, {
+      bgColor: 0xf3f4f6,
+      fov: 40,
+      camPos: { x: 0.12, y: 0.10, z: 0.16 },
+      alpha: true,
+      ctrls: { minDist: 0.08, maxDist: 1.0, target: { x: 0, y: 0.005, z: 0 } },
+      ambientIntensity: 0.70,
+      sunIntensity: 0.90,
+      sunPos: { x: 1.0, y: 2.0, z: 1.0 }
+    });
+    _unlScn = base.scn;
+    _unlRndr = base.rndr;
+    _unlCam = base.cam;
+    _unlCtrls = base.ctrls;
 
     const motorMat = new THREE.MeshStandardMaterial({ color: 0x1e293b, roughness: 0.3, metalness: 0.8 });
     const copperMat = new THREE.MeshStandardMaterial({ color: 0xd97706, roughness: 0.5, metalness: 0.5 });
@@ -2590,52 +2901,20 @@ const Mod2UI = (function() {
       _unlRndr.render(_unlScn, _unlCam);
     }
     render();
-
-    window.addEventListener('resize', resizeUnlock);
-  }
-
-  function resizeUnlock() {
-    const canvas = document.getElementById('unlockCanvas');
-    if (!canvas || !_unlRndr || !_unlCam) return;
-    const w = canvas.clientWidth;
-    const h = canvas.clientHeight;
-    if (w === 0 || h === 0) return;
-    _unlRndr.setSize(w, h, false);
-    _unlCam.aspect = w / h;
-    _unlCam.updateProjectionMatrix();
   }
 
   function buildTiles(containerId, items, selectedId, specF, onClick) {
-    const container = document.getElementById(containerId);
-    if (!container) return;
-
-    let html = '';
-    items.forEach(item => {
-      const active = item.id === selectedId;
-      const idStr = `mod2_${containerId}_${item.id}`;
-      html += `
-        <label class="component-tile ${active ? 'active selected' : ''}" for="${idStr}">
-          <input type="radio" name="${containerId}" id="${idStr}" value="${item.id}" ${active ? 'checked' : ''} style="display:none;">
-          <div class="tile-label">
-            <span class="tile-name">${item.label}</span>
-            <span class="tile-spec">${specF(item)}</span>
-          </div>
-        </label>
-      `;
-    });
-    
-    container.innerHTML = html;
-
-    const inputs = container.querySelectorAll('input[type="radio"]');
-    inputs.forEach(input => {
-      input.addEventListener('change', (e) => {
-        container.querySelectorAll('.component-tile').forEach(t => t.classList.remove('active', 'selected'));
-        if (e.target.checked) {
-          e.target.parentElement.classList.add('active', 'selected');
+    buildSharedTileGrid(containerId, items, {
+      isMulti: false,
+      selectedIds: selectedId,
+      name: containerId,
+      idPrefix: `mod2_${containerId}_`,
+      specF: specF,
+      onSelect: function (item, checked) {
+        if (checked && onClick) {
+          onClick(item);
         }
-        const selItem = items.find(i => i.id === e.target.value);
-        if (onClick && selItem) onClick(selItem);
-      });
+      }
     });
   }
 
@@ -2839,9 +3118,18 @@ window.Mod2UI = Mod2UI;
     },
 
     init: function () {
-      if (localStorage.getItem('vlabModule1')) {
+      const stored = localStorage.getItem('vlabModule1');
+      if (stored) {
         const nextBtn = document.getElementById('nextModuleContainer');
-        if (nextBtn) nextBtn.style.display = 'block';
+        if (nextBtn) {
+          nextBtn.style.display = 'block';
+        }
+        const configSections = document.getElementById('configSections');
+        const configPanelChevron = document.getElementById('configPanelChevron');
+        if (configSections && configPanelChevron) {
+          configSections.style.display = 'none';
+          configPanelChevron.style.transform = 'rotate(-180deg)';
+        }
       }
 
       const configPanelTitle = document.getElementById('configPanelTitle');
@@ -2977,7 +3265,8 @@ window.Mod2UI = Mod2UI;
           pldIds: (window.VLAB.state.selections.payloads || []).map(p => p.id),
           T_req: window.VLAB.state.computed.T_required,
           alt: window.VLAB.state.altitude_m,
-          rho: window.VLAB.state.rho
+          rho: window.VLAB.state.rho,
+          isLocked: true
         };
         localStorage.setItem('vlabModule1', JSON.stringify(compactState));
 
@@ -3299,29 +3588,25 @@ window.Mod2UI = Mod2UI;
         ]
       },
       options: {
-        responsive: true,
-        maintainAspectRatio: false,
         plugins: {
           legend: {
             position: 'bottom',
-            labels: { font: { family: 'Inter', size: 10 }, boxWidth: 10, padding: 6 }
+            labels: { boxWidth: 10, padding: 6 }
           }
         },
         scales: {
           x: {
-            title: { display: true, text: 'Time (s)', font: { family: 'Inter', size: 9 } },
-            grid: { color: '#f3f4f6' },
+            title: { display: true, text: 'Time (s)', font: { size: 9 } },
             ticks: { font: { family: 'JetBrains Mono', size: 8 } }
           },
           y: {
-            title: { display: true, text: 'Altitude (m)', font: { family: 'Inter', size: 9 } },
-            grid: { color: '#f3f4f6' },
+            title: { display: true, text: 'Altitude (m)', font: { size: 9 } },
             ticks: { font: { family: 'JetBrains Mono', size: 8 } },
             min: 0,
             max: 5
           },
           y1: {
-            title: { display: true, text: 'Thrust (N)', font: { family: 'Inter', size: 9 } },
+            title: { display: true, text: 'Thrust (N)', font: { size: 9 } },
             position: 'right',
             grid: { drawOnChartArea: false },
             ticks: { font: { family: 'JetBrains Mono', size: 8 } },
@@ -3373,14 +3658,39 @@ window.Mod2UI = Mod2UI;
 
     init: function () {
       _startM2();
+      const configPanelTitle = document.getElementById('configPanelTitle');
+      const configSections = document.getElementById('configSections');
+      const configPanelChevron = document.getElementById('configPanelChevron');
+      if (configPanelTitle && configSections && configPanelChevron) {
+        configPanelTitle.addEventListener('click', function() {
+          if (configSections.style.display === 'none') {
+            configSections.style.display = 'flex';
+            configPanelChevron.style.transform = 'rotate(0deg)';
+          } else {
+            configSections.style.display = 'none';
+            configPanelChevron.style.transform = 'rotate(-180deg)';
+          }
+        });
+      }
     }
   };
   window.VLAB_MOD2 = VLAB_MOD2;
 
+  let _tMotorMod2 = 25.0;
+  let _eRemMod2 = 0.0;
+  let _eTotMod2 = 0.0;
+  let _isInitializingM2 = true;
+
+  function _fmtFrame(f) { return f ? f.wheelbase_mm + 'mm | ' + f.mass_g + 'g' : ''; }
+  function _fmtEsc(e) { return e ? e.current_a + 'A | ' + (e.quantity === 1 ? 'Stack' : '4x') + ' | ' + (e.mass_g_each * e.quantity).toFixed(0) + 'g' : ''; }
+  function _fmtFc(f) { return f ? f.processor + ' | ' + f.mass_g + 'g' : ''; }
+  function _fmtRx(r) { return r ? r.protocol + ' | ' + r.mass_g + 'g' : ''; }
+  function _fmtPayload(p) { return p ? p.mass_g + 'g' : ''; }
+
   function _startM2() {
     const raw = localStorage.getItem('vlabModule1');
     if (!raw) {
-      document.getElementById('cfg_list_m2').innerHTML = `
+      document.getElementById('configSections').innerHTML = `
         <div style="color:var(--danger); padding:15px; font-weight:600;">
           WARNING: Configuration data missing. Returning to Assembly.
         </div>
@@ -3401,7 +3711,7 @@ window.Mod2UI = Mod2UI;
       })
       .catch(err => {
         console.error(err);
-        document.getElementById('cfg_list_m2').innerHTML = `<div style="color:var(--danger); padding:15px; font-weight:600;">Database error.</div>`;
+        document.getElementById('configSections').innerHTML = `<div style="color:var(--danger); padding:15px; font-weight:600;">Database error.</div>`;
       });
   }
 
@@ -3427,32 +3737,139 @@ window.Mod2UI = Mod2UI;
     };
   }
 
+  function _makeSecM2(title, list, cat, specF, isMulti, isLocked, selectedId, onSelectCallback) {
+    const parent = document.getElementById('configSections');
+    if (!parent) return;
+
+    const g = document.createElement('div');
+    g.className = 'config-group';
+    g.id = 'group_m2_' + cat;
+
+    const gTitle = document.createElement('div');
+    gTitle.className = 'config-group-title';
+    gTitle.style.display = 'flex';
+    gTitle.style.justifyContent = 'space-between';
+    gTitle.style.alignItems = 'center';
+    
+    if (isLocked) {
+      gTitle.innerHTML = `<span>${title}</span><span style="font-size:0.6rem; color:var(--text-tertiary); text-transform:none; font-weight:500;">[Locked]</span>`;
+      g.style.opacity = '0.75';
+    } else {
+      gTitle.textContent = title;
+    }
+    g.appendChild(gTitle);
+
+    const grid = document.createElement('div');
+    grid.className = 'tiles-grid';
+    g.appendChild(grid);
+
+    if (!list || list.length === 0) {
+      grid.innerHTML = `<div style="font-size:0.7rem; color:var(--text-tertiary); font-style:italic; padding: 4px 6px;">None Selected</div>`;
+    } else {
+      let selIds = [];
+      if (isLocked) {
+        selIds = list.map(x => x.id);
+      } else {
+        selIds = selectedId ? [selectedId] : [];
+      }
+
+      buildSharedTileGrid(grid, list, {
+        isMulti: isMulti,
+        name: 'sel_m2_' + cat,
+        idPrefix: 'input_m2_' + cat + '_',
+        selectedIds: selIds,
+        specF: specF,
+        onSelect: isLocked ? null : function (item, checked) {
+          if (checked && onSelectCallback) {
+            onSelectCallback(item);
+          }
+        }
+      });
+
+      if (isLocked) {
+        grid.querySelectorAll('input').forEach(inp => {
+          inp.disabled = true;
+        });
+        grid.querySelectorAll('.component-tile').forEach(tile => {
+          tile.style.cursor = 'not-allowed';
+          tile.style.pointerEvents = 'none';
+          tile.classList.add('selected', 'active');
+        });
+      }
+    }
+
+    parent.appendChild(g);
+  }
+
   function _buildM2Grids() {
     const sel = window.VLAB_MOD2.data.selections;
+    const db = window.VLAB_MOD2.db;
+    
+    const parent = document.getElementById('configSections');
+    if (!parent) return;
+    parent.innerHTML = ''; // Clear
 
-    Mod2UI.buildTileGrid('m_tiles_wrap', window.VLAB_MOD2.db.motors, sel.motor.id, 
-      (m) => `${m.kv}KV | Rm: ${m.rm_ohm}Ω | I0: ${m.i0_a}A`,
-      (m) => {
-        window.VLAB_MOD2.data.selections.motor = m;
-        _recalcM2();
-      }
-    );
+    // 1. Frame / Chassis (Locked)
+    _makeSecM2('Frame / Chassis', [sel.frame], 'frame', _fmtFrame, false, true);
 
-    Mod2UI.buildTileGrid('p_tiles_wrap', window.VLAB_MOD2.db.propellers, sel.propeller.id,
-      (p) => `${p.diameter_in}" | 2-Blade | ${p.mass_g_each}g`,
-      (p) => {
-        window.VLAB_MOD2.data.selections.propeller = p;
-        _recalcM2();
-      }
-    );
+    // 2. Motor (Swappable)
+    _makeSecM2('Motor', db.motors, 'motor', (m) => `${m.kv}KV | Rm: ${m.rm_ohm}Ω | I0: ${m.i0_a}A`, false, false, sel.motor.id, (m) => {
+      window.VLAB_MOD2.data.selections.motor = m;
+      _recalcM2();
+    });
 
-    Mod2UI.buildTileGrid('b_tiles_wrap', window.VLAB_MOD2.db.batteries, sel.battery.id,
-      (b) => `${b.cells}S | ${b.voltage_nominal_v}V | ${b.capacity_mah}mAh`,
-      (b) => {
-        window.VLAB_MOD2.data.selections.battery = b;
-        _recalcM2();
-      }
-    );
+    // 3. Propeller (Swappable)
+    _makeSecM2('Propeller', db.propellers, 'propeller', (p) => `${p.diameter_in}" | 2-Blade | ${p.mass_g_each}g`, false, false, sel.propeller.id, (p) => {
+      window.VLAB_MOD2.data.selections.propeller = p;
+      _recalcM2();
+    });
+
+    // 4. Battery (Swappable)
+    _makeSecM2('Battery', db.batteries, 'battery', (b) => `${b.cells}S | ${b.voltage_nominal_v}V | ${b.capacity_mah}mAh`, false, false, sel.battery.id, (b) => {
+      window.VLAB_MOD2.data.selections.battery = b;
+      _recalcM2();
+    });
+
+    // 5. ESC (Locked)
+    _makeSecM2('ESC', [sel.esc], 'esc', _fmtEsc, false, true);
+
+    // 6. Flight Controller (Locked)
+    _makeSecM2('Flight Controller', [sel.flight_controller], 'flight_controller', _fmtFc, false, true);
+
+    // 7. Receiver (Locked)
+    _makeSecM2('Receiver', [sel.receiver], 'receiver', _fmtRx, false, true);
+
+    // 8. Payloads (Locked)
+    _makeSecM2('Payloads', sel.payloads || [], 'payload', _fmtPayload, true, true);
+  }
+
+  function _bindEnvSliderM2() {
+    const slider = document.getElementById('alt_rng_input');
+    const valText = document.getElementById('altitudeValue');
+    const densText = document.getElementById('densityValue');
+    if (!slider) return;
+
+    // Set initial value from window.VLAB_MOD2.data
+    const initAlt = window.VLAB_MOD2.data.altitude_m !== undefined ? window.VLAB_MOD2.data.altitude_m : 0;
+    slider.value = initAlt;
+
+    function handleInput() {
+      const alt = parseInt(slider.value, 10);
+      const rho = Calc.airDensity(alt);
+      window.VLAB_MOD2.data.altitude_m = alt;
+      window.VLAB_MOD2.data.rho = rho;
+      
+      if (valText) valText.textContent = alt + ' m';
+      if (densText) densText.textContent = rho.toFixed(4);
+
+      const pct = (alt / 3000) * 100;
+      slider.style.background = 'linear-gradient(to right, #2563eb ' + pct + '%, #e5e7eb ' + pct + '%)';
+      
+      _recalcM2();
+    }
+
+    slider.addEventListener('input', handleInput);
+    handleInput();
   }
 
   function _continueSetup() {
@@ -3482,13 +3899,73 @@ window.Mod2UI = Mod2UI;
     if (sweepBtn) {
       sweepBtn.addEventListener('click', _triggerSweep);
     }
+
+    _bindEnvSliderM2();
     
     _recalcM2();
+    _isInitializingM2 = false;
+
+    // Restore sweep state from local storage if completed
+    const sweepRaw = localStorage.getItem('vlabModule2Sweep');
+    if (sweepRaw) {
+      try {
+        const sweepData = JSON.parse(sweepRaw);
+        if (sweepData && sweepData.isDone && sweepData.dataPoints) {
+          const dataPoints = sweepData.dataPoints;
+          const nextContainer = document.getElementById('nextModuleContainer');
+          if (nextContainer) {
+            nextContainer.style.display = 'block';
+          }
+
+          let peakEff = 0;
+          let peakThr = 0;
+          let maxThrust = 0;
+          let maxCurrent = 0;
+          dataPoints.forEach(p => {
+            if (p.efficiency_pct > peakEff) {
+              peakEff = p.efficiency_pct;
+              peakThr = p.throttle_pct;
+            }
+            if (p.thrust_n > maxThrust) maxThrust = p.thrust_n;
+            if (p.current_a > maxCurrent) maxCurrent = p.current_a;
+          });
+          document.getElementById('sumPeakEff').textContent = `${peakEff.toFixed(1)}%`;
+          document.getElementById('sumPeakEffDesc').textContent = `at ${peakThr}% throttle`;
+          document.getElementById('sumMaxThrust').textContent = maxThrust.toFixed(2);
+          document.getElementById('sumMaxCurrent').textContent = maxCurrent.toFixed(1);
+
+          const V_batt = window.VLAB_MOD2.battParams.v;
+          const D = window.VLAB_MOD2.propParams.diam_m;
+          const rho = window.VLAB_MOD2.data.rho;
+          const T_req = window.VLAB_MOD2.data.computed.T_required;
+          const u_hover = Calc.solveHoverThrottle(sel.motor, V_batt, D, rho, T_req, _tMotorMod2);
+
+          Mod2UI.updateEffChart(dataPoints, u_hover * 100);
+          Mod2UI.renderEffTable(dataPoints);
+
+          if (dataPoints.length > 0 && dataPoints[dataPoints.length - 1].efficiency_pct < 45) {
+            DroneModel.setBurnState(true);
+          }
+
+          _showMsg(`Actuator profiling complete. Peak efficiency reached at ${peakThr}% throttle. Copper winding loss dominates high throttle range.`);
+
+          if (Mod2UI.initUnlockScene) {
+            Mod2UI.initUnlockScene();
+          }
+        }
+      } catch (e) {
+        console.error("Error restoring sweep data:", e);
+      }
+    }
   }
 
   function _recalcM2() {
     const sel = window.VLAB_MOD2.data.selections;
     
+    _tMotorMod2 = 25.0;
+    _eTotMod2 = (sel.battery && sel.battery.capacity_mah) ? (sel.battery.capacity_mah / 1000.0) * sel.battery.voltage_nominal_v * 3600.0 : 0.0;
+    _eRemMod2 = _eTotMod2;
+
     window.VLAB_MOD2.battParams.v = sel.battery.voltage_nominal_v;
     window.VLAB_MOD2.motorParams.rm_ohm = sel.motor.rm_ohm;
     window.VLAB_MOD2.motorParams.kv = sel.motor.kv;
@@ -3496,7 +3973,17 @@ window.Mod2UI = Mod2UI;
 
     window.VLAB_MOD2.maxRPM = window.VLAB_MOD2.motorParams.kv * window.VLAB_MOD2.battParams.v;
     
-    const T_req = window.VLAB_MOD2.data.computed.T_required;
+    // Recalculate mass budget and update table
+    const budget = Calc.massBudget(sel);
+    if (window.UI && typeof window.UI.showMassBudget === 'function') {
+      window.UI.showMassBudget(budget);
+    }
+
+    // Recalculate required hover thrust per motor based on the updated mass
+    const totalMassKg = budget.total_g / 1000.0;
+    const T_req = (totalMassKg * 9.80665) / 4.0;
+    window.VLAB_MOD2.data.computed.T_required = T_req;
+
     const rho = window.VLAB_MOD2.data.rho;
     window.VLAB_MOD2.targetHoverRPM = Calc.requiredRPS(T_req, window.VLAB_MOD2.propParams.diam_m, rho) * 60.0;
     
@@ -3521,6 +4008,26 @@ window.Mod2UI = Mod2UI;
     
     if (window.DroneModel) {
       DroneModel.updateFromSelections(sel);
+    }
+
+    // Sync updated choices back to local storage record vlabModule1
+    const compactState = {
+      fId: sel.frame ? sel.frame.id : null,
+      mId: sel.motor ? sel.motor.id : null,
+      pId: sel.propeller ? sel.propeller.id : null,
+      bId: sel.battery ? sel.battery.id : null,
+      eId: sel.esc ? sel.esc.id : null,
+      fcId: sel.flight_controller ? sel.flight_controller.id : null,
+      rId: sel.receiver ? sel.receiver.id : null,
+      pldIds: (sel.payloads || []).map(p => p.id),
+      T_req: T_req,
+      alt: window.VLAB_MOD2.data.altitude_m,
+      rho: rho
+    };
+    localStorage.setItem('vlabModule1', JSON.stringify(compactState));
+
+    if (!_isInitializingM2) {
+      localStorage.removeItem('vlabModule2Sweep');
     }
 
     if (window.VLAB_MOD2.currentTab === 1) {
@@ -3590,11 +4097,10 @@ window.Mod2UI = Mod2UI;
     const pct = parseInt(slider.value, 10);
     txtVal.textContent = `${pct}%`;
     
-    const V_batt = window.VLAB_MOD2.battParams.v;
-    const V_applied = (pct / 100.0) * V_batt;
     const D = window.VLAB_MOD2.propParams.diam_m;
     const rho = window.VLAB_MOD2.data.rho;
     const motor = window.VLAB_MOD2.data.selections.motor;
+    const batt = window.VLAB_MOD2.data.selections.battery;
 
     const freeSpinEl = document.getElementById('valFreeSpin');
     const loadedEl = document.getElementById('valLoaded');
@@ -3614,8 +4120,21 @@ window.Mod2UI = Mod2UI;
       _showMsg("Adjust input throttle to apply active voltage.");
       return;
     }
+
+    const cells = batt ? batt.cells : 4;
+    const soc = 0.95; // Assume 95% charge for static slider input
+    const V_cell_ocv = 3.5 + 0.16 * soc + 0.54 * soc * soc - 0.45 * Math.pow(1 - soc, 4);
+    const V_ocv = cells * V_cell_ocv;
+    const R_int = cells * 0.008;
+
+    let V_applied = (pct / 100.0) * V_ocv;
+    let op = Calc.solveOperatingPoint(motor, V_applied, D, rho, _tMotorMod2);
+    if (op) {
+      const I_total = op.curr * 4;
+      V_applied = Math.max(cells * 3.0, (pct / 100.0) * (V_ocv - I_total * R_int));
+      op = Calc.solveOperatingPoint(motor, V_applied, D, rho, _tMotorMod2);
+    }
     
-    const op = Calc.solveOperatingPoint(motor, V_applied, D, rho);
     const freeRpm = motor.kv * V_applied;
     
     if (!op) {
@@ -3660,6 +4179,7 @@ window.Mod2UI = Mod2UI;
     const D = window.VLAB_MOD2.propParams.diam_m;
     const rho = window.VLAB_MOD2.data.rho;
     const motor = window.VLAB_MOD2.data.selections.motor;
+    const batt = window.VLAB_MOD2.data.selections.battery;
     
     const btn = document.getElementById('btn_profile_sweep');
     const status = document.getElementById('sweepStatus');
@@ -3667,6 +4187,10 @@ window.Mod2UI = Mod2UI;
     btn.disabled = true;
     status.textContent = "Profiling system...";
     DroneModel.setBurnState(false);
+
+    // Reset thermal and state variables at start of sweep
+    _tMotorMod2 = 25.0;
+    _eRemMod2 = _eTotMod2;
     
     const steps = [30, 40, 50, 60, 70, 80, 90, 100];
     let idx = 0;
@@ -3698,7 +4222,7 @@ window.Mod2UI = Mod2UI;
         document.getElementById('sumMaxCurrent').textContent = maxCurrent.toFixed(1);
         
         const T_req = window.VLAB_MOD2.data.computed.T_required;
-        const u_hover = Calc.solveHoverThrottle(motor, V_batt, D, rho, T_req);
+        const u_hover = Calc.solveHoverThrottle(motor, V_batt, D, rho, T_req, _tMotorMod2);
         Mod2UI.updateEffChart(dataPoints, u_hover * 100);
 
         if (dataPoints.length > 0 && dataPoints[dataPoints.length-1].efficiency_pct < 45) {
@@ -3707,7 +4231,12 @@ window.Mod2UI = Mod2UI;
         
         _showMsg(`Actuator profiling complete. Peak efficiency reached at ${peakThr}% throttle. Copper winding loss dominates high throttle range.`);
         
-        document.getElementById('nextModuleContainer').style.display = 'block';
+        localStorage.setItem('vlabModule2Sweep', JSON.stringify({ isDone: true, dataPoints: dataPoints }));
+
+        const nextContainer = document.getElementById('nextModuleContainer');
+        if (nextContainer) {
+          nextContainer.style.display = 'block';
+        }
         if (Mod2UI.initUnlockScene) {
           Mod2UI.initUnlockScene();
         }
@@ -3715,11 +4244,39 @@ window.Mod2UI = Mod2UI;
       }
       
       const thrPct = steps[idx];
-      const V_applied = (thrPct / 100.0) * V_batt;
-      const op = Calc.solveOperatingPoint(motor, V_applied, D, rho);
+      
+      // Calculate voltage sag for this step
+      const cells = batt ? batt.cells : 4;
+      const soc = _eTotMod2 > 0 ? _eRemMod2 / _eTotMod2 : 1.0;
+      const V_cell_ocv = 3.5 + 0.16 * soc + 0.54 * soc * soc - 0.45 * Math.pow(1 - soc, 4);
+      const V_ocv = cells * V_cell_ocv;
+      const R_int = cells * 0.008;
+
+      let V_applied = (thrPct / 100.0) * V_ocv;
+      let op = Calc.solveOperatingPoint(motor, V_applied, D, rho, _tMotorMod2);
+      if (op) {
+        const I_total = op.curr * 4;
+        V_applied = Math.max(cells * 3.0, (thrPct / 100.0) * (V_ocv - I_total * R_int));
+        op = Calc.solveOperatingPoint(motor, V_applied, D, rho, _tMotorMod2);
+      }
       
       if (op) {
-        const p_copper = op.curr * op.curr * motor.rm_ohm;
+        const rm_temp = motor.rm_ohm * (1.0 + 0.00393 * (_tMotorMod2 - 20.0));
+        const p_copper = op.curr * op.curr * rm_temp;
+        
+        _eRemMod2 = Math.max(0, _eRemMod2 - op.p_elec * 4 * 0.8);
+
+        const p_loss = Math.max(0, op.p_elec - op.p_mech);
+        const m_motor = (motor.mass_g ? motor.mass_g : 50.0) / 1000.0;
+        const area_prop = Math.PI * 0.25 * D * D;
+        const v_ind_cool = Math.sqrt(Math.max(0.1, op.thrust) / (2.0 * rho * area_prop));
+        const h_conv = 12.0 + 4.0 * v_ind_cool;
+        const A_motor = 0.006;
+        const Q_out = h_conv * A_motor * (_tMotorMod2 - 25.0);
+        const Q_in = p_loss;
+        const dT_m = (Q_in - Q_out) / (m_motor * 385.0);
+        _tMotorMod2 = Math.min(250.0, Math.max(25.0, _tMotorMod2 + dT_m * 0.8));
+
         dataPoints.push({
           throttle_pct: thrPct,
           rpm: op.rpm,
@@ -3736,7 +4293,7 @@ window.Mod2UI = Mod2UI;
         
         document.getElementById('calc_eff').innerHTML = `&eta;_m = ${op.p_mech.toFixed(1)}W / ${op.p_elec.toFixed(1)}W = <strong>${op.eff.toFixed(1)}%</strong>`;
         
-        if (op.eff < 45) {
+        if (op.eff < 45 || _tMotorMod2 > 150.0) {
           DroneModel.setBurnState(true);
         } else {
           DroneModel.setBurnState(false);
@@ -3776,13 +4333,11 @@ window.Mod2UI = Mod2UI;
 // ==========================================
 document.addEventListener('DOMContentLoaded', function () {
   'use strict';
-  if (document.getElementById('tbl_mass_body')) {
+  if (document.getElementById('btn_lock_assembly')) {
     if (window.VLAB && typeof window.VLAB.init === 'function') {
       window.VLAB.init();
     }
-  } else if (document.getElementById('cfg_list_m2')) {
-    if (window.VLAB_MOD2 && typeof window.VLAB_MOD2.init === 'function') {
-      window.VLAB_MOD2.init();
-    }
+  } else if (window.VLAB_MOD2 && typeof window.VLAB_MOD2.init === 'function') {
+    window.VLAB_MOD2.init();
   }
 });

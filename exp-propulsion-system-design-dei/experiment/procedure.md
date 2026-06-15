@@ -31,7 +31,7 @@ Configure a quadcopter's propulsion and power train, ensuring physical compatibi
 ### **Objective**
 Evaluate the static performance of a single motor-propeller assembly on a load-cell thrust stand under variable throttle loads.
 
-![Thrust Stand Schematic](./simulation/images/thrust_stand_schematic.png)
+![Thrust Stand Schematic](./images/thrust_stand_schematic.png)
 
 ### **Step-by-Step Procedure**
 1. **Navigate to Tab 2 (Aero Test):** The 3D viewport will transition to show a single motor and propeller mounted to a vertical aluminum test stand equipped with an electronic load-cell force sensor.

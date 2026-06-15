@@ -18,7 +18,7 @@ Where:
 * $g$ is the acceleration due to gravity ($9.80665 \text{ m/s}^2$).
 * $N_{motors}$ is the number of motors (typically $4$ for standard quadcopters).
 
-![Forces and Aerodynamics](./simulation/images/forces_aerodynamics.png)
+![Forces and Aerodynamics](./images/forces_aerodynamics.png)
 
 ---
 
@@ -40,7 +40,7 @@ Where:
 
 The velocity vectors, angles, and resulting incremental aerodynamic forces acting on a 2D airfoil cross-section of the blade are shown below:
 
-![Blade Section Aerodynamics (BEMT)](./simulation/images/blade_forces_bemt.png)
+![Blade Section Aerodynamics (BEMT)](./images/blade_forces_bemt.png)
 
 ### **Static Pitch Approximations**
 In static conditions, the coefficients are heavily dependent on the propeller's pitch-to-diameter ratio ($P/D$):
@@ -71,7 +71,7 @@ $$C_{q\_eff} = C_{q\_static} \cdot \left(1 + 1.5 \cdot J_i^2\right)$$
 
 The brushless DC (BLDC) motor acts as an electromechanical transducer. Under steady-state conditions, the electrical loop is represented by an equivalent series circuit containing the battery open-circuit voltage ($V_{oc}$), system resistances, and the motor's Back-Electromotive Force ($V_{bemf}$).
 
-![Propulsion Circuit Diagram](./simulation/images/propulsion_circuit_diagram.png)
+![Propulsion Circuit Diagram](./images/propulsion_circuit_diagram.png)
 
 ### **Total Effective Resistance**
 The total winding resistance ($R_m$) is modified to include the battery's internal resistance ($R_{batt}$) and the ESC MOSFET resistance ($R_{esc}$):
@@ -122,7 +122,7 @@ If the motor temperature exceeds $150^\circ\text{C}$, the wire insulation melts,
 
 This heat flow and dissipation behavior can be represented by an equivalent thermal RC circuit, where $P_{loss}$ acts as a current heat flux source, $C_{th}$ represents the thermal capacitance (storing heat), and $R_{th}$ represents the thermal resistance of convective cooling:
 
-![Thermal Equivalent RC Model](./simulation/images/thermal_model_diagram.png)
+![Thermal Equivalent RC Model](./images/thermal_model_diagram.png)
 
 ---
 
