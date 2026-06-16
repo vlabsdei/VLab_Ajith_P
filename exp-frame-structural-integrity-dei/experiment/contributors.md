@@ -1,10 +1,9 @@
-### Developers:
-* **Dr. Ajith P.** (ajithasha0085@gmail.com)
-  * Lead Systems Architect & Content Developer
-  * Department of Mechanical Engineering
+### Subject Matter Experts
+| SNo. | Name | Email | Institute | ID |
+| :---: | :---: | :---: | :---: | :---: |
+|  |  |  |  |  |
 
-### Reviewers & Advisors:
-* **Prof. Praveen Kumar**
-  * Curriculum Reviewer & Academic Advisor
-* **Technical Review Panel**
-  * Virtual Labs DEI Development Team
+### Developers
+| SNo. | Name | Email | Institute | ID |
+| :---: | :---: | :---: | :---: | :---: |
+| 1 | Ajith P | ajithasha0085@gmail.com | City Engineering College | 1CE23IS007 |
