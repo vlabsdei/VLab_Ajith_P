@@ -407,72 +407,1106 @@ window.Scene = Scene;
 const DroneModel = (function () {
   'use strict';
 
+  const THREE = window.THREE;
+
+  const _armDirs = [
+    new THREE.Vector3( 1, 0, -1).normalize(),
+    new THREE.Vector3(-1, 0, -1).normalize(),
+    new THREE.Vector3( 1, 0,  1).normalize(),
+    new THREE.Vector3(-1, 0,  1).normalize()
+  ];
+
+  const _propSigns = [1, -1, -1, 1];
+
+  let _droneGrp = null;
+  let _propGrps = [];
+  let _blurDscs = [];
+  let _rotRPM = 0;
+
+  let _lcdCnvs = null;
+  let _lcdCtx = null;
+  let _lcdTxtr = null;
+
+  let _smokeParts = [];
+  let _isBurning = false;
+  let _spawnTmr = 0.0;
+
+  // Exp2-specific scene variables (balancing scene)
+  let chasisModel = null;   // GLB chassis model (null = use procedural geometry)
   let droneGroup = null;
   let balancingStand = null;
-  let cgIndicator = null;
-  let boundaryRing = null;
   let batteryMesh = null;
   let payloadMesh = null;
+  let cgIndicator = null;
+  let boundaryRing = null;
 
+  // Exp2-specific scene variables (cantilever scene)
   let cantileverGroup = null;
   let beamMesh = null;
   let clampMesh = null;
   let testMotorMesh = null;
   let debrisParticles = [];
-
-  // Bending states
-  let deflectionForce = 0;
-  let targetForce = 0;
   let activeMaterial = null;
   let activeLength_mm = 250;
   let isBroken = false;
   let breakProgress = 0.0;
+  let deflectionForce = 0;
+  let targetForce = 0;
 
-  function createMaterial(color, roughness, metalness, opacity) {
-    const isTrans = (opacity !== undefined && opacity < 1.0);
-    return new THREE.MeshStandardMaterial({
+  let _carbonTxtr = null;
+  function getCarbonFiberTexture() {
+    if (_carbonTxtr) return _carbonTxtr;
+    const size = 64;
+    const canvas = document.createElement('canvas');
+    canvas.width = size;
+    canvas.height = size;
+    const ctx = canvas.getContext('2d');
+    
+    ctx.fillStyle = '#151515';
+    ctx.fillRect(0, 0, size, size);
+    
+    ctx.fillStyle = '#262626';
+    const numTiles = 8;
+    const tileSize = size / numTiles;
+    for (let i = 0; i < numTiles; i++) {
+      for (let j = 0; j < numTiles; j++) {
+        if ((i + j) % 2 === 0) {
+          ctx.fillRect(i * tileSize, j * tileSize, tileSize, tileSize);
+        }
+      }
+    }
+    
+    ctx.strokeStyle = '#1e1e1e';
+    ctx.lineWidth = 1;
+    for (let k = 0; k < size; k += 4) {
+      ctx.beginPath();
+      ctx.moveTo(k, 0); ctx.lineTo(k, size);
+      ctx.stroke();
+      ctx.beginPath();
+      ctx.moveTo(0, k); ctx.lineTo(size, k);
+      ctx.stroke();
+    }
+    
+    _carbonTxtr = new THREE.CanvasTexture(canvas);
+    _carbonTxtr.wrapS = THREE.RepeatWrapping;
+    _carbonTxtr.wrapT = THREE.RepeatWrapping;
+    _carbonTxtr.repeat.set(2, 8);
+    return _carbonTxtr;
+  }
+
+  function createRoundedRectShape(w, d, radius) {
+    const shape = new THREE.Shape();
+    const x = -w/2;
+    const y = -d/2;
+    shape.moveTo(x + radius, y);
+    shape.lineTo(x + w - radius, y);
+    shape.quadraticCurveTo(x + w, y, x + w, y + radius);
+    shape.lineTo(x + w, y + d - radius);
+    shape.quadraticCurveTo(x + w, y + d, x + w - radius, y + d);
+    shape.lineTo(x + radius, y + d);
+    shape.quadraticCurveTo(x, y + d, x, y + d - radius);
+    shape.lineTo(x, y + radius);
+    shape.quadraticCurveTo(x, y, x + radius, y);
+    return shape;
+  }
+
+  function createAirfoilShape(chord, thickness) {
+    const shape = new THREE.Shape();
+    shape.moveTo(chord * 0.5, 0);
+    shape.quadraticCurveTo(0, thickness * 1.5, -chord * 0.5, 0);
+    shape.quadraticCurveTo(0, -thickness * 0.2, chord * 0.5, 0);
+    return shape;
+  }
+
+  function initLCD() {
+    if (_lcdTxtr) return;
+    _lcdCnvs = document.createElement('canvas');
+    _lcdCnvs.width = 256;
+    _lcdCnvs.height = 128;
+    _lcdCtx = _lcdCnvs.getContext('2d');
+    _lcdTxtr = new THREE.CanvasTexture(_lcdCnvs);
+    updateBenchHUD(0, 0, 0, 'READY');
+  }
+
+  function updateBenchHUD(measuredThrust, targetThrust, rpm, status) {
+    if (!_lcdCtx) return;
+    
+    _lcdCtx.fillStyle = '#0f172a';
+    _lcdCtx.fillRect(0, 0, 256, 128);
+    
+    _lcdCtx.strokeStyle = '#0284c7';
+    _lcdCtx.lineWidth = 6;
+    _lcdCtx.strokeRect(3, 3, 250, 122);
+    
+    _lcdCtx.fillStyle = '#38bdf8';
+    _lcdCtx.font = 'bold 15px sans-serif';
+    _lcdCtx.fillText('AEROSIM RECORDER', 16, 24);
+    
+    _lcdCtx.fillStyle = (status === 'BURN!') ? '#ef4444' : (status === 'STALL') ? '#f59e0b' : '#34d399';
+    _lcdCtx.font = '22px monospace';
+    _lcdCtx.fillText('MEASURED: ' + measuredThrust.toFixed(3) + ' N', 16, 56);
+    
+    _lcdCtx.fillStyle = '#94a3b8';
+    _lcdCtx.font = '16px monospace';
+    _lcdCtx.fillText('HOVER REQ: ' + targetThrust.toFixed(3) + ' N', 16, 82);
+    
+    _lcdCtx.fillStyle = '#f1f5f9';
+    _lcdCtx.font = '15px monospace';
+    _lcdCtx.fillText('RPM: ' + Math.round(rpm) + ' | ' + status, 16, 108);
+    
+    _lcdTxtr.needsUpdate = true;
+  }
+
+  function updateSmoke(dt) {
+    if (_isBurning && _droneGrp) {
+      _spawnTmr += dt;
+      if (_spawnTmr >= 0.04) {
+        _spawnTmr = 0.0;
+        
+        const activeTab = window.Scene ? window.Scene.getActiveTab() : 1;
+        if (activeTab === 3) {
+          const frame = (window.VLAB && window.VLAB.state) ? window.VLAB.state.selections.frame : 
+                        (window.VLAB_MOD2 && window.VLAB_MOD2.data) ? window.VLAB_MOD2.data.selections.frame : null;
+          const bh = frame ? frame.body_size_mm[1] / 1000 : 0.026;
+          const motorRadius = frame ? frame.wheelbase_mm / 2000 : 0.225;
+          
+          _armDirs.forEach(function (dir) {
+            const tipPos = dir.clone().multiplyScalar(motorRadius);
+            tipPos.y = bh * 0.45 + 0.015;
+            const globalPos = tipPos.clone().add(_droneGrp.position);
+            spawnParticle(globalPos);
+          });
+        } else if (activeTab === 2) {
+          spawnParticle(new THREE.Vector3(0, 0.144, 0));
+        }
+      }
+    }
+    
+    const sc = window.Scene ? window.Scene.getScene() : null;
+    if (sc) {
+      for (let i = _smokeParts.length - 1; i >= 0; i--) {
+        const p = _smokeParts[i];
+        p.age += dt;
+        if (p.age >= p.maxAge) {
+          sc.remove(p.mesh);
+          p.mesh.geometry.dispose();
+          p.mesh.material.dispose();
+          _smokeParts.splice(i, 1);
+        } else {
+          const t = p.age / p.maxAge;
+          p.mesh.position.addScaledVector(p.velocity, dt);
+          p.mesh.scale.setScalar(p.startScale * (1.0 + t * 4.0));
+          p.mesh.material.opacity = p.startOpacity * (1.0 - t);
+        }
+      }
+    }
+  }
+
+  function spawnParticle(pos) {
+    const sc = window.Scene ? window.Scene.getScene() : null;
+    if (!sc) return;
+    const geo = new THREE.SphereGeometry(0.008, 6, 6);
+    const mat = new THREE.MeshBasicMaterial({
+      color: 0x4b5563,
+      transparent: true,
+      opacity: 0.35,
+      depthWrite: false
+    });
+    const mesh = new THREE.Mesh(geo, mat);
+    mesh.position.copy(pos);
+    sc.add(mesh);
+    
+    _smokeParts.push({
+      mesh: mesh,
+      velocity: new THREE.Vector3(
+        (Math.random() - 0.5) * 0.04,
+        0.15 + Math.random() * 0.10,
+        (Math.random() - 0.5) * 0.04
+      ),
+      age: 0.0,
+      maxAge: 0.8 + Math.random() * 0.5,
+      startScale: 0.5 + Math.random() * 0.4,
+      startOpacity: 0.35
+    });
+  }
+
+  function setBurnState(burn) {
+    _isBurning = burn;
+    if (!burn) {
+      const sc = window.Scene ? window.Scene.getScene() : null;
+      if (sc) {
+        _smokeParts.forEach(p => {
+          sc.remove(p.mesh);
+          p.mesh.geometry.dispose();
+          p.mesh.material.dispose();
+        });
+      }
+      _smokeParts = [];
+    }
+  }
+
+  function hexToInt(hexStr) {
+    return parseInt(hexStr.replace('#', ''), 16);
+  }
+
+  function createMat(color, roughness, metalness, extra) {
+    return new THREE.MeshStandardMaterial(Object.assign({
       color: color,
       roughness: roughness,
-      metalness: metalness,
-      transparent: isTrans,
-      opacity: isTrans ? opacity : 1.0,
-      side: THREE.DoubleSide
-    });
+      metalness: metalness
+    }, extra || {}));
+  }
+
+  // Alias used by exp2-specific scene functions
+  // Note: exp2 passes opacity as 4th numeric arg; createMat expects an object for 'extra'
+  function createMaterial(color, roughness, metalness, opacityOrExtra) {
+    const extra = (typeof opacityOrExtra === 'number')
+      ? { opacity: opacityOrExtra, transparent: true }
+      : (opacityOrExtra || {});
+    return new THREE.MeshStandardMaterial(Object.assign({
+      color: color,
+      roughness: roughness,
+      metalness: metalness
+    }, extra));
+  }
+
+  function alignAlongDir(mesh, direction) {
+    const up = new THREE.Vector3(0, 1, 0);
+    const norm = direction.clone().normalize();
+    const q = new THREE.Quaternion().setFromUnitVectors(up, norm);
+    mesh.setRotationFromQuaternion(q);
+  }
+
+  function ensureGroup() {
+    if (!window.Scene || !window.Scene.getScene()) return;
+    if (!_droneGrp) {
+      _droneGrp = new THREE.Group();
+      _droneGrp.position.set(0, 0.10, 0);
+      window.Scene.getScene().add(_droneGrp);
+    }
+  }
+
+  function clearAllDroneGrp() {
+    if (!_droneGrp) return;
+    while (_droneGrp.children.length > 0) {
+      const child = _droneGrp.children[0];
+      _droneGrp.remove(child);
+      if (child.geometry) child.geometry.dispose();
+      if (child.material) {
+        if (Array.isArray(child.material)) {
+          child.material.forEach(m => m.dispose());
+        } else {
+          child.material.dispose();
+        }
+      }
+    }
+    _propGrps = [];
+    _blurDscs = [];
   }
 
   function createBlade(radius, baseChord, directionSign) {
     const blade = new THREE.Group();
-    const steps = 6;
-    const startR = 0.006;
+    const steps = 8;
+    const startR = 0.008;
     const stepL = (radius - startR) / steps;
 
     for (let i = 0; i < steps; i++) {
       const segStart = startR + i * stepL;
-      const segEnd = segStart + stepL;
-      const segMid = (segStart + segEnd) / 2.0;
       const segL = stepL * 1.05;
 
       const t = i / (steps - 1);
-      const segmentChord = baseChord * (1.1 * (1 - t) + 0.4 * t);
-      const segmentThickness = 0.003 * (1 - t) + 0.0006 * t;
-      const pitchAngle = (0.32 * (1 - t) + 0.08 * t) * directionSign;
+      const segmentChord = baseChord * (1.15 * (1 - t) + 0.35 * t);
+      const segmentThickness = 0.0035 * (1 - t) + 0.0006 * t;
+      const pitchAngle = (0.35 * (1 - t) + 0.06 * t) * directionSign;
 
-      const segGeo = new THREE.BoxGeometry(segL, segmentThickness, segmentChord);
+      const airfoil = createAirfoilShape(segmentChord, segmentThickness);
+      const extrudeSettings = {
+        steps: 1,
+        depth: segL,
+        bevelEnabled: false
+      };
+      const segGeo = new THREE.ExtrudeGeometry(airfoil, extrudeSettings);
+      
       const isTip = (i === steps - 1);
       const segMat = isTip 
-        ? createMaterial(0xef4444, 0.4, 0.1)
-        : createMaterial(0x282828, 0.45, 0.1);
-        
-      const segMesh = new THREE.Mesh(segGeo, segMat);
-      segMesh.position.x = segMid;
-      segMesh.rotation.x = pitchAngle;
-      segMesh.castShadow = true;
+        ? new THREE.MeshPhysicalMaterial({
+            color: 0xef4444,
+            roughness: 0.1,
+            transmission: 0.7,
+            thickness: 0.002,
+            transparent: true,
+            opacity: 0.85
+          })
+        : createMat(0x282828, 0.4, 0.1);
 
+      const segMesh = new THREE.Mesh(segGeo, segMat);
+      
+      segMesh.rotation.y = -Math.PI / 2;
+      segMesh.rotation.x = pitchAngle;
+      segMesh.position.x = segStart;
+      segMesh.castShadow = true;
       blade.add(segMesh);
     }
+
     return blade;
   }
 
+  function updateFromSelections(sel) {
+    ensureGroup();
+    if (!_droneGrp) return;
+    clearAllDroneGrp();
+
+    const activeTab = window.Scene ? window.Scene.getActiveTab() : 1;
+
+    const frame = sel.frame;
+    const motor = sel.motor;
+    const prop = sel.propeller;
+    const batt = sel.battery;
+    const esc = sel.esc;
+    const fc = sel.flight_controller;
+    const rx = sel.receiver;
+    const payloads = sel.payloads || [];
+
+    if (activeTab === 2) {
+      _droneGrp.position.set(0, 0, 0);
+
+      const baseGeo = new THREE.BoxGeometry(0.12, 0.008, 0.09);
+      const baseMat = createMat(0x1e293b, 0.6, 0.3);
+      const baseMesh = new THREE.Mesh(baseGeo, baseMat);
+      baseMesh.position.y = 0.004;
+      baseMesh.receiveShadow = true;
+      _droneGrp.add(baseMesh);
+
+      const standHeight = 0.12;
+      const standGeo = new THREE.BoxGeometry(0.016, standHeight, 0.024);
+      const standMat = createMat(0x94a3b8, 0.45, 0.75);
+      const standMesh = new THREE.Mesh(standGeo, standMat);
+      standMesh.position.y = standHeight / 2 + 0.008;
+      standMesh.castShadow = true;
+      standMesh.receiveShadow = true;
+      _droneGrp.add(standMesh);
+
+      const loadCellGeo = new THREE.BoxGeometry(0.012, 0.016, 0.028);
+      const loadCellMat = createMat(0xd1d5db, 0.2, 0.9);
+      const loadCellMesh = new THREE.Mesh(loadCellGeo, loadCellMat);
+      loadCellMesh.position.set(0, standHeight + 0.008, 0);
+      _droneGrp.add(loadCellMesh);
+
+      const gaugeMat = createMat(0xef4444, 0.5, 0.0);
+      const gaugeL = new THREE.Mesh(new THREE.PlaneGeometry(0.001, 0.008), gaugeMat);
+      gaugeL.position.set(-0.0061, standHeight + 0.008, 0);
+      gaugeL.rotation.y = -Math.PI / 2;
+      _droneGrp.add(gaugeL);
+
+      const gaugeR = new THREE.Mesh(new THREE.PlaneGeometry(0.001, 0.008), gaugeMat);
+      gaugeR.position.set(0.0061, standHeight + 0.008, 0);
+      gaugeR.rotation.y = Math.PI / 2;
+      _droneGrp.add(gaugeR);
+
+      const escH = 0.025;
+      const escW = 0.006;
+      const escD = 0.016;
+      const escBoxGeo = new THREE.BoxGeometry(escW, escH, escD);
+      const escBoxMat = createMat(0x0f172a, 0.6, 0.85);
+      const escBox = new THREE.Mesh(escBoxGeo, escBoxMat);
+      escBox.position.set(0.011, standHeight * 0.45, 0);
+      _droneGrp.add(escBox);
+
+      const finGeo = new THREE.BoxGeometry(0.002, escH, 0.0015);
+      const finMat = createMat(0x334155, 0.4, 0.9);
+      for (let f = -3; f <= 3; f++) {
+        const fin = new THREE.Mesh(finGeo, finMat);
+        fin.position.set(0.011 + 0.003, standHeight * 0.45, f * 0.002);
+        _droneGrp.add(fin);
+      }
+
+      const wireMatRed = createMat(0xef4444, 0.7, 0.0);
+      const wireMatBlack = createMat(0x1e293b, 0.7, 0.0);
+      const wireMatBlue = createMat(0x3b82f6, 0.7, 0.0);
+
+      const pwrCableR = new THREE.Mesh(new THREE.CylinderGeometry(0.001, 0.001, standHeight * 0.45, 6), wireMatRed);
+      pwrCableR.position.set(0.008, standHeight * 0.225, 0.004);
+      _droneGrp.add(pwrCableR);
+
+      const pwrCableB = new THREE.Mesh(new THREE.CylinderGeometry(0.001, 0.001, standHeight * 0.45, 6), wireMatBlack);
+      pwrCableB.position.set(0.008, standHeight * 0.225, -0.004);
+      _droneGrp.add(pwrCableB);
+
+      const motorCable1 = new THREE.Mesh(new THREE.CylinderGeometry(0.0008, 0.0008, standHeight * 0.55, 6), wireMatRed);
+      motorCable1.position.set(0.008, standHeight * 0.725, 0.004);
+      _droneGrp.add(motorCable1);
+
+      const motorCable2 = new THREE.Mesh(new THREE.CylinderGeometry(0.0008, 0.0008, standHeight * 0.55, 6), wireMatBlack);
+      motorCable2.position.set(0.008, standHeight * 0.725, 0);
+      _droneGrp.add(motorCable2);
+
+      const motorCable3 = new THREE.Mesh(new THREE.CylinderGeometry(0.0008, 0.0008, standHeight * 0.55, 6), wireMatBlue);
+      motorCable3.position.set(0.008, standHeight * 0.725, -0.004);
+      _droneGrp.add(motorCable3);
+
+      const lcdGroup = new THREE.Group();
+      lcdGroup.position.set(0.008, 0.075, 0.011);
+      lcdGroup.rotation.x = -0.15;
+      lcdGroup.rotation.y = Math.atan2(0.25, 0.35);
+
+      const lcdFrameGeo = new THREE.BoxGeometry(0.052, 0.034, 0.008);
+      const lcdFrameMat = createMat(0x0f172a, 0.8, 0.15);
+      const lcdFrame = new THREE.Mesh(lcdFrameGeo, lcdFrameMat);
+      lcdFrame.position.set(0, 0, 0);
+      lcdFrame.castShadow = true;
+      lcdGroup.add(lcdFrame);
+
+      initLCD();
+      const lcdScreenGeo = new THREE.PlaneGeometry(0.046, 0.028);
+      const lcdScreenMat = new THREE.MeshBasicMaterial({
+        map: _lcdTxtr,
+        side: THREE.DoubleSide
+      });
+      const lcdScreen = new THREE.Mesh(lcdScreenGeo, lcdScreenMat);
+      lcdScreen.position.set(0, 0, 0.0041);
+      lcdGroup.add(lcdScreen);
+
+      _droneGrp.add(lcdGroup);
+
+      const mountGeo = new THREE.CylinderGeometry(0.012, 0.012, 0.006, 12);
+      const mountMat = createMat(0x334155, 0.5, 0.5);
+      const mountMesh = new THREE.Mesh(mountGeo, mountMat);
+      mountMesh.position.y = standHeight + 0.016 + 0.003;
+      _droneGrp.add(mountMesh);
+
+      if (motor) {
+        const motorY = standHeight + 0.016 + 0.006;
+        const bellR = (motor.bell_diameter_mm / 2) / 1000;
+        const bellH = motor.bell_height_mm / 1000;
+        const bellGeo = new THREE.CylinderGeometry(bellR, bellR * 0.82, bellH, 20);
+        const bellMat = createMat(0x1e293b, 0.3, 0.7);
+        const bellMesh = new THREE.Mesh(bellGeo, bellMat);
+        bellMesh.position.y = motorY + bellH / 2;
+        bellMesh.castShadow = true;
+        _droneGrp.add(bellMesh);
+
+        const shaftGeo = new THREE.CylinderGeometry(0.0015, 0.0015, bellH * 1.5, 8);
+        const shaftMat = createMat(0xe2e8f0, 0.15, 0.95);
+        const shaftMesh = new THREE.Mesh(shaftGeo, shaftMat);
+        shaftMesh.position.y = motorY + bellH * 0.75;
+        _droneGrp.add(shaftMesh);
+
+        const cClipGeo = new THREE.TorusGeometry(0.002, 0.0006, 4, 8);
+        const cClipMesh = new THREE.Mesh(cClipGeo, shaftMat);
+        cClipMesh.position.y = motorY + bellH + 0.001;
+        cClipMesh.rotation.x = Math.PI / 2;
+        _droneGrp.add(cClipMesh);
+
+        const numHoles = 4;
+        const holeGeo = new THREE.CylinderGeometry(bellR * 0.2, bellR * 0.2, 0.0006, 8);
+        const holeMat = createMat(0x0f172a, 0.9, 0.0);
+        for (let h = 0; h < numHoles; h++) {
+          const angle = (h / numHoles) * Math.PI * 2;
+          const holeMesh = new THREE.Mesh(holeGeo, holeMat);
+          holeMesh.position.set(Math.cos(angle) * (bellR * 0.5), motorY + bellH + 0.0002, Math.sin(angle) * (bellR * 0.5));
+          _droneGrp.add(holeMesh);
+        }
+
+        const numCoils = 12;
+        const coilGeo = new THREE.CylinderGeometry(bellR * 0.12, bellR * 0.12, bellH * 0.5, 6);
+        const coilMat = createMat(0xb45309, 0.2, 0.8);
+        for (let c = 0; c < numCoils; c++) {
+          const angle = (c / numCoils) * Math.PI * 2;
+          const coilMesh = new THREE.Mesh(coilGeo, coilMat);
+          coilMesh.position.set(Math.cos(angle) * (bellR * 0.52), motorY + bellH * 0.25, Math.sin(angle) * (bellR * 0.52));
+          _droneGrp.add(coilMesh);
+        }
+
+        const statorCore = new THREE.Mesh(
+          new THREE.CylinderGeometry(bellR * 0.4, bellR * 0.4, bellH * 0.55, 8),
+          createMat(0x475569, 0.5, 0.8)
+        );
+        statorCore.position.y = motorY + bellH * 0.25;
+        _droneGrp.add(statorCore);
+
+        if (prop) {
+          const propR = prop.diameter_m / 2;
+          const propChord = 0.016 + prop.diameter_m * 0.04;
+          const hubH = 0.012;
+          const propY = motorY + bellH + hubH / 2;
+
+          const propGroup = new THREE.Group();
+          propGroup.position.set(0, propY, 0);
+          _droneGrp.add(propGroup);
+          _propGrps.push(propGroup);
+
+          const hubGeo = new THREE.CylinderGeometry(0.006, 0.006, hubH, 12);
+          const hubMat = createMat(0x1f2937, 0.5, 0.1);
+          const hubMesh = new THREE.Mesh(hubGeo, hubMat);
+          propGroup.add(hubMesh);
+
+          const nutGeo = new THREE.CylinderGeometry(0.004, 0.004, 0.006, 6);
+          const nutMat = createMat(0xd1d5db, 0.2, 0.9);
+          const nutMesh = new THREE.Mesh(nutGeo, nutMat);
+          nutMesh.position.y = hubH / 2 + 0.006 / 2;
+          propGroup.add(nutMesh);
+
+          const b1 = createBlade(propR, propChord, 1);
+          const b2 = createBlade(propR, propChord, 1);
+          b2.rotation.y = Math.PI;
+          propGroup.add(b1);
+          propGroup.add(b2);
+
+          const discGeo = new THREE.CircleGeometry(propR * 1.03, 32);
+          const discMat = new THREE.MeshBasicMaterial({
+            color: 0x1f2937,
+            transparent: true,
+            opacity: 0.0,
+            side: THREE.DoubleSide,
+            depthWrite: false
+          });
+          const discMesh = new THREE.Mesh(discGeo, discMat);
+          discMesh.rotation.x = -Math.PI / 2;
+          propGroup.add(discMesh);
+          _blurDscs.push(discMat);
+        }
+      }
+      return;
+    }
+
+    _droneGrp.position.set(0, 0.10, 0);
+
+    if (!frame) return;
+
+    const bw = frame.body_size_mm[0] / 1000;
+    const bh = frame.body_size_mm[1] / 1000;
+    const bz = frame.body_size_mm[2] / 1000;
+
+    const frameMat = createMat(hexToInt(frame.color_hex), frame.roughness, frame.metalness);
+
+    const plateShape = createRoundedRectShape(bw, bz, Math.min(bw, bz) * 0.12);
+    const extrudeSettings = {
+      steps: 1,
+      depth: 0.002,
+      bevelEnabled: true,
+      bevelThickness: 0.0005,
+      bevelSize: 0.0005,
+      bevelOffset: 0,
+      bevelSegments: 2
+    };
+
+    const bottomPlateGeo = new THREE.ExtrudeGeometry(plateShape, extrudeSettings);
+    const bottomPlate = new THREE.Mesh(bottomPlateGeo, frameMat);
+    bottomPlate.rotation.x = -Math.PI / 2;
+    bottomPlate.position.y = -0.001;
+    bottomPlate.receiveShadow = true;
+    bottomPlate.castShadow = true;
+    _droneGrp.add(bottomPlate);
+
+    const topPlateShape = createRoundedRectShape(bw * 0.95, bz * 0.95, Math.min(bw, bz) * 0.12);
+    const topPlateGeo = new THREE.ExtrudeGeometry(topPlateShape, extrudeSettings);
+    const topPlate = new THREE.Mesh(topPlateGeo, frameMat);
+    topPlate.rotation.x = -Math.PI / 2;
+    topPlate.position.y = bh - 0.001;
+    topPlate.castShadow = true;
+    _droneGrp.add(topPlate);
+
+    const standoffR = 0.0025;
+    const standoffMat = createMat(0xd1d5db, 0.3, 0.9);
+    const cornerOffsets = [
+      [-0.42, -0.42], [0.42, -0.42], [-0.42, 0.42], [0.42, 0.42]
+    ];
+    cornerOffsets.forEach(function (off) {
+      const standoffGeo = new THREE.CylinderGeometry(standoffR, standoffR, bh - 0.002, 8);
+      const standoffMesh = new THREE.Mesh(standoffGeo, standoffMat);
+      standoffMesh.position.set(bw * off[0], bh / 2, bz * off[1]);
+      standoffMesh.castShadow = true;
+      _droneGrp.add(standoffMesh);
+    });
+
+    const motorRadius = frame.wheelbase_mm / 2000;
+    const armR = (frame.arm_tube_od_mm / 2) / 1000;
+    
+    const carbonTex = getCarbonFiberTexture();
+    const armMat = new THREE.MeshStandardMaterial({
+      color: 0x333333,
+      map: carbonTex,
+      roughness: 0.2,
+      metalness: 0.8
+    });
+
+    _armDirs.forEach(function (dir, i) {
+      const armGeo = new THREE.CylinderGeometry(armR, armR, motorRadius, 12);
+      const armMesh = new THREE.Mesh(armGeo, armMat);
+      armMesh.position.copy(dir.clone().multiplyScalar(motorRadius / 2));
+      armMesh.position.y = bh * 0.45;
+      alignAlongDir(armMesh, new THREE.Vector3(dir.x, 0, dir.z));
+      armMesh.castShadow = true;
+      _droneGrp.add(armMesh);
+
+      const tipPos = new THREE.Vector3(dir.x * motorRadius, bh * 0.45, dir.z * motorRadius);
+      const mountGeo = new THREE.CylinderGeometry(armR * 2.1, armR * 2.1, 0.003, 12);
+      const mountMesh = new THREE.Mesh(mountGeo, frameMat);
+      mountMesh.position.copy(tipPos);
+      _droneGrp.add(mountMesh);
+
+      const screwGeo = new THREE.CylinderGeometry(0.0008, 0.0008, 0.0006, 6);
+      const screwMat = createMat(0x64748b, 0.2, 0.9);
+      const screwDist = armR * 1.5;
+      const screwOffsets = [
+        [-screwDist, -screwDist],
+        [-screwDist, screwDist],
+        [screwDist, -screwDist],
+        [screwDist, screwDist]
+      ];
+      screwOffsets.forEach(function (soff) {
+        const screw = new THREE.Mesh(screwGeo, screwMat);
+        screw.position.set(tipPos.x + soff[0], tipPos.y + 0.0016, tipPos.z + soff[1]);
+        _droneGrp.add(screw);
+      });
+
+      const legHeight = 0.12;
+      const legGeo = new THREE.CylinderGeometry(0.003, 0.002, legHeight, 6);
+      const legMesh = new THREE.Mesh(legGeo, frameMat);
+      legMesh.position.copy(tipPos);
+      legMesh.position.y -= legHeight / 2 + 0.002;
+      alignAlongDir(legMesh, new THREE.Vector3(0, -1, 0));
+      legMesh.castShadow = true;
+      _droneGrp.add(legMesh);
+
+      if (motor) {
+        const bellR = (motor.bell_diameter_mm / 2) / 1000;
+        const bellH = motor.bell_height_mm / 1000;
+        const motorY = tipPos.y + 0.0015;
+
+        const bellGeo = new THREE.CylinderGeometry(bellR, bellR * 0.85, bellH, 16);
+        const bellMat = createMat(0x1f2937, 0.3, 0.7);
+        const bellMesh = new THREE.Mesh(bellGeo, bellMat);
+        bellMesh.position.copy(tipPos);
+        bellMesh.position.y = motorY + bellH / 2;
+        bellMesh.castShadow = true;
+        _droneGrp.add(bellMesh);
+
+        const shaftGeo = new THREE.CylinderGeometry(0.0015, 0.0015, bellH * 1.5, 8);
+        const shaftMat = createMat(0xe2e8f0, 0.15, 0.95);
+        const shaftMesh = new THREE.Mesh(shaftGeo, shaftMat);
+        shaftMesh.position.copy(tipPos);
+        shaftMesh.position.y = motorY + bellH * 0.75;
+        _droneGrp.add(shaftMesh);
+
+        const cClipGeo = new THREE.TorusGeometry(0.002, 0.0006, 4, 8);
+        const cClipMesh = new THREE.Mesh(cClipGeo, shaftMat);
+        cClipMesh.position.copy(tipPos);
+        cClipMesh.position.y = motorY + bellH + 0.001;
+        cClipMesh.rotation.x = Math.PI / 2;
+        _droneGrp.add(cClipMesh);
+
+        const numHoles = 4;
+        const holeGeo = new THREE.CylinderGeometry(bellR * 0.2, bellR * 0.2, 0.0006, 8);
+        const holeMat = createMat(0x0f172a, 0.9, 0.0);
+        for (let h = 0; h < numHoles; h++) {
+          const angle = (h / numHoles) * Math.PI * 2;
+          const holeMesh = new THREE.Mesh(holeGeo, holeMat);
+          holeMesh.position.set(tipPos.x + Math.cos(angle) * (bellR * 0.5), motorY + bellH + 0.0002, tipPos.z + Math.sin(angle) * (bellR * 0.5));
+          _droneGrp.add(holeMesh);
+        }
+
+        const numCoils = 12;
+        const coilGeo = new THREE.CylinderGeometry(bellR * 0.12, bellR * 0.12, bellH * 0.5, 6);
+        const coilMat = createMat(0xb45309, 0.2, 0.8);
+        for (let c = 0; c < numCoils; c++) {
+          const angle = (c / numCoils) * Math.PI * 2;
+          const coilMesh = new THREE.Mesh(coilGeo, coilMat);
+          coilMesh.position.set(tipPos.x + Math.cos(angle) * (bellR * 0.52), motorY + bellH * 0.25, tipPos.z + Math.sin(angle) * (bellR * 0.52));
+          _droneGrp.add(coilMesh);
+        }
+
+        const statorCore = new THREE.Mesh(
+          new THREE.CylinderGeometry(bellR * 0.4, bellR * 0.4, bellH * 0.55, 8),
+          createMat(0x475569, 0.5, 0.8)
+        );
+        statorCore.position.copy(tipPos);
+        statorCore.position.y = motorY + bellH * 0.25;
+        _droneGrp.add(statorCore);
+
+        if (prop) {
+          const propR = prop.diameter_m / 2;
+          const propChord = 0.016 + prop.diameter_m * 0.04;
+          const hubH = 0.012;
+          const propY = motorY + bellH + hubH / 2;
+
+          const propGroup = new THREE.Group();
+          propGroup.position.set(tipPos.x, propY, tipPos.z);
+          _droneGrp.add(propGroup);
+          _propGrps.push(propGroup);
+
+          const hubGeo = new THREE.CylinderGeometry(0.006, 0.006, hubH, 10);
+          const hubMat = createMat(0x111827, 0.5, 0.1);
+          const hubMesh = new THREE.Mesh(hubGeo, hubMat);
+          propGroup.add(hubMesh);
+
+          const nutGeo = new THREE.CylinderGeometry(0.0035, 0.0045, 0.005, 8);
+          const nutMat = createMat(0xd1d5db, 0.2, 0.9);
+          const nutMesh = new THREE.Mesh(nutGeo, nutMat);
+          nutMesh.position.y = hubH / 2 + 0.0025;
+          propGroup.add(nutMesh);
+
+          const dirSign = _propSigns[i];
+          const b1 = createBlade(propR, propChord, dirSign);
+          const b2 = createBlade(propR, propChord, dirSign);
+          b2.rotation.y = Math.PI;
+
+          propGroup.add(b1);
+          propGroup.add(b2);
+
+          const discGeo = new THREE.CircleGeometry(propR * 1.02, 32);
+          const discMat = new THREE.MeshBasicMaterial({
+            color: 0x111827,
+            transparent: true,
+            opacity: 0.0,
+            side: THREE.DoubleSide,
+            depthWrite: false
+          });
+          const discMesh = new THREE.Mesh(discGeo, discMat);
+          discMesh.rotation.x = -Math.PI / 2;
+          propGroup.add(discMesh);
+          _blurDscs.push(discMat);
+        }
+      }
+    });
+
+    if (batt) {
+      const capacity = batt.capacity_mah;
+      const normVal = Math.min(Math.max((capacity - 800) / 3400, 0), 1);
+      const battW = 0.068 + normVal * 0.076;
+      const battH = 0.026 + normVal * 0.016;
+      const battD = 0.020 + normVal * 0.018;
+
+      const cellColors = { 3: 0x6e2a14, 4: 0x1f2937, 6: 0x1e1b4b };
+      const battColor = cellColors[batt.cells] || 0x22252a;
+
+      const battGeo = new THREE.BoxGeometry(battW, battH, battD);
+      const battMat = createMat(battColor, 0.8, 0.05);
+      const battMesh = new THREE.Mesh(battGeo, battMat);
+
+      const battY = -battH / 2 - 0.003;
+      battMesh.position.set(0, battY, 0);
+      battMesh.castShadow = true;
+      _droneGrp.add(battMesh);
+
+      const xt60Geo = new THREE.BoxGeometry(0.008, 0.006, 0.012);
+      const xt60Mat = createMat(0xeab308, 0.4, 0.1);
+      const xt60Mesh = new THREE.Mesh(xt60Geo, xt60Mat);
+      xt60Mesh.position.set(0, battY, battD / 2 + 0.004);
+      _droneGrp.add(xt60Mesh);
+
+      const wireGeo = new THREE.CylinderGeometry(0.001, 0.001, 0.016, 6);
+      const wireMatRed = createMat(0xef4444, 0.7, 0.0);
+      const wireRed = new THREE.Mesh(wireGeo, wireMatRed);
+      wireRed.position.set(-0.002, battY + 0.002, battD / 2 + 0.009);
+      wireRed.rotation.x = Math.PI / 2;
+      _droneGrp.add(wireRed);
+
+      const wireMatBlack = createMat(0x1e293b, 0.7, 0.0);
+      const wireBlack = new THREE.Mesh(wireGeo, wireMatBlack);
+      wireBlack.position.set(0.002, battY + 0.002, battD / 2 + 0.009);
+      wireBlack.rotation.x = Math.PI / 2;
+      _droneGrp.add(wireBlack);
+
+      const padGeo = new THREE.BoxGeometry(battW * 0.9, 0.002, battD * 0.9);
+      const padMat = createMat(0x111827, 0.9, 0.0);
+      const padMesh = new THREE.Mesh(padGeo, padMat);
+      padMesh.position.set(0, -0.001, 0);
+      _droneGrp.add(padMesh);
+
+      const strapWidth = 0.008;
+      const strapMat = createMat(0x111827, 0.9, 0.0);
+      const strapOffsets = [-battW * 0.25, battW * 0.25];
+
+      strapOffsets.forEach(function (zOff) {
+        const strapGeo = new THREE.BoxGeometry(battD * 1.05, battH + bh + 0.006, strapWidth);
+        const strapMesh = new THREE.Mesh(strapGeo, strapMat);
+        strapMesh.position.set(zOff, (bh - battH) / 2, 0);
+        strapMesh.rotation.y = Math.PI / 2;
+        _droneGrp.add(strapMesh);
+      });
+    }
+
+    if (esc) {
+      if (esc.quantity === 1) {
+        const escGeo = new THREE.BoxGeometry(0.032, 0.003, 0.032);
+        const escMat = createMat(0x14532d, 0.7, 0.1);
+        const escMesh = new THREE.Mesh(escGeo, escMat);
+        escMesh.position.set(0, 0.008, 0);
+        _droneGrp.add(escMesh);
+
+        const spacerGeo = new THREE.CylinderGeometry(0.001, 0.001, 0.006, 6);
+        const spacerMat = createMat(0xf59e0b, 0.5, 0.2);
+        const stackCorners = [[-0.012, -0.012], [0.012, -0.012], [-0.012, 0.012], [0.012, 0.012]];
+        stackCorners.forEach(function (pt) {
+          const spacer = new THREE.Mesh(spacerGeo, spacerMat);
+          spacer.position.set(pt[0], 0.0125, pt[1]);
+          _droneGrp.add(spacer);
+        });
+      } else {
+        _armDirs.forEach(function (dir) {
+          const escPos = dir.clone().multiplyScalar(motorRadius * 0.45);
+          const escGeo = new THREE.BoxGeometry(0.014, 0.003, 0.024);
+          const escMat = createMat(0x111827, 0.85, 0.0);
+          const escMesh = new THREE.Mesh(escGeo, escMat);
+          escMesh.position.set(escPos.x, bh * 0.45 + 0.004, escPos.z);
+          escMesh.rotation.y = Math.atan2(dir.x, dir.z);
+          _droneGrp.add(escMesh);
+        });
+      }
+    }
+
+    if (fc) {
+      const fcY = esc && esc.quantity === 1 ? 0.018 : 0.010;
+      const fcGeo = new THREE.BoxGeometry(0.030, 0.003, 0.030);
+      const fcMat = createMat(0x14532d, 0.7, 0.1);
+      const fcMesh = new THREE.Mesh(fcGeo, fcMat);
+      fcMesh.position.set(0, fcY, 0);
+      _droneGrp.add(fcMesh);
+    }
+
+    if (rx) {
+      const rxGeo = new THREE.BoxGeometry(0.018, 0.004, 0.013);
+      const rxMat = createMat(0x1f2937, 0.8, 0.05);
+      const rxMesh = new THREE.Mesh(rxGeo, rxMat);
+      rxMesh.position.set(0, 0.003, bz * 0.32);
+      _droneGrp.add(rxMesh);
+
+      const antMat = createMat(0x111827, 0.9, 0.0);
+      const tipMat = createMat(0xd1d5db, 0.4, 0.8);
+
+      const antLGroup = new THREE.Group();
+      antLGroup.position.set(-0.006, bh, bz * 0.32);
+      const tubeL = new THREE.Mesh(new THREE.CylinderGeometry(0.0008, 0.0008, 0.035, 6), antMat);
+      tubeL.position.y = 0.0175;
+      antLGroup.add(tubeL);
+      const activeL = new THREE.Mesh(new THREE.CylinderGeometry(0.0005, 0.0005, 0.015, 6), tipMat);
+      activeL.position.y = 0.035 + 0.0075;
+      antLGroup.add(activeL);
+      antLGroup.rotation.z = 0.6;
+      antLGroup.rotation.x = 0.3;
+      _droneGrp.add(antLGroup);
+
+      const antRGroup = new THREE.Group();
+      antRGroup.position.set(0.006, bh, bz * 0.32);
+      const tubeR = new THREE.Mesh(new THREE.CylinderGeometry(0.0008, 0.0008, 0.035, 6), antMat);
+      tubeR.position.y = 0.0175;
+      antRGroup.add(tubeR);
+      const activeR = new THREE.Mesh(new THREE.CylinderGeometry(0.0005, 0.0005, 0.015, 6), tipMat);
+      activeR.position.y = 0.035 + 0.0075;
+      antRGroup.add(activeR);
+      antRGroup.rotation.z = -0.6;
+      antRGroup.rotation.x = 0.3;
+      _droneGrp.add(antRGroup);
+    }
+
+    payloads.forEach(function (p) {
+      addPayload(p, frame);
+    });
+  }
+
+  function addPayload(p, frame) {
+    const bw = frame ? frame.body_size_mm[0] / 1000 : 0.088;
+    const bz = frame ? frame.body_size_mm[2] / 1000 : 0.088;
+
+    switch (p.id) {
+      case 'gimbal_2axis':
+      case 'gimbal_3axis': {
+        const g = new THREE.Group();
+        const ballGeo = new THREE.SphereGeometry(0.003, 8, 8);
+        const ballMat = createMat(0x2563eb, 0.9, 0.0);
+        const ballOffsets = [[-0.015, -0.015], [0.015, -0.015], [-0.015, 0.015], [0.015, 0.015]];
+        ballOffsets.forEach(function (off) {
+          const ball = new THREE.Mesh(ballGeo, ballMat);
+          ball.position.set(off[0], -0.0015, off[1]);
+          g.add(ball);
+        });
+
+        const base = new THREE.Mesh(new THREE.BoxGeometry(0.035, 0.002, 0.035), createMat(0x1f2937, 0.6, 0.3));
+        base.position.y = -0.004;
+        g.add(base);
+
+        if (p.id === 'gimbal_2axis') {
+          const roll = new THREE.Mesh(new THREE.CylinderGeometry(0.003, 0.003, 0.024, 8), createMat(0x4b5563, 0.5, 0.5));
+          roll.rotation.z = Math.PI / 2;
+          roll.position.set(0, -0.015, 0);
+          g.add(roll);
+        } else {
+          const yaw = new THREE.Mesh(new THREE.CylinderGeometry(0.005, 0.005, 0.015, 10), createMat(0x1f2937, 0.5, 0.8));
+          yaw.position.set(0, -0.012, 0);
+          g.add(yaw);
+        }
+
+        g.position.set(0, -0.002, -bw * 0.22);
+        _droneGrp.add(g);
+        break;
+      }
+
+      case 'camera_gopro': {
+        const g = new THREE.Group();
+        const mountGeo = new THREE.BoxGeometry(0.036, 0.028, 0.024);
+        const mountMat = createMat(0x2563eb, 0.8, 0.0);
+        const mount = new THREE.Mesh(mountGeo, mountMat);
+        mount.position.y = frame ? frame.body_size_mm[1] / 1000 + 0.014 : 0.036;
+        mount.position.z = -bw * 0.32;
+        mount.rotation.x = -0.15;
+        g.add(mount);
+
+        const camGeo = new THREE.BoxGeometry(0.032, 0.024, 0.018);
+        const camMat = createMat(0x111827, 0.6, 0.1);
+        const cam = new THREE.Mesh(camGeo, camMat);
+        cam.position.copy(mount.position);
+        cam.rotation.x = mount.rotation.x;
+        g.add(cam);
+
+        const lensGeo = new THREE.CylinderGeometry(0.005, 0.005, 0.004, 12);
+        const lensMat = createMat(0x1e3a8a, 0.1, 0.8);
+        const lens = new THREE.Mesh(lensGeo, lensMat);
+        lens.rotation.x = Math.PI / 2;
+        lens.position.copy(cam.position).add(new THREE.Vector3(0.007, 0, -0.010));
+        g.add(lens);
+
+        _droneGrp.add(g);
+        break;
+      }
+
+      case 'camera_fpv_nano': {
+        const g = new THREE.Group();
+        const sideGeo = new THREE.BoxGeometry(0.002, 0.015, 0.012);
+        const sideMat = createMat(0x9ca3af, 0.4, 0.6);
+        const left = new THREE.Mesh(sideGeo, sideMat);
+        left.position.x = -0.008;
+        const right = left.clone();
+        right.position.x = 0.008;
+        g.add(left);
+        g.add(right);
+
+        const coreGeo = new THREE.BoxGeometry(0.012, 0.012, 0.012);
+        const coreMat = createMat(0x111827, 0.6, 0.1);
+        const core = new THREE.Mesh(coreGeo, coreMat);
+        g.add(core);
+
+        const lensGeo = new THREE.CylinderGeometry(0.0035, 0.0035, 0.005, 10);
+        const lensMat = createMat(0x1e293b, 0.1, 0.9);
+        const lens = new THREE.Mesh(lensGeo, lensMat);
+        lens.rotation.x = Math.PI / 2;
+        lens.position.z = -0.0085;
+        g.add(lens);
+
+        g.position.set(0, (frame ? frame.body_size_mm[1] / 1000 : 0.026) / 2, -bw * 0.42);
+        g.rotation.x = 0.25;
+        _droneGrp.add(g);
+        break;
+      }
+
+      case 'gps_m8n':
+      case 'gps_m9n_compass': {
+        const g = new THREE.Group();
+        const heightGPS = 0.06;
+        const mast = new THREE.Mesh(new THREE.CylinderGeometry(0.002, 0.002, heightGPS, 6), createMat(0x111827, 0.8, 0.2));
+        mast.position.y = heightGPS / 2;
+        g.add(mast);
+
+        const r = p.id === 'gps_m9n_compass' ? 0.025 : 0.020;
+        const dome = new THREE.Mesh(new THREE.CylinderGeometry(r, r, 0.006, 20), createMat(0xf3f4f6, 0.7, 0.05));
+        dome.position.y = heightGPS + 0.003;
+        g.add(dome);
+
+        g.position.set(-bw * 0.2, frame ? frame.body_size_mm[1] / 1000 : 0.026, bz * 0.2);
+        _droneGrp.add(g);
+        break;
+      }
+
+      case 'lidar_tfmini': {
+        const g = new THREE.Group();
+        const tf = new THREE.Mesh(new THREE.BoxGeometry(0.016, 0.016, 0.010), createMat(0x111827, 0.8, 0.0));
+        g.add(tf);
+        g.position.set(0, -0.003, 0);
+        g.rotation.x = Math.PI / 2;
+        _droneGrp.add(g);
+        break;
+      }
+
+      case 'lidar_garmin': {
+        const g = new THREE.Group();
+        const base = new THREE.Mesh(new THREE.CylinderGeometry(0.016, 0.016, 0.014, 16), createMat(0x1f2937, 0.7, 0.1));
+        g.add(base);
+        g.position.set(0, -0.008, 0);
+        _droneGrp.add(g);
+        break;
+      }
+
+      case 'telemetry_915': {
+        const g = new THREE.Group();
+        const TelemBox = new THREE.Mesh(new THREE.BoxGeometry(0.028, 0.008, 0.014), createMat(0x2563eb, 0.7, 0.1));
+        g.add(TelemBox);
+        const whip = new THREE.Mesh(new THREE.CylinderGeometry(0.0006, 0.0006, 0.070, 5), createMat(0x111827, 0.9, 0.0));
+        whip.position.set(0.010, 0.035, 0); whip.rotation.z = -0.15;
+        g.add(whip);
+        g.position.set(bw * 0.4, (frame ? frame.body_size_mm[1] / 1000 : 0.026) / 2, 0);
+        g.rotation.y = Math.PI / 2;
+        _droneGrp.add(g);
+        break;
+      }
+
+      case 'fpv_vtx': {
+        const g = new THREE.Group();
+        const bodyBox = new THREE.Mesh(new THREE.BoxGeometry(0.020, 0.008, 0.016), createMat(0x374151, 0.5, 0.7));
+        g.add(bodyBox);
+        const antenna = new THREE.Mesh(new THREE.CylinderGeometry(0.0008, 0.0008, 0.050, 6), createMat(0x111827, 0.9, 0.0));
+        antenna.position.set(0, 0.025, 0.006);
+        antenna.rotation.x = 0.2;
+        g.add(antenna);
+        g.position.set(0, frame ? frame.body_size_mm[1] / 1000 + 0.005 : 0.031, bz * 0.38);
+        _droneGrp.add(g);
+        break;
+      }
+
+      default:
+        break;
+    }
+  }
+
+  function animateProps(delta) {
+    updateSmoke(delta);
+
+    if (!_propGrps.length) return;
+    const omega = (_rotRPM * 2.0 * Math.PI) / 60.0;
+
+    _propGrps.forEach(function (pg, i) {
+      const activeTab = window.Scene ? window.Scene.getActiveTab() : 1;
+      const sign = activeTab === 1 ? 1 : _propSigns[i];
+      pg.rotation.y += sign * omega * delta;
+    });
+
+    const bladeOpa = _rotRPM > 800
+      ? Math.max(0.0, 0.9 - (_rotRPM - 800) / 4000)
+      : 0.9;
+    const discOpa = _rotRPM > 1200
+      ? Math.min(0.24, (_rotRPM - 1200) / 10000)
+      : 0.0;
+
+    _propGrps.forEach(function (pg) {
+      pg.children.forEach(function (child) {
+        if (child.children.length > 0) {
+          child.children.forEach(function (sub) {
+            if (sub.geometry && sub.geometry.type === 'BoxGeometry') {
+              sub.material.opacity = bladeOpa;
+              sub.material.transparent = bladeOpa < 0.9;
+            }
+          });
+        }
+      });
+    });
+
+    _blurDscs.forEach(function (discMat) {
+      discMat.opacity = discOpa;
+    });
+  }
+
+  function setSimRPM(rpm) {
+    _rotRPM = Math.max(0, rpm);
+  }
   function rebuildScene(sel, tabNum) {
     const sc = Scene.getScene();
     if (!sc) return;
@@ -510,13 +1544,27 @@ const DroneModel = (function () {
     });
   }
 
-  function hexToInt(hexStr) {
-    return parseInt(hexStr.replace('#', ''), 16);
-  }
-
   function buildBalancingScene(sel, sc) {
     const frame = sel.frame;
     if (!frame) return;
+
+    // Resolve a visual motor and propeller from the db based on frame wheelbase.
+    // These are used for 3D rendering only — no physics impact.
+    const db = window._exp2DB || {};
+    const wheelbaseMm = frame.wheelbase_mm;
+    let visualMotor = sel.motor || null;
+    let visualProp = sel.propeller || null;
+    if (!visualMotor && db.motors && db.motors.length) {
+      // Pick motor whose recommended prop matches the wheelbase range
+      const motorMap = { 250: '1806_2300', 330: '2207_1600', 450: '2212_920', 550: '2808_1200', 680: '3508_700', 850: '4008_380' };
+      const mId = motorMap[wheelbaseMm] || db.motors[Math.floor(db.motors.length / 2)].id;
+      visualMotor = db.motors.find(m => m.id === mId) || db.motors[0];
+    }
+    if (!visualProp && db.propellers && db.propellers.length) {
+      const propMap = { 250: '5045_2b', 330: '7045_2b', 450: '1045_2b', 550: '1245_2b', 680: '1445_2b', 850: '1655_2b' };
+      const pId = propMap[wheelbaseMm] || db.propellers[Math.floor(db.propellers.length / 2)].id;
+      visualProp = db.propellers.find(p => p.id === pId) || db.propellers[0];
+    }
 
     const wheelbase = frame.wheelbase_mm;
     const bw = frame.body_size_mm[0] / 1000;
@@ -552,90 +1600,139 @@ const DroneModel = (function () {
 
     const frameMat = createMaterial(hexToInt(frame.color_hex), frame.roughness, frame.metalness);
 
-    // Bottom plate
-    const bottomPlate = new THREE.Mesh(new THREE.BoxGeometry(bw, plateThickness, bz), frameMat);
-    bottomPlate.position.y = 0;
-    bottomPlate.receiveShadow = true;
-    bottomPlate.castShadow = true;
-    droneGroup.add(bottomPlate);
+    if (chasisModel) {
+      const chasisInstance = chasisModel.clone();
+      
+      const box = new THREE.Box3().setFromObject(chasisInstance);
+      const size = new THREE.Vector3();
+      box.getSize(size);
+      
+      const modelWheelbase = Math.max(size.x, size.z) || 1.0;
+      const targetWheelbase = wheelbase / 1000;
+      const scale = targetWheelbase / modelWheelbase;
+      
+      chasisInstance.scale.set(scale, scale, scale);
+      
+      const center = new THREE.Vector3();
+      box.getCenter(center);
+      chasisInstance.position.set(-center.x * scale, -center.y * scale, -center.z * scale);
+      
+      chasisInstance.traverse(c => {
+        if (c.isMesh) {
+          c.castShadow = true;
+          c.receiveShadow = true;
+          if (c.material) {
+            c.material = frameMat;
+          }
+        }
+      });
+      droneGroup.add(chasisInstance);
+    } else {
+      // Bottom plate � rounded extrusion to match exp1
+      const extrudeSettings = {
+        steps: 1,
+        depth: plateThickness,
+        bevelEnabled: true,
+        bevelThickness: 0.0005,
+        bevelSize: 0.0005,
+        bevelOffset: 0,
+        bevelSegments: 2
+      };
+      const bottomPlateShape = createRoundedRectShape(bw, bz, Math.min(bw, bz) * 0.12);
+      const bottomPlateGeo = new THREE.ExtrudeGeometry(bottomPlateShape, extrudeSettings);
+      const bottomPlate = new THREE.Mesh(bottomPlateGeo, frameMat);
+      bottomPlate.rotation.x = -Math.PI / 2;
+      bottomPlate.position.y = -0.001;
+      bottomPlate.receiveShadow = true;
+      bottomPlate.castShadow = true;
+      droneGroup.add(bottomPlate);
 
-    // Top plate
-    const topPlate = new THREE.Mesh(new THREE.BoxGeometry(bw * 0.95, plateThickness, bz * 0.95), frameMat);
-    topPlate.position.y = bh;
-    topPlate.receiveShadow = true;
-    topPlate.castShadow = true;
-    droneGroup.add(topPlate);
+      // Top plate � rounded extrusion to match exp1
+      const topPlateShape = createRoundedRectShape(bw * 0.95, bz * 0.95, Math.min(bw, bz) * 0.12);
+      const topPlateGeo = new THREE.ExtrudeGeometry(topPlateShape, extrudeSettings);
+      const topPlate = new THREE.Mesh(topPlateGeo, frameMat);
+      topPlate.rotation.x = -Math.PI / 2;
+      topPlate.position.y = bh - 0.001;
+      topPlate.receiveShadow = true;
+      topPlate.castShadow = true;
+      droneGroup.add(topPlate);
 
-    // Standoff pillars
-    const standoffR = 0.0025;
-    const standoffMat = createMaterial(0xd1d5db, 0.3, 0.9);
-    const cornerOffsets = [
-      [-0.42, -0.42], [0.42, -0.42], [-0.42, 0.42], [0.42, 0.42]
-    ];
-    cornerOffsets.forEach(off => {
-      const pillar = new THREE.Mesh(new THREE.CylinderGeometry(standoffR, standoffR, bh - 0.002, 8), standoffMat);
-      pillar.position.set(bw * off[0], bh / 2, bz * off[1]);
-      pillar.castShadow = true;
-      droneGroup.add(pillar);
-    });
+      // Standoff pillars
+      const standoffR = 0.0025;
+      const standoffMat = createMaterial(0xd1d5db, 0.3, 0.9);
+      const cornerOffsets = [
+        [-0.42, -0.42], [0.42, -0.42], [-0.42, 0.42], [0.42, 0.42]
+      ];
+      cornerOffsets.forEach(off => {
+        const pillar = new THREE.Mesh(new THREE.CylinderGeometry(standoffR, standoffR, bh - 0.002, 8), standoffMat);
+        pillar.position.set(bw * off[0], bh / 2, bz * off[1]);
+        pillar.castShadow = true;
+        droneGroup.add(pillar);
+      });
+    }
 
     // 4 Arms
     const motorRadius = wheelbase / 2000;
     const armR = (frame.arm_tube_od_mm / 2) / 1000;
-    const armMat = createMaterial(hexToInt(frame.color_hex), frame.roughness + 0.1, frame.metalness);
+    const armMat = new THREE.MeshStandardMaterial({
+      color: 0x333333,
+      map: getCarbonFiberTexture(),
+      roughness: 0.2,
+      metalness: 0.8
+    });
     const up = new THREE.Vector3(0, 1, 0);
 
     ARM_DIRECTIONS.forEach((dir, i) => {
-      const armGeo = new THREE.CylinderGeometry(armR, armR, motorRadius, 12);
-      const armMesh = new THREE.Mesh(armGeo, armMat);
-      armMesh.position.copy(dir.clone().multiplyScalar(motorRadius / 2));
-      armMesh.position.y = bh * 0.45;
-
-      const norm = new THREE.Vector3(dir.x, 0, dir.z).normalize();
-      const q = new THREE.Quaternion().setFromUnitVectors(up, norm);
-      armMesh.setRotationFromQuaternion(q);
-      armMesh.castShadow = true;
-      droneGroup.add(armMesh);
-
       const tipPos = new THREE.Vector3(dir.x * motorRadius, bh * 0.45, dir.z * motorRadius);
 
-      const mountGeo = new THREE.CylinderGeometry(armR * 2.1, armR * 2.1, 0.003, 12);
-      const mountMesh = new THREE.Mesh(mountGeo, frameMat);
-      mountMesh.position.copy(tipPos);
-      droneGroup.add(mountMesh);
+      if (!chasisModel) {
+        const armGeo = new THREE.CylinderGeometry(armR, armR, motorRadius, 12);
+        const armMesh = new THREE.Mesh(armGeo, armMat);
+        armMesh.position.copy(dir.clone().multiplyScalar(motorRadius / 2));
+        armMesh.position.y = bh * 0.45;
+        const norm = new THREE.Vector3(dir.x, 0, dir.z).normalize();
+        const q = new THREE.Quaternion().setFromUnitVectors(up, norm);
+        armMesh.setRotationFromQuaternion(q);
+        armMesh.castShadow = true;
+        droneGroup.add(armMesh);
 
-      // Landing Gear Standoff Legs
-      const legHeight = 0.12;
-      const legGeo = new THREE.CylinderGeometry(0.003, 0.002, legHeight, 6);
-      const legMesh = new THREE.Mesh(legGeo, frameMat);
-      legMesh.position.copy(tipPos);
-      legMesh.position.y -= legHeight / 2 + 0.002;
-      const qLeg = new THREE.Quaternion().setFromUnitVectors(up, new THREE.Vector3(0, -1, 0));
-      legMesh.setRotationFromQuaternion(qLeg);
-      legMesh.castShadow = true;
-      droneGroup.add(legMesh);
+        // Arm tip mount ring
+        const mountGeo = new THREE.CylinderGeometry(armR * 2.1, armR * 2.1, 0.003, 12);
+        const mountMesh = new THREE.Mesh(mountGeo, frameMat);
+        mountMesh.position.copy(tipPos);
+        droneGroup.add(mountMesh);
 
-      // ESCs
-      const esc = sel.esc || { quantity: 4 };
-      if (esc && esc.quantity === 4) {
-        const escPos = dir.clone().multiplyScalar(motorRadius * 0.45);
-        const escGeo = new THREE.BoxGeometry(0.014, 0.003, 0.024);
-        const escMat = createMaterial(0x111827, 0.85, 0.0);
-        const escMesh = new THREE.Mesh(escGeo, escMat);
-        escMesh.position.set(escPos.x, bh * 0.45 + 0.004, escPos.z);
-        escMesh.rotation.y = Math.atan2(dir.x, dir.z);
-        escMesh.castShadow = true;
-        droneGroup.add(escMesh);
+        // Mount screws
+        const screwGeo = new THREE.CylinderGeometry(0.0008, 0.0008, 0.0006, 6);
+        const screwMat = createMaterial(0x64748b, 0.2, 0.9);
+        const screwDist = armR * 1.5;
+        [[-screwDist,-screwDist],[-screwDist,screwDist],[screwDist,-screwDist],[screwDist,screwDist]].forEach(soff => {
+          const screw = new THREE.Mesh(screwGeo, screwMat);
+          screw.position.set(tipPos.x + soff[0], tipPos.y + 0.0016, tipPos.z + soff[1]);
+          droneGroup.add(screw);
+        });
+
+        // Landing legs
+        const legHeight = 0.12;
+        const legGeo = new THREE.CylinderGeometry(0.003, 0.002, legHeight, 6);
+        const legMesh = new THREE.Mesh(legGeo, frameMat);
+        legMesh.position.copy(tipPos);
+        legMesh.position.y -= legHeight / 2 + 0.002;
+        const qLeg = new THREE.Quaternion().setFromUnitVectors(up, new THREE.Vector3(0, -1, 0));
+        legMesh.setRotationFromQuaternion(qLeg);
+        legMesh.castShadow = true;
+        droneGroup.add(legMesh);
       }
 
-      // Motors & Propellers
-      const motor = sel.motor;
-      const prop = sel.propeller;
+      // Motors & Propellers (identical detail to exp1)
+      const motor = visualMotor;
+      const prop = visualProp;
       if (motor) {
         const bellR = (motor.bell_diameter_mm / 2) / 1000;
         const bellH = motor.bell_height_mm / 1000;
         const motorY = tipPos.y + 0.0015;
 
+        // Bell
         const bellGeo = new THREE.CylinderGeometry(bellR, bellR * 0.85, bellH, 16);
         const bellMat = createMaterial(0x1f2937, 0.3, 0.7);
         const bellMesh = new THREE.Mesh(bellGeo, bellMat);
@@ -644,12 +1741,50 @@ const DroneModel = (function () {
         bellMesh.castShadow = true;
         droneGroup.add(bellMesh);
 
-        const statorGeo = new THREE.CylinderGeometry(bellR * 0.55, bellR * 0.55, bellH * 0.5, 10);
-        const statorMat = createMaterial(0xd97706, 0.5, 0.4);
-        const statorMesh = new THREE.Mesh(statorGeo, statorMat);
-        statorMesh.position.copy(tipPos);
-        statorMesh.position.y = motorY + bellH * 0.25;
-        droneGroup.add(statorMesh);
+        // Shaft
+        const shaftGeo = new THREE.CylinderGeometry(0.0015, 0.0015, bellH * 1.5, 8);
+        const shaftMat = createMaterial(0xe2e8f0, 0.15, 0.95);
+        const shaftMesh = new THREE.Mesh(shaftGeo, shaftMat);
+        shaftMesh.position.copy(tipPos);
+        shaftMesh.position.y = motorY + bellH * 0.75;
+        droneGroup.add(shaftMesh);
+
+        // C-clip
+        const cClipGeo = new THREE.TorusGeometry(0.002, 0.0006, 4, 8);
+        const cClipMesh = new THREE.Mesh(cClipGeo, shaftMat);
+        cClipMesh.position.copy(tipPos);
+        cClipMesh.position.y = motorY + bellH + 0.001;
+        cClipMesh.rotation.x = Math.PI / 2;
+        droneGroup.add(cClipMesh);
+
+        // Bell holes
+        const holeGeo = new THREE.CylinderGeometry(bellR * 0.2, bellR * 0.2, 0.0006, 8);
+        const holeMat = createMaterial(0x0f172a, 0.9, 0.0);
+        for (let h = 0; h < 4; h++) {
+          const angle = (h / 4) * Math.PI * 2;
+          const holeMesh = new THREE.Mesh(holeGeo, holeMat);
+          holeMesh.position.set(tipPos.x + Math.cos(angle) * (bellR * 0.5), motorY + bellH + 0.0002, tipPos.z + Math.sin(angle) * (bellR * 0.5));
+          droneGroup.add(holeMesh);
+        }
+
+        // Copper coils (12)
+        const coilGeo = new THREE.CylinderGeometry(bellR * 0.12, bellR * 0.12, bellH * 0.5, 6);
+        const coilMat = createMaterial(0xb45309, 0.2, 0.8);
+        for (let c = 0; c < 12; c++) {
+          const angle = (c / 12) * Math.PI * 2;
+          const coilMesh = new THREE.Mesh(coilGeo, coilMat);
+          coilMesh.position.set(tipPos.x + Math.cos(angle) * (bellR * 0.52), motorY + bellH * 0.25, tipPos.z + Math.sin(angle) * (bellR * 0.52));
+          droneGroup.add(coilMesh);
+        }
+
+        // Stator core
+        const statorCore = new THREE.Mesh(
+          new THREE.CylinderGeometry(bellR * 0.4, bellR * 0.4, bellH * 0.55, 8),
+          createMaterial(0x475569, 0.5, 0.8)
+        );
+        statorCore.position.copy(tipPos);
+        statorCore.position.y = motorY + bellH * 0.25;
+        droneGroup.add(statorCore);
 
         if (prop) {
           const propR = prop.diameter_m / 2;
@@ -666,12 +1801,26 @@ const DroneModel = (function () {
           const hubMesh = new THREE.Mesh(hubGeo, createMaterial(0x111827, 0.5, 0.1));
           propGroup.add(hubMesh);
 
-          const blade1 = createBlade(propR, propChord, PROP_SIGNS[i]);
-          const blade2 = createBlade(propR, propChord, -PROP_SIGNS[i]);
-          blade2.rotation.y = Math.PI;
+          // Prop nut
+          const nutGeo = new THREE.CylinderGeometry(0.0035, 0.0045, 0.005, 8);
+          const nutMat = createMaterial(0xd1d5db, 0.2, 0.9);
+          const nutMesh = new THREE.Mesh(nutGeo, nutMat);
+          nutMesh.position.y = hubH / 2 + 0.0025;
+          propGroup.add(nutMesh);
 
+          const blade1 = createBlade(propR, propChord, PROP_SIGNS[i]);
+          const blade2 = createBlade(propR, propChord, PROP_SIGNS[i]);
+          blade2.rotation.y = Math.PI;
           propGroup.add(blade1);
           propGroup.add(blade2);
+
+          // Blur disc
+          const discGeo = new THREE.CircleGeometry(propR * 1.02, 32);
+          const discMat = new THREE.MeshBasicMaterial({ color: 0x111827, transparent: true, opacity: 0.0, side: THREE.DoubleSide, depthWrite: false });
+          const discMesh = new THREE.Mesh(discGeo, discMat);
+          discMesh.rotation.x = -Math.PI / 2;
+          propGroup.add(discMesh);
+          _blurDscs.push(discMat);
         }
       }
     });
@@ -686,6 +1835,86 @@ const DroneModel = (function () {
     const payloads = sel.payloads;
     if (payloads && payloads.length > 0) {
       buildPayloadMesh(payloads, droneGroup, frame);
+    }
+
+    // ESC � key may come from exp1 handoff as 'esc'
+    const esc = sel.esc;
+    if (esc) {
+      if (esc.quantity === 1) {
+        const escGeo = new THREE.BoxGeometry(0.032, 0.003, 0.032);
+        const escMesh = new THREE.Mesh(escGeo, createMat(0x14532d, 0.7, 0.1));
+        escMesh.position.set(0, 0.008, 0);
+        droneGroup.add(escMesh);
+        const spacerGeo = new THREE.CylinderGeometry(0.001, 0.001, 0.006, 6);
+        const spacerMat = createMat(0xf59e0b, 0.5, 0.2);
+        [[-0.012, -0.012], [0.012, -0.012], [-0.012, 0.012], [0.012, 0.012]].forEach(pt => {
+          const spacer = new THREE.Mesh(spacerGeo, spacerMat);
+          spacer.position.set(pt[0], 0.0125, pt[1]);
+          droneGroup.add(spacer);
+        });
+      } else {
+        const motorRadius2 = wheelbase / 2000;
+        ARM_DIRECTIONS.forEach(dir => {
+          const escPos = dir.clone().multiplyScalar(motorRadius2 * 0.45);
+          const escMesh = new THREE.Mesh(
+            new THREE.BoxGeometry(0.014, 0.003, 0.024),
+            createMat(0x111827, 0.85, 0.0)
+          );
+          escMesh.position.set(escPos.x, bh * 0.45 + 0.004, escPos.z);
+          escMesh.rotation.y = Math.atan2(dir.x, dir.z);
+          droneGroup.add(escMesh);
+        });
+      }
+    }
+
+    // Flight Controller � handle both 'fc' and 'flight_controller' keys (exp1 handoff uses flight_controller)
+    const fc = sel.fc || sel.flight_controller;
+    if (fc) {
+      const fcY = esc && esc.quantity === 1 ? 0.018 : 0.010;
+      const fcMesh = new THREE.Mesh(
+        new THREE.BoxGeometry(0.030, 0.003, 0.030),
+        createMat(0x14532d, 0.7, 0.1)
+      );
+      fcMesh.position.set(0, fcY, 0);
+      droneGroup.add(fcMesh);
+    }
+
+    // Receiver & antennas � handle both 'rx' and 'receiver' keys (exp1 handoff uses receiver)
+    const rx = sel.rx || sel.receiver;
+    if (rx) {
+      const rxMesh = new THREE.Mesh(
+        new THREE.BoxGeometry(0.018, 0.004, 0.013),
+        createMat(0x1f2937, 0.8, 0.05)
+      );
+      rxMesh.position.set(0, 0.003, bz * 0.32);
+      droneGroup.add(rxMesh);
+
+      const antMat = createMat(0x111827, 0.9, 0.0);
+      const tipMat = createMat(0xd1d5db, 0.4, 0.8);
+
+      const antLGroup = new THREE.Group();
+      antLGroup.position.set(-0.006, bh, bz * 0.32);
+      const tubeL = new THREE.Mesh(new THREE.CylinderGeometry(0.0008, 0.0008, 0.035, 6), antMat);
+      tubeL.position.y = 0.0175;
+      antLGroup.add(tubeL);
+      const activeL = new THREE.Mesh(new THREE.CylinderGeometry(0.0005, 0.0005, 0.015, 6), tipMat);
+      activeL.position.y = 0.035 + 0.0075;
+      antLGroup.add(activeL);
+      antLGroup.rotation.z = 0.6;
+      antLGroup.rotation.x = 0.3;
+      droneGroup.add(antLGroup);
+
+      const antRGroup = new THREE.Group();
+      antRGroup.position.set(0.006, bh, bz * 0.32);
+      const tubeR = new THREE.Mesh(new THREE.CylinderGeometry(0.0008, 0.0008, 0.035, 6), antMat);
+      tubeR.position.y = 0.0175;
+      antRGroup.add(tubeR);
+      const activeR = new THREE.Mesh(new THREE.CylinderGeometry(0.0005, 0.0005, 0.015, 6), tipMat);
+      activeR.position.y = 0.035 + 0.0075;
+      antRGroup.add(activeR);
+      antRGroup.rotation.z = -0.6;
+      antRGroup.rotation.x = 0.3;
+      droneGroup.add(antRGroup);
     }
 
     // CoG Indicator crosshair
@@ -713,52 +1942,228 @@ const DroneModel = (function () {
 
   function buildBatteryMesh(bat, parentGroup, frame) {
     const bh = frame ? frame.body_size_mm[1] / 1000 : 0.026;
-    const batL = 0.062;
-    const batW = 0.030;
-    const batH = 0.022;
 
-    const batGeo = new THREE.BoxGeometry(batW, batH, batL);
-    const batMat = createMaterial(0xef4444, 0.6, 0.1); // red
+    const capacity = bat.capacity_mah;
+    const normVal = Math.min(Math.max((capacity - 800) / 3400, 0), 1);
+    const batW = 0.068 + normVal * 0.076;
+    const batH = 0.026 + normVal * 0.016;
+    const batD = 0.020 + normVal * 0.018;
+
+    const cellColors = { 3: 0x6e2a14, 4: 0x1f2937, 6: 0x1e1b4b };
+    const battColor = cellColors[bat.cells] || 0x22252a;
+
+    const batGeo = new THREE.BoxGeometry(batW, batH, batD);
+    const batMat = createMaterial(battColor, 0.8, 0.05);
     batteryMesh = new THREE.Mesh(batGeo, batMat);
-    
+
+    const battY = -batH / 2 - 0.003;
     batteryMesh.position.set(
       state.selections.battery_pos.x / 1000,
-      bh + batH / 2 + 0.002,
+      battY,
       -state.selections.battery_pos.y / 1000
     );
     batteryMesh.castShadow = true;
     batteryMesh.receiveShadow = true;
     parentGroup.add(batteryMesh);
+
+    // XT60 connector
+    const xt60Geo = new THREE.BoxGeometry(0.008, 0.006, 0.012);
+    const xt60Mat = createMat(0xeab308, 0.4, 0.1);
+    const xt60Mesh = new THREE.Mesh(xt60Geo, xt60Mat);
+    xt60Mesh.position.set(
+      state.selections.battery_pos.x / 1000,
+      battY,
+      -state.selections.battery_pos.y / 1000 + batD / 2 + 0.004
+    );
+    parentGroup.add(xt60Mesh);
+
+    // Red & black power wires
+    const wireGeo = new THREE.CylinderGeometry(0.001, 0.001, 0.016, 6);
+    const wireRed = new THREE.Mesh(wireGeo, createMat(0xef4444, 0.7, 0.0));
+    wireRed.position.set(
+      state.selections.battery_pos.x / 1000 - 0.002,
+      battY + 0.002,
+      -state.selections.battery_pos.y / 1000 + batD / 2 + 0.009
+    );
+    wireRed.rotation.x = Math.PI / 2;
+    parentGroup.add(wireRed);
+
+    const wireBlack = new THREE.Mesh(wireGeo, createMat(0x1e293b, 0.7, 0.0));
+    wireBlack.position.set(
+      state.selections.battery_pos.x / 1000 + 0.002,
+      battY + 0.002,
+      -state.selections.battery_pos.y / 1000 + batD / 2 + 0.009
+    );
+    wireBlack.rotation.x = Math.PI / 2;
+    parentGroup.add(wireBlack);
+
+    // Anti-slip pad
+    const padGeo = new THREE.BoxGeometry(batW * 0.9, 0.002, batD * 0.9);
+    const padMesh = new THREE.Mesh(padGeo, createMat(0x111827, 0.9, 0.0));
+    padMesh.position.set(
+      state.selections.battery_pos.x / 1000,
+      -0.001,
+      -state.selections.battery_pos.y / 1000
+    );
+    parentGroup.add(padMesh);
+
+    // Battery straps
+    const strapOffsets = [
+      state.selections.battery_pos.x / 1000 - batW * 0.25,
+      state.selections.battery_pos.x / 1000 + batW * 0.25
+    ];
+    strapOffsets.forEach(function (xOff) {
+      const strapGeo = new THREE.BoxGeometry(batD * 1.05, batH + bh + 0.006, 0.008);
+      const strapMesh = new THREE.Mesh(strapGeo, createMat(0x111827, 0.9, 0.0));
+      strapMesh.position.set(xOff, (bh - batH) / 2, -state.selections.battery_pos.y / 1000);
+      strapMesh.rotation.y = Math.PI / 2;
+      parentGroup.add(strapMesh);
+    });
   }
 
   function buildPayloadMesh(payloads, parentGroup, frame) {
-    const plateThickness = 0.002;
     payloadMesh = new THREE.Group();
+    payloads.forEach(p => { _addPayloadToGroup(p, frame, payloadMesh); });
+    parentGroup.add(payloadMesh);
+  }
 
-    payloads.forEach(p => {
-      const base = getPayloadBaseOffset(p.id, frame);
-      const px = (base.x + state.selections.payload_pos.x) / 1000;
-      const pz = -(base.y + state.selections.payload_pos.y) / 1000;
+  // Detailed payload renderer � identical detail to exp1's addPayload()
+  function _addPayloadToGroup(p, frame, targetGroup) {
+    const bw = frame ? frame.body_size_mm[0] / 1000 : 0.088;
+    const bz = frame ? frame.body_size_mm[2] / 1000 : 0.088;
 
-      let pGeo, pMat;
-      if (p.id.includes('camera') || p.id.includes('gimbal')) {
-        pGeo = new THREE.BoxGeometry(0.02, 0.02, 0.02);
-        pMat = createMaterial(0x38bdf8, 0.4, 0.7); // light blue
-      } else if (p.id.includes('gps')) {
-        pGeo = new THREE.CylinderGeometry(0.012, 0.012, 0.004, 12);
-        pMat = createMaterial(0x111827, 0.4, 0.1); // black
-      } else {
-        pGeo = new THREE.BoxGeometry(0.012, 0.010, 0.018);
-        pMat = createMaterial(0x475569, 0.5, 0.3);
+    switch (p.id) {
+      case 'gimbal_2axis':
+      case 'gimbal_3axis': {
+        const g = new THREE.Group();
+        const ballGeoP = new THREE.SphereGeometry(0.003, 8, 8);
+        const ballMatP = createMat(0x2563eb, 0.9, 0.0);
+        [[-0.015, -0.015], [0.015, -0.015], [-0.015, 0.015], [0.015, 0.015]].forEach(off => {
+          const ball = new THREE.Mesh(ballGeoP, ballMatP);
+          ball.position.set(off[0], -0.0015, off[1]);
+          g.add(ball);
+        });
+        const base = new THREE.Mesh(new THREE.BoxGeometry(0.035, 0.002, 0.035), createMat(0x1f2937, 0.6, 0.3));
+        base.position.y = -0.004;
+        g.add(base);
+        if (p.id === 'gimbal_2axis') {
+          const roll = new THREE.Mesh(new THREE.CylinderGeometry(0.003, 0.003, 0.024, 8), createMat(0x4b5563, 0.5, 0.5));
+          roll.rotation.z = Math.PI / 2;
+          roll.position.set(0, -0.015, 0);
+          g.add(roll);
+        } else {
+          const yaw = new THREE.Mesh(new THREE.CylinderGeometry(0.005, 0.005, 0.015, 10), createMat(0x1f2937, 0.5, 0.8));
+          yaw.position.set(0, -0.012, 0);
+          g.add(yaw);
+        }
+        g.position.set(0, -0.002, -bw * 0.22);
+        targetGroup.add(g);
+        break;
       }
 
-      const m = new THREE.Mesh(pGeo, pMat);
-      m.position.set(px, -plateThickness / 2 - 0.01, pz);
-      m.castShadow = true;
-      payloadMesh.add(m);
-    });
+      case 'camera_gopro': {
+        const g = new THREE.Group();
+        const mountGeo = new THREE.BoxGeometry(0.036, 0.028, 0.024);
+        const mount = new THREE.Mesh(mountGeo, createMat(0x2563eb, 0.8, 0.0));
+        mount.position.y = frame ? frame.body_size_mm[1] / 1000 + 0.014 : 0.036;
+        mount.position.z = -bw * 0.32;
+        mount.rotation.x = -0.15;
+        g.add(mount);
+        const cam = new THREE.Mesh(new THREE.BoxGeometry(0.032, 0.024, 0.018), createMat(0x111827, 0.6, 0.1));
+        cam.position.copy(mount.position);
+        cam.rotation.x = mount.rotation.x;
+        g.add(cam);
+        const lens = new THREE.Mesh(new THREE.CylinderGeometry(0.005, 0.005, 0.004, 12), createMat(0x1e3a8a, 0.1, 0.8));
+        lens.rotation.x = Math.PI / 2;
+        lens.position.copy(cam.position).add(new THREE.Vector3(0.007, 0, -0.010));
+        g.add(lens);
+        targetGroup.add(g);
+        break;
+      }
 
-    parentGroup.add(payloadMesh);
+      case 'camera_fpv_nano': {
+        const g = new THREE.Group();
+        const sideMat = createMat(0x9ca3af, 0.4, 0.6);
+        const left = new THREE.Mesh(new THREE.BoxGeometry(0.002, 0.015, 0.012), sideMat);
+        left.position.x = -0.008;
+        const right = left.clone();
+        right.position.x = 0.008;
+        g.add(left);
+        g.add(right);
+        g.add(new THREE.Mesh(new THREE.BoxGeometry(0.012, 0.012, 0.012), createMat(0x111827, 0.6, 0.1)));
+        const lensN = new THREE.Mesh(new THREE.CylinderGeometry(0.0035, 0.0035, 0.005, 10), createMat(0x1e293b, 0.1, 0.9));
+        lensN.rotation.x = Math.PI / 2;
+        lensN.position.z = -0.0085;
+        g.add(lensN);
+        g.position.set(0, (frame ? frame.body_size_mm[1] / 1000 : 0.026) / 2, -bw * 0.42);
+        g.rotation.x = 0.25;
+        targetGroup.add(g);
+        break;
+      }
+
+      case 'gps_m8n':
+      case 'gps_m9n_compass': {
+        const g = new THREE.Group();
+        g.add(new THREE.Mesh(new THREE.CylinderGeometry(0.014, 0.014, 0.006, 16), createMat(0x1f2937, 0.6, 0.1)));
+        const ant = new THREE.Mesh(new THREE.CylinderGeometry(0.004, 0.004, 0.012, 8), createMat(0xd1d5db, 0.3, 0.7));
+        ant.position.y = 0.009;
+        g.add(ant);
+        g.position.set(-bw * 0.2, (frame ? frame.body_size_mm[1] / 1000 : 0.026) + 0.006, bz * 0.2);
+        targetGroup.add(g);
+        break;
+      }
+
+      case 'lidar_tfmini': {
+        const g = new THREE.Group();
+        g.add(new THREE.Mesh(new THREE.BoxGeometry(0.018, 0.012, 0.010), createMat(0x374151, 0.5, 0.3)));
+        const emR = new THREE.Mesh(new THREE.CylinderGeometry(0.003, 0.003, 0.004, 10), createMat(0x1e3a8a, 0.1, 0.8));
+        emR.rotation.x = Math.PI / 2;
+        emR.position.set(-0.004, 0, -0.006);
+        g.add(emR);
+        const rcvR = emR.clone();
+        rcvR.position.set(0.004, 0, -0.006);
+        g.add(rcvR);
+        g.position.set(0, -0.008, 0);
+        targetGroup.add(g);
+        break;
+      }
+
+      case 'lidar_garmin': {
+        const g = new THREE.Group();
+        g.add(new THREE.Mesh(new THREE.CylinderGeometry(0.016, 0.016, 0.014, 16), createMat(0x1f2937, 0.7, 0.1)));
+        g.position.set(0, -0.008, 0);
+        targetGroup.add(g);
+        break;
+      }
+
+      case 'telemetry_915': {
+        const g = new THREE.Group();
+        g.add(new THREE.Mesh(new THREE.BoxGeometry(0.028, 0.008, 0.014), createMat(0x2563eb, 0.7, 0.1)));
+        const whip = new THREE.Mesh(new THREE.CylinderGeometry(0.0006, 0.0006, 0.070, 5), createMat(0x111827, 0.9, 0.0));
+        whip.position.set(0.010, 0.035, 0);
+        whip.rotation.z = -0.15;
+        g.add(whip);
+        g.position.set(bw * 0.4, (frame ? frame.body_size_mm[1] / 1000 : 0.026) / 2, 0);
+        g.rotation.y = Math.PI / 2;
+        targetGroup.add(g);
+        break;
+      }
+
+      case 'fpv_vtx': {
+        const g = new THREE.Group();
+        g.add(new THREE.Mesh(new THREE.BoxGeometry(0.020, 0.008, 0.016), createMat(0x374151, 0.5, 0.7)));
+        const antenna = new THREE.Mesh(new THREE.CylinderGeometry(0.0008, 0.0008, 0.050, 6), createMat(0x111827, 0.9, 0.0));
+        antenna.position.set(0, 0.025, 0.006);
+        antenna.rotation.x = 0.2;
+        g.add(antenna);
+        g.position.set(0, frame ? frame.body_size_mm[1] / 1000 + 0.005 : 0.031, bz * 0.38);
+        targetGroup.add(g);
+        break;
+      }
+
+      default:
+        break;
+    }
   }
 
   function buildCantileverScene(sel, sc) {
@@ -1130,15 +2535,20 @@ const DroneModel = (function () {
   }
 
   return {
-    rebuildScene,
-    clearAll,
-    updateComponentPlacements,
-    updateCGFeedback,
-    applyCantileverLoad,
-    triggerArmBreak,
-    tick,
-    batteryMesh: () => batteryMesh,
-    payloadMesh: () => payloadMesh
+    updateFromSelections: updateFromSelections,
+    animateProps: animateProps,
+    setSimRPM: setSimRPM,
+    getDroneGroup: function () { return _droneGrp; },
+    updateThrustStandDisplay: updateBenchHUD,
+    setBurnState: setBurnState,
+    rebuildScene: rebuildScene,
+    updateComponentPlacements: updateComponentPlacements,
+    updateCGFeedback: updateCGFeedback,
+    applyCantileverLoad: applyCantileverLoad,
+    triggerArmBreak: triggerArmBreak,
+    tick: tick,
+    batteryMesh: function () { return batteryMesh; },
+    payloadMesh: function () { return payloadMesh; }
   };
 })();
 window.DroneModel = DroneModel;
@@ -1288,8 +2698,149 @@ const Mod2UI = (function () {
     });
   }
 
+  // ── Unlock card 3D scene (chassis.glb) ────────────────────────────
+  let _unlAnim = null;
+  let _unlScn = null;
+  let _unlRndr = null;
+  let _unlCam = null;
+  let _unlCtrls = null;
+  let _chassisGroup = null;
+  let _unlClk = null;
+
+  function initUnlock() {
+    const canvas = document.getElementById('unlockCanvas');
+    if (!canvas) return;
+
+    if (_unlAnim) {
+      cancelAnimationFrame(_unlAnim);
+      _unlAnim = null;
+    }
+
+    // Pass the wrapper div so initBase3DScene measures the correct clientWidth/Height.
+    const base = initBase3DScene(canvas, canvas.parentElement, {
+      bgColor: 0xf3f4f6,
+      fov: 40,
+      camPos: { x: 0.20, y: 0.15, z: 0.28 },
+      alpha: true,
+      ctrls: { minDist: 0.10, maxDist: 2.0, target: { x: 0, y: 0.01, z: 0 } },
+      ambientIntensity: 0.70,
+      sunIntensity: 0.90,
+      sunPos: { x: 1.0, y: 2.0, z: 1.0 }
+    });
+    _unlScn = base.scn;
+    _unlRndr = base.rndr;
+    _unlCam = base.cam;
+    _unlCtrls = base.ctrls;
+
+    // Force correct size now that the wrapper has rendered dimensions.
+    if (base.handleResize) base.handleResize();
+
+    _chassisGroup = new THREE.Group();
+    _unlScn.add(_chassisGroup);
+
+    // Fallback procedural chassis shape (box frame silhouette).
+    function createProcedural() {
+      while (_chassisGroup.children.length > 0) {
+        _chassisGroup.remove(_chassisGroup.children[0]);
+      }
+      const bodyMat = new THREE.MeshStandardMaterial({ color: 0x1e293b, roughness: 0.35, metalness: 0.75 });
+      const accentMat = new THREE.MeshStandardMaterial({ color: 0x3b82f6, roughness: 0.5, metalness: 0.3 });
+
+      // Central body plate.
+      const body = new THREE.Mesh(new THREE.BoxGeometry(0.10, 0.012, 0.10), bodyMat);
+      _chassisGroup.add(body);
+
+      // Four arms.
+      const armLen = 0.09;
+      const armGeo = new THREE.BoxGeometry(armLen, 0.008, 0.012);
+      const armOffsets = [
+        { x:  (0.10 / 2 + armLen / 2), z:  (0.10 / 2 + armLen / 2), ry:  Math.PI / 4 },
+        { x: -(0.10 / 2 + armLen / 2), z:  (0.10 / 2 + armLen / 2), ry: -Math.PI / 4 },
+        { x:  (0.10 / 2 + armLen / 2), z: -(0.10 / 2 + armLen / 2), ry: -Math.PI / 4 },
+        { x: -(0.10 / 2 + armLen / 2), z: -(0.10 / 2 + armLen / 2), ry:  Math.PI / 4 }
+      ];
+      armOffsets.forEach(a => {
+        const arm = new THREE.Mesh(armGeo, bodyMat);
+        arm.position.set(a.x * 0.6, 0, a.z * 0.6);
+        arm.rotation.y = a.ry;
+        _chassisGroup.add(arm);
+
+        // Motor mount disc at tip.
+        const mount = new THREE.Mesh(new THREE.CylinderGeometry(0.014, 0.014, 0.008, 16), accentMat);
+        mount.position.set(a.x, 0, a.z);
+        _chassisGroup.add(mount);
+      });
+
+      // Landing legs.
+      const legMat = new THREE.MeshStandardMaterial({ color: 0x475569, roughness: 0.6, metalness: 0.4 });
+      [[-0.055, -0.055], [0.055, -0.055], [-0.055, 0.055], [0.055, 0.055]].forEach(([x, z]) => {
+        const leg = new THREE.Mesh(new THREE.CylinderGeometry(0.003, 0.003, 0.025, 8), legMat);
+        leg.position.set(x, -0.018, z);
+        _chassisGroup.add(leg);
+      });
+    }
+
+    if (window.GLTFLoader) {
+      const loader = new window.GLTFLoader();
+
+      // chasis.glb uses Draco mesh compression — attach a DRACOLoader to decode it.
+      if (window.DRACOLoader) {
+        const draco = new window.DRACOLoader();
+        draco.setDecoderPath('https://www.gstatic.com/draco/versioned/decoders/1.5.6/');
+        loader.setDRACOLoader(draco);
+      }
+
+      loader.load('asset/chasis.glb', function (gltf) {
+        while (_chassisGroup.children.length > 0) {
+          _chassisGroup.remove(_chassisGroup.children[0]);
+        }
+
+        const model = gltf.scene;
+
+        // Auto-scale to a consistent display size (~0.18 m wide).
+        const box = new THREE.Box3().setFromObject(model);
+        const size = new THREE.Vector3();
+        box.getSize(size);
+        const maxDim = Math.max(size.x, size.y, size.z) || 1.0;
+        const scale = 0.18 / maxDim;
+        model.scale.set(scale, scale, scale);
+
+        // Centre the model.
+        const center = new THREE.Vector3();
+        box.getCenter(center);
+        model.position.set(-center.x * scale, -center.y * scale, -center.z * scale);
+
+        model.traverse(c => {
+          if (c.isMesh) {
+            c.castShadow = true;
+            c.receiveShadow = true;
+          }
+        });
+
+        _chassisGroup.add(model);
+      }, undefined, function (err) {
+        console.warn('chasis.glb load failed, using procedural fallback', err);
+        createProcedural();
+      });
+    } else {
+      createProcedural();
+    }
+
+    _unlClk = new THREE.Clock();
+
+    function render() {
+      _unlAnim = requestAnimationFrame(render);
+      const dt = _unlClk.getDelta();
+      _unlCtrls.update();
+      if (_chassisGroup) _chassisGroup.rotation.y += 0.30 * dt;
+      _unlRndr.render(_unlScn, _unlCam);
+    }
+    render();
+  }
+
   return {
-    buildControlTiles
+    buildControlTiles,
+    initUnlockScene: initUnlock
   };
 })();
 window.Mod2UI = Mod2UI;
@@ -1307,6 +2858,7 @@ const Module1 = (function () {
       .then(res => res.json())
       .then(function (data) {
         database = data;
+        window._exp2DB = data; // expose for DroneModel visual motor/prop resolver
         
         loadContinuationData();
 
@@ -1548,43 +3100,43 @@ const Module1 = (function () {
     if (totalMassLabel) totalMassLabel.textContent = cg.total_mass_g.toFixed(5) + " g";
     const totalMassFormula = document.getElementById('calcTotalMassFormula');
     if (totalMassFormula) {
-      let formulaText = `m_frame(${frame ? frame.mass_g.toFixed(1) : 100}) + m_bat(${battery ? battery.mass_g.toFixed(1) : 0})`;
+      let formulaText = `<i>m</i><sub>frame</sub>(${frame ? frame.mass_g.toFixed(1) : 100}) + <i>m</i><sub>bat</sub>(${battery ? battery.mass_g.toFixed(1) : 0})`;
       if (payloads && payloads.length > 0) {
         const payloadMass = payloads.reduce((sum, p) => sum + p.mass_g, 0);
-        formulaText += ` + m_payloads(${payloadMass.toFixed(1)})`;
+        formulaText += ` + <i>m</i><sub>payloads</sub>(${payloadMass.toFixed(1)})`;
       }
-      formulaText += ` + m_fixed(${(electronicsMass + motorMass*4 + propMass*4 + fixed.esc_each_g*4 + armTubeMass*4).toFixed(1)})`;
-      totalMassFormula.textContent = formulaText;
+      formulaText += ` + <i>m</i><sub>fixed</sub>(${(electronicsMass + motorMass*4 + propMass*4 + fixed.esc_each_g*4 + armTubeMass*4).toFixed(1)})`;
+      totalMassFormula.innerHTML = formulaText;
     }
 
     const momentXLabel = document.getElementById('calcMomentXVal');
     if (momentXLabel) momentXLabel.textContent = cg.sum_mx.toFixed(5) + " g·mm";
     const momentXFormula = document.getElementById('calcMomentXFormula');
     if (momentXFormula) {
-      let formulaText = `Σ(m·x) = m_bat(${battery ? battery.mass_g.toFixed(1) : 0})×(${state.selections.battery_pos.x.toFixed(2)})`;
+      let formulaText = `&Sigma;(<i>m</i>&middot;<i>x</i>) = <i>m</i><sub>bat</sub>(${battery ? battery.mass_g.toFixed(1) : 0})&times;(${state.selections.battery_pos.x.toFixed(2)})`;
       if (payloads && payloads.length > 0) {
         payloads.forEach(function (p) {
           const base = getPayloadBaseOffset(p.id, frame);
           const px_mm = base.x + state.selections.payload_pos.x;
-          formulaText += ` + m_${p.id.split('_')[0]}(${p.mass_g.toFixed(1)})×(${px_mm.toFixed(2)})`;
+          formulaText += ` + <i>m</i><sub>${p.id.split('_')[0]}</sub>(${p.mass_g.toFixed(1)})&times;(${px_mm.toFixed(2)})`;
         });
       }
-      momentXFormula.textContent = formulaText;
+      momentXFormula.innerHTML = formulaText;
     }
 
     const momentYLabel = document.getElementById('calcMomentYVal');
     if (momentYLabel) momentYLabel.textContent = cg.sum_my.toFixed(5) + " g·mm";
     const momentYFormula = document.getElementById('calcMomentYFormula');
     if (momentYFormula) {
-      let formulaText = `Σ(m·y) = m_bat(${battery ? battery.mass_g.toFixed(1) : 0})×(${state.selections.battery_pos.y.toFixed(2)})`;
+      let formulaText = `&Sigma;(<i>m</i>&middot;<i>y</i>) = <i>m</i><sub>bat</sub>(${battery ? battery.mass_g.toFixed(1) : 0})&times;(${state.selections.battery_pos.y.toFixed(2)})`;
       if (payloads && payloads.length > 0) {
         payloads.forEach(function (p) {
           const base = getPayloadBaseOffset(p.id, frame);
           const py_mm = base.y + state.selections.payload_pos.y;
-          formulaText += ` + m_${p.id.split('_')[0]}(${p.mass_g.toFixed(1)})×(${py_mm.toFixed(2)})`;
+          formulaText += ` + <i>m</i><sub>${p.id.split('_')[0]}</sub>(${p.mass_g.toFixed(1)})&times;(${py_mm.toFixed(2)})`;
         });
       }
-      momentYFormula.textContent = formulaText;
+      momentYFormula.innerHTML = formulaText;
     }
 
     const cgXLabel = document.getElementById('calcCgXVal');
@@ -2520,7 +4072,7 @@ const Module2 = (function () {
     if (tEl) tEl.innerHTML = `<strong>Wall Thickness (t):</strong> ${t.toFixed(1)} mm`;
 
     const I_sci = I.toExponential(4);
-    document.getElementById('formulaInertia').textContent = `I = (${b}×${h}³ - ${b-2*t}×${h-2*t}³) / 12 = ${I_sci} m⁴`;
+    document.getElementById('formulaInertia').innerHTML = `<i>I</i> = (<i>b</i>&times;<i>h</i><sup>3</sup> - (<i>b</i>-2<i>t</i>)&times;(<i>h</i>-2<i>t</i>)<sup>3</sup>) / 12 = ${I_sci} m<sup>4</sup>`;
 
     const savedVal = matrix[`${mat.id}_${len}`];
     const statusBadge = document.getElementById('hudStressStatus');
@@ -2583,14 +4135,14 @@ const Module2 = (function () {
   }
 
   function updateCalculationsPanel(force, moment, stress, sf) {
-    document.getElementById('formulaMoment').textContent = `M = F × L = ${force.toFixed(1)}N × ${(activeSelection.length/1000).toFixed(3)}m = ${moment.toFixed(4)} N·m`;
+    document.getElementById('formulaMoment').innerHTML = `<i>M</i> = <i>F</i> &times; <i>L</i> = ${force.toFixed(1)}N &times; ${(activeSelection.length/1000).toFixed(3)}m = ${moment.toFixed(4)} N&middot;m`;
     
     const profile = state.selections.frame?.arm_profile || { b_mm: 15, h_mm: 8, t_mm: 1.5 };
     const c = (profile.h_mm / 2.0) / 1000;
-    document.getElementById('formulaStress').textContent = `σ = (M × c) / I = (${moment.toFixed(4)} × ${c.toFixed(4)}) / I = ${stress.toFixed(2)} MPa`;
+    document.getElementById('formulaStress').innerHTML = `&sigma; = (<i>M</i> &times; <i>c</i>) / <i>I</i> = (${moment.toFixed(4)} &times; ${c.toFixed(4)}) / <i>I</i> = ${stress.toFixed(2)} MPa`;
     
     const sfText = sf >= 90 ? '∞' : sf.toFixed(2);
-    document.getElementById('formulaSafety').textContent = `SF = σ_yield / σ_applied = ${activeSelection.material.yield_strength_mpa} / ${stress.toFixed(2)} = ${sfText}`;
+    document.getElementById('formulaSafety').innerHTML = `<i>SF</i> = &sigma;<sub>yield</sub> / &sigma;<sub>applied</sub> = ${activeSelection.material.yield_strength_mpa} / ${stress.toFixed(2)} = ${sfText}`;
   }
 
   function runStressSweepAnimation() {
@@ -2728,34 +4280,38 @@ const Module2 = (function () {
       });
     });
 
-    const btnFinish = document.getElementById('btnFinishLab');
-    if (btnFinish) {
-      if (completedCells >= totalCells) {
-        btnFinish.removeAttribute('disabled');
-        btnFinish.textContent = 'Lock Design & Finish Lab';
-        
-        btnFinish.onclick = function () {
-          saveFinalConfigurationAndProceed();
-        };
-      } else {
-        btnFinish.setAttribute('disabled', 'true');
-        btnFinish.textContent = `Matrix: ${completedCells}/${totalCells} Tested`;
-      }
+    if (completedCells >= totalCells) {
+      saveFinalConfigurationAndProceed();
     }
   }
 
   function saveFinalConfigurationAndProceed() {
-    const frameConfig = {
-      wheelbase_mm: state.selections.frame.wheelbase_mm,
-      arm_length_mm: activeSelection.length,
-      arm_material: activeSelection.material.id,
-      yield_strength_mpa: activeSelection.material.yield_strength_mpa,
-      mass_g: state.calculations.total_mass_g,
-      cg_offset_mm: state.calculations.offset_mm
-    };
+    // Guard: only persist config when frame selection is available.
+    if (state.selections.frame) {
+      const frameConfig = {
+        wheelbase_mm: state.selections.frame.wheelbase_mm,
+        arm_length_mm: activeSelection.length,
+        arm_material: activeSelection.material ? activeSelection.material.id : null,
+        yield_strength_mpa: activeSelection.material ? activeSelection.material.yield_strength_mpa : null,
+        mass_g: state.calculations.total_mass_g,
+        cg_offset_mm: state.calculations.offset_mm
+      };
+      localStorage.setItem('vlabModule2_final', JSON.stringify(frameConfig));
+    }
 
-    localStorage.setItem('vlabModule2_final', JSON.stringify(frameConfig));
-    alert('Congratulations! Experiment 02 has been successfully completed. Frame design locked.');
+    // Show the unlock card (auto-triggered — no button needed).
+    const card = document.getElementById('nextModuleContainer');
+    if (card && card.style.display === 'none') {
+      card.style.display = 'block';
+      // Use setTimeout to guarantee a full layout pass before WebGL reads canvas dimensions.
+      setTimeout(function () {
+        if (Mod2UI && Mod2UI.initUnlockScene) {
+          Mod2UI.initUnlockScene();
+        }
+      }, 80);
+      // Scroll the card into view.
+      card.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    }
   }
 
   function drawBarChart(appliedStress) {
@@ -3048,11 +4604,13 @@ function loadContinuationData() {
         state.selections.rx = database.receivers.find(r => r.id === rxId);
       }
       
-      // Thrust Max
+      // Thrust Max � handle all key variants from exp1
       if (exp1.T_max_n !== undefined) {
         state.selections.T_max = exp1.T_max_n;
       } else if (exp1.max_thrust_n !== undefined) {
         state.selections.T_max = exp1.max_thrust_n;
+      } else if (exp1.T_req !== undefined) {
+        state.selections.T_max = exp1.T_req;
       }
 
       usingCustom = true;
@@ -3141,7 +4699,7 @@ document.addEventListener('DOMContentLoaded', function () {
   window.UI = UI;
   window.Mod2UI = Mod2UI;
 
-  if (document.getElementById('btnFinishLab')) {
+  if (document.getElementById('safetyMatrixContainer')) {
     window.VLAB_MOD2 = Module2;
     Module2.init();
   } else {

@@ -215,11 +215,11 @@
           <div class="calc-step">
             <div class="step-header">
               <span class="step-num">01</span>
-              <h4 id="derivationStep1Title">Target Hover Thrust (T_req)</h4>
+              <h4 id="derivationStep1Title">Target Hover Thrust (<i>T</i><sub>req</sub>)</h4>
             </div>
-            <p class="step-desc" id="derivationStep1Desc">Solving for hover equilibrium under local gravitational force (N_motors = 4).</p>
+            <p class="step-desc" id="derivationStep1Desc">Solving for hover equilibrium under local gravitational force (<i>N</i><sub>motors</sub> = 4).</p>
             <div class="math-block mono" id="calcA_math">
-              T_req = (M_total * g) / N_motors
+              <i>T</i><sub>req</sub> = (<i>M</i><sub>total</sub> &middot; <i>g</i>) / <i>N</i><sub>motors</sub>
             </div>
             <div class="math-eval mono" id="calcA_eval">—</div>
           </div>
@@ -227,11 +227,11 @@
           <div class="calc-step">
             <div class="step-header">
               <span class="step-num">02</span>
-              <h4 id="derivationStep2Title">Actuator Aerodynamic Thrust (T_aero)</h4>
+              <h4 id="derivationStep2Title">Actuator Aerodynamic Thrust (<i>T</i><sub>aero</sub>)</h4>
             </div>
-            <p class="step-desc" id="derivationStep2Desc">Aerodynamic force solved using blade momentum theory at rotational speed (n = RPM / 60).</p>
+            <p class="step-desc" id="derivationStep2Desc">Aerodynamic force solved using blade momentum theory at rotational speed (<i>n</i> = RPM / 60).</p>
             <div class="math-block mono" id="calcB_math">
-              T_aero = C_t * &rho; * n² * D⁴
+              <i>T</i><sub>aero</sub> = <i>C</i><sub><i>t</i></sub> &middot; &rho; &middot; <i>n</i><sup>2</sup> &middot; <i>D</i><sup>4</sup>
             </div>
             <div class="math-eval mono" id="calcB_eval">—</div>
           </div>
@@ -275,7 +275,7 @@
           <div class="card-item margin-card" id="sumMarginCard">
             <span class="card-title">Authority Ratio</span>
             <div class="card-val mono" id="sumMarginVal">—</div>
-            <span class="card-unit" id="sumMarginDesc">T_aero / T_req</span>
+            <span class="card-unit" id="sumMarginDesc"><i>T</i><sub>aero</sub> / <i>T</i><sub>req</sub></span>
           </div>
 
           <div class="card-item" id="summaryCardHoverTime">
@@ -310,6 +310,12 @@
       <div class="next-module-container" id="nextModuleContainer" style="display:none; margin-top: 20px; padding: 16px; background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); text-align: center;">
         <h3 style="font-size: 0.9rem; margin-bottom: 10px; color: var(--text-primary);">Rotor Geometry Verification Successful</h3>
         <a href="index1.html" class="btn_prm" style="display: inline-block; text-decoration: none; padding: 10px 24px; font-size: 0.9rem;">Proceed to System Matching &rarr;</a>
+      </div>
+
+      <div class="next-module-fail" id="nextModuleFailCard" style="display:none; margin-top: 20px; padding: 14px 16px; background: var(--danger-light); border: 1px solid #fecaca; border-radius: var(--radius);">
+        <div style="font-size: 0.72rem; font-weight: 700; color: var(--danger); text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 4px;">⚠ Authority Ratio: FAIL</div>
+        <p style="font-size: 0.8rem; color: #991b1b; margin-bottom: 8px; line-height: 1.4;" id="nextModuleFailMsg">Your rotor configuration cannot generate enough thrust to hover. Select a larger propeller, higher-KV motor, or higher-cell battery before proceeding.</p>
+        <button class="btn-sim-ghost" style="border-color: var(--danger); color: var(--danger); font-size: 0.78rem;" onclick="document.getElementById('tab_build').click();">← Revise Component Selection</button>
       </div>
     </section>
 

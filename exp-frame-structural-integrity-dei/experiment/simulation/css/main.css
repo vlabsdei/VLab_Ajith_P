@@ -16,7 +16,7 @@
   --text-tertiary: #6b7280;
 
   --accent:        #ffbf00;
-  --accent-light:  #eff6ff;
+  --accent-light:  #fffbeb;
   --accent-dark:   #000000;
 
   --success:       #10b981;
@@ -179,9 +179,9 @@ p { color: var(--text-secondary); }
 }
 .component-tile.selected,
 .component-tile:has(input:checked) {
-  border: 1.5px solid var(--accent);
+  border-color: var(--accent);
   background: var(--accent-light);
-  box-shadow: 0 0 0 2px rgba(245, 158, 11, 0.08);
+  box-shadow: 0 0 0 2px rgba(255, 191, 0, 0.08);
 }
 .component-tile input {
   position: absolute;
@@ -297,6 +297,7 @@ p { color: var(--text-secondary); }
   flex: 1;
   display: flex;
   flex-direction: column;
+  overflow-x: hidden;
   overflow-y: auto;
   border-right: 1px solid var(--border);
 }
@@ -461,7 +462,8 @@ p { color: var(--text-secondary); }
 .results-header h2 { font-size: 0.9rem; border-bottom: 1px solid var(--border); padding-bottom: 6px; }
 
 .cards_box { display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px; }
-.card-item {
+.card-item,
+.summary-card {
   background: var(--bg);
   border: 1px solid var(--border);
   border-radius: var(--radius);
@@ -603,7 +605,7 @@ p { color: var(--text-secondary); }
 }
 .config-select:focus {
   border-color: var(--accent);
-  box-shadow: 0 0 0 2px rgba(37, 99, 235, 0.08);
+  box-shadow: 0 0 0 2px rgba(255, 191, 0, 0.12);
 }
 
 /* ── Module 2: Safety Factor Matrix Grid ── */
@@ -705,6 +707,9 @@ p { color: var(--text-secondary); }
   gap: 12px;
   width: 100%;
   margin-top: 10px;
+  padding: 0 14px 10px 14px;
+  flex: 1;
+  overflow-y: auto;
 }
 .three-col-item {
   flex: 1;
@@ -755,6 +760,8 @@ p { color: var(--text-secondary); }
   .three-col-row {
     flex-direction: column;
     gap: 12px;
+    padding: 0 14px 10px 14px;
+    overflow-y: visible;
   }
   .three-col-item {
     width: 100%;

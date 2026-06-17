@@ -19,7 +19,7 @@
   <!-- Premium Fonts -->
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600;700&family=Share+Tech&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600;700&family=Share+Tech&family=Share+Tech+Mono&family=VT323&display=swap" rel="stylesheet">
   <!-- CSS Stylesheets -->
   <link rel="stylesheet" href="css/main.css">
 </head>
@@ -34,8 +34,8 @@
     <aside class="cfg_aside" id="configPanel">
       <div class="pane_lbl" id="configPanelTitle" style="cursor: pointer; display: flex; align-items: center; justify-content: space-between;">
         <div>
-          <h3 style="font-size: 0.85rem; font-weight: 700; margin-bottom: 2px;">Structural Parameters</h3>
-          <p class="panel-note" style="margin: 0; font-size: 0.72rem;">Select materials and arm lengths to test structural margins.</p>
+          <span>Structural Parameters</span>
+          <span class="panel-note">Select materials and arm lengths to test structural margins.</span>
         </div>
         <svg id="configPanelChevron" class="chevron-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="transition: transform 0.2s; color: var(--text-tertiary);"><polyline points="6 9 12 15 18 9"></polyline></svg>
       </div>
@@ -77,8 +77,8 @@
       </div>
 
       <!-- Action Button Handoff -->
-      <div class="panel-actions" style="margin-top: auto; display: flex; flex-direction: column; gap: 8px;">
-        <a href="index.html" class="btn-sim-ghost" style="text-align: center; text-decoration: none; display: block; padding: 8px 12px; font-size: 0.8rem;">&larr; Back to Balancing</a>
+      <div class="panel-actions" style="margin-top: auto;">
+        <a href="index.html" class="btn_prm" style="text-decoration: none; display: block; text-align: center;">&larr; Back to Balancing</a>
       </div>
     </aside>
 
@@ -156,7 +156,7 @@
             </div>
             <p class="step-desc">Torque load acting on the clamp root:</p>
             <div class="math-block mono" id="formulaMoment">M = F &times; L = --</div>
-            <p class="step-desc">Moment scales linearly with arm length $L$. Longer arms create a larger lever.</p>
+            <p class="step-desc">Moment scales linearly with arm length <i>L</i>. Longer arms create a larger lever.</p>
           </div>
           <div class="calc-step">
             <div class="step-header">
@@ -194,7 +194,7 @@
     </section>
 
     <!-- Column 3: Results & Envelope (Right) -->
-    <aside class="right-panel">
+    <section class="right-panel">
       <!-- 3x3 Safety Factor Go/No-Go Grid -->
       <div class="res_section" style="border-bottom: 1px solid var(--border);">
         <div class="results-header">
@@ -219,11 +219,16 @@
         </div>
       </div>
 
-      <!-- Finish Action Button -->
-      <div class="panel-actions" style="margin-top: auto;">
-        <button class="btn_prm" id="btnFinishLab" disabled>Matrix: 0/9 Tested</button>
+      <!-- Unlock Card (shown automatically on experiment completion) -->
+      <div class="res_section" id="nextModuleContainer" style="display:none;">
+        <div style="font-size: 0.72rem; font-weight: 700; color: var(--success); text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 4px;">Frame Structure Analysis Completed</div>
+        <h3 style="font-size: 1.1rem; margin-bottom: 12px; color: var(--text-primary); font-weight: 700;">Chassis Unlocked</h3>
+        <div class="unlock-canvas-wrapper" style="height: 180px; width: 100%; background: var(--surface-2); border: 1px solid var(--border); border-radius: var(--radius); overflow: hidden; position: relative; margin-bottom: 4px;">
+          <canvas id="unlockCanvas" style="width: 100%; height: 100%; display: block;"></canvas>
+          <div style="position: absolute; bottom: 8px; right: 8px; font-size: 0.65rem; color: var(--text-secondary); font-family: var(--font-mono); pointer-events: none; background: rgba(255,255,255,0.8); padding: 2px 6px; border-radius: 4px; border: 1px solid var(--border);">Drag to Rotate 3D Model</div>
+        </div>
       </div>
-    </aside>
+    </section>
 
   </main>
 
@@ -231,6 +236,14 @@
   <script src="https://cdn.jsdelivr.net/npm/three@0.147.0/build/three.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/three@0.147.0/examples/js/controls/OrbitControls.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+
+  <!-- GLTFLoader (+ DRACO) for unlock card 3D model -->
+  <script src="https://cdn.jsdelivr.net/npm/three@0.147.0/examples/js/loaders/GLTFLoader.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/three@0.147.0/examples/js/loaders/DRACOLoader.js"></script>
+  <script>
+    window.GLTFLoader = THREE.GLTFLoader;
+    window.DRACOLoader = THREE.DRACOLoader;
+  </script>
 
   <!-- Virtual Lab Scripts -->
   <script src="js/main.js"></script>

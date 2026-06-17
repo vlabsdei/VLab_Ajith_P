@@ -162,7 +162,7 @@
               <span class="step-num">01</span>
               <h4>Equivalent Actuator Circuit</h4>
             </div>
-            <p class="step-desc">Internal winding resistance (Rm) acts as a resistor, converting energy directly into waste heat.</p>
+            <p class="step-desc">Internal winding resistance (<i>R</i><sub>m</sub>) acts as a resistor, converting energy directly into waste heat.</p>
             <div class="circuit-diagram" id="circuitDiagram" style="margin-top: 10px;">
               <div style="display: flex; justify-content: space-between; align-items: center; background: var(--bg); border: 1px solid var(--border); padding: 15px; border-radius: var(--radius);">
                  <div style="text-align: center;">
@@ -191,7 +191,7 @@
               <h4>Actual Loaded RPM</h4>
             </div>
             <p class="step-desc">The motor shaft rate is determined by the remaining back-EMF voltage:</p>
-            <div class="math-block mono">n_loaded = KV &times; V_bemf</div>
+            <div class="math-block mono"><i>n</i><sub>loaded</sub> = <i>KV</i> &times; <i>V</i><sub>bemf</sub></div>
             <div class="math-eval mono" id="calc_nloaded">&mdash;</div>
           </div>
         </div>
@@ -206,7 +206,7 @@
             <div class="sankey-diagram" id="sankeyDiagram" style="margin-top: 10px;">
               <div style="background: var(--bg); border: 1px solid var(--border); padding: 15px; border-radius: var(--radius);">
                 <div style="display: flex; justify-content: space-between; margin-bottom: 5px; font-size: 0.8rem; font-weight: 600;">
-                  <span>Input Power (P_elec)</span>
+                  <span>Input Power (<i>P</i><sub>elec</sub>)</span>
                   <span id="sankeyPelec" class="mono">0.0 W</span>
                 </div>
                 <div style="height: 20px; background: var(--text-primary); border-radius: 4px; margin-bottom: 15px;"></div>
@@ -214,14 +214,14 @@
                 <div style="display: flex; align-items: flex-start; gap: 10px;">
                   <div style="flex: 1;">
                     <div style="display: flex; justify-content: space-between; margin-bottom: 5px; font-size: 0.8rem; font-weight: 600; color: var(--success);">
-                      <span>Shaft Power (P_mech)</span>
+                      <span>Shaft Power (<i>P</i><sub>mech</sub>)</span>
                       <span id="sankeyPmech" class="mono">0.0 W</span>
                     </div>
                     <div id="sankeyBarMech" style="height: 20px; background: var(--success); border-radius: 4px; width: 100%;"></div>
                   </div>
                   <div style="flex: 1;">
                     <div style="display: flex; justify-content: space-between; margin-bottom: 5px; font-size: 0.8rem; font-weight: 600; color: var(--danger);">
-                      <span>Copper Loss (I²R)</span>
+                      <span>Copper Loss (<i>I</i><sup>2</sup><i>R</i>)</span>
                       <span id="sankeyPloss" class="mono">0.0 W</span>
                     </div>
                     <div id="sankeyBarLoss" style="height: 20px; background: var(--danger); border-radius: 4px; width: 0%;"></div>
@@ -237,7 +237,7 @@
               <h4>Actuator Efficiency</h4>
             </div>
             <p class="step-desc">Ratio of output mechanical shaft power to input electrical power:</p>
-            <div class="math-block mono">&eta;_m = P_mech / P_elec</div>
+            <div class="math-block mono">&eta;<sub>m</sub> = <i>P</i><sub>mech</sub> / <i>P</i><sub>elec</sub></div>
             <div class="math-eval mono" id="calc_eff">&mdash;</div>
           </div>
         </div>
@@ -357,8 +357,8 @@
                 <th>RPM</th>
                 <th>Thrust(N)</th>
                 <th>Curr(A)</th>
-                <th>P_in(W)</th>
-                <th>P_loss(W)</th>
+                <th>P<sub>in</sub>(W)</th>
+                <th>P<sub>loss</sub>(W)</th>
                 <th>Eff%</th>
               </tr>
             </thead>

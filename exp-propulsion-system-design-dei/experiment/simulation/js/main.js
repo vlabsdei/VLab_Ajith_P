@@ -28,9 +28,20 @@ const Calc = (function () {
 
   const G_ACC = 9.80665; // standard gravitational acceleration m/s^2
   const N_MOTORS = 4; // quadcopter design
-  const CT_COEFF = 0.10926; // propeller thrust coefficient (Ct)
-  const CQ_COEFF = 0.01065; // propeller torque coefficient (Cq)
+  const CT_COEFF = 0.10926; // legacy reference thrust coefficient (display only)
+  const CQ_COEFF = 0.01065; // legacy reference torque coefficient (display only)
   const FOM_VAL = 0.655; // hovering Figure of Merit
+
+  // --- Physical constants for the theory.md coefficient model (§2, §3) ---
+  const MU_AIR = 1.81e-5; // air dynamic viscosity µ [Pa·s]
+  const RHO_SL = 1.225; // sea-level air density ρ0 [kg/m^3]
+  const R_ESC_PHASE = 0.0025; // per-phase ESC MOSFET resistance [Ω] (2–3 mΩ)
+  // Defaults used when a caller has no battery/propeller context (e.g. a bare
+  // operating-point probe). They keep the solver well-posed without changing
+  // any context-aware call site.
+  const DEFAULT_PD = 0.9; // pitch-to-diameter ratio
+  const DEFAULT_CELLS = 4; // battery cell count S
+  const DEFAULT_CAP_MAH = 1500; // battery capacity C_mah
 
   // Density altitude formula based on temperature lapse rate
   function get_air_density(h) {
@@ -45,45 +56,188 @@ const Calc = (function () {
     return (m_kg * G_ACC) / N_MOTORS;
   }
 
-  function get_aero_thrust(n_rps, D, rho) {
-    return CT_COEFF * rho * n_rps * n_rps * Math.pow(D, 4);
+  // ---------------------------------------------------------------------------
+  // Centralized physics helpers (single source of truth, per theory.md). The
+  // flight sim, static slider, and efficiency sweep all consume these so the
+  // physics cannot drift apart again.
+  // ---------------------------------------------------------------------------
+
+  // theory.md §5 — per-cell LiPo open-circuit voltage as a function of SoC.
+  function ocv_per_cell(soc) {
+    return 3.5 + 0.7 * soc + 0.1 * soc * soc * soc;
   }
 
-  function get_prop_torque(n_rps, D, rho) {
-    return CQ_COEFF * rho * n_rps * n_rps * Math.pow(D, 5);
+  // theory.md §3 — battery internal resistance scales with cell count S and
+  // capacity C_mah.
+  function battery_internal_r(cells, capacity_mah) {
+    return cells * 0.012 * (1500.0 / capacity_mah);
   }
 
-  function get_req_rps(t_target, D, rho) {
-    return Math.sqrt(t_target / (CT_COEFF * rho * Math.pow(D, 4)));
+  // theory.md §3 — motor winding resistance with temperature dependence
+  // Rw(T) = Rw0 * (1 + 0.00393 * (T - 20)).
+  function motor_resistance_temp(rm0_ohm, tempC) {
+    return rm0_ohm * (1.0 + 0.00393 * (tempC - 20.0));
   }
 
-  // Solves the steady-state operating point of the actuator circuit
-  function calc_motor_point(motor, V, D, rho, tMotor) {
+  // theory.md §3 — total effective circuit resistance
+  // R_m_eff = R_motor(T) + R_esc + 4 * R_batt.
+  function effective_resistance(opts) {
+    opts = opts || {};
+    const rm0 = opts.rm0_ohm;
+    const tempC = (opts.tempC !== undefined) ? opts.tempC : 25.0;
+    const R_esc = (opts.R_esc !== undefined) ? opts.R_esc : R_ESC_PHASE;
+    const cells = (opts.cells !== undefined) ? opts.cells : DEFAULT_CELLS;
+    const cap = (opts.capacity_mah !== undefined) ? opts.capacity_mah : DEFAULT_CAP_MAH;
+    return motor_resistance_temp(rm0, tempC) + R_esc + 4.0 * battery_internal_r(cells, cap);
+  }
+
+  // Representative mean blade chord [m] (≈10% of diameter) used when a caller
+  // does not supply a measured chord.
+  function prop_mean_chord(D) {
+    return 0.1 * D;
+  }
+
+  // Derive the pitch-to-diameter ratio of a propeller selection. Prefers an
+  // explicit field; otherwise parses the trailing pitch digits of the prop id
+  // (e.g. "5045" → 5.0" × 4.5" → P/D = 0.9).
+  function prop_pd(prop) {
+    if (!prop) return DEFAULT_PD;
+    if (typeof prop.pitch_diameter_ratio === 'number') return prop.pitch_diameter_ratio;
+    if (typeof prop.pitch_in === 'number' && prop.diameter_in) {
+      return prop.pitch_in / prop.diameter_in;
+    }
+    if (prop.id && prop.diameter_in) {
+      const code = parseInt(String(prop.id), 10);
+      if (!isNaN(code)) {
+        const pitch_in = (code % 100) / 10.0;
+        if (pitch_in > 0) return pitch_in / prop.diameter_in;
+      }
+    }
+    return DEFAULT_PD;
+  }
+
+  // theory.md §2 — static + low-Reynolds + induced-inflow coefficient model.
+  function prop_coefficients(opts) {
+    const pd = opts.pitch_diameter_ratio;
+    const n = opts.n_rps;
+    const D = opts.D;
+    const rho = (opts.rho !== undefined) ? opts.rho : RHO_SL;
+    const c_mean = (opts.c_mean !== undefined) ? opts.c_mean : prop_mean_chord(D);
+    const mu = (opts.mu !== undefined) ? opts.mu : MU_AIR;
+
+    const Ct_static = 0.115 * pd;
+    const v_tip = Math.PI * n * D;
+    const Re = (rho * v_tip * c_mean) / mu;
+    const Re_factor = Math.pow(150000.0 / Re, 0.25);
+    const Cq_static = Ct_static * (0.045 * Re_factor + 0.11 * pd);
+    const J_i = Math.sqrt((2.0 * Ct_static) / Math.PI);
+    const Ct_eff = Ct_static * (1.0 - J_i);
+    const Cq_eff = Cq_static * (1.0 + 1.5 * J_i * J_i);
+
+    return {
+      ct: Ct_eff,
+      cq: Cq_eff,
+      Ct_static: Ct_static,
+      Cq_static: Cq_static,
+      Re: Re,
+      Re_factor: Re_factor,
+      J_i: J_i
+    };
+  }
+
+  function get_aero_thrust(n_rps, D, rho, pd, c_mean) {
+    if (n_rps <= 0) return 0.0;
+    const ct = prop_coefficients({
+      pitch_diameter_ratio: (pd !== undefined) ? pd : DEFAULT_PD,
+      n_rps: n_rps,
+      D: D,
+      rho: rho,
+      c_mean: (c_mean !== undefined) ? c_mean : prop_mean_chord(D),
+      mu: MU_AIR
+    }).ct;
+    return ct * rho * n_rps * n_rps * Math.pow(D, 4);
+  }
+
+  function get_prop_torque(n_rps, D, rho, pd, c_mean) {
+    if (n_rps <= 0) return 0.0;
+    const cq = prop_coefficients({
+      pitch_diameter_ratio: (pd !== undefined) ? pd : DEFAULT_PD,
+      n_rps: n_rps,
+      D: D,
+      rho: rho,
+      c_mean: (c_mean !== undefined) ? c_mean : prop_mean_chord(D),
+      mu: MU_AIR
+    }).cq;
+    return cq * rho * n_rps * n_rps * Math.pow(D, 5);
+  }
+
+  function get_req_rps(t_target, D, rho, pd, c_mean) {
+    // Ct_eff is independent of speed, so any positive probe speed yields it.
+    const ct = prop_coefficients({
+      pitch_diameter_ratio: (pd !== undefined) ? pd : DEFAULT_PD,
+      n_rps: 1.0,
+      D: D,
+      rho: rho,
+      c_mean: (c_mean !== undefined) ? c_mean : prop_mean_chord(D),
+      mu: MU_AIR
+    }).ct;
+    return Math.sqrt(t_target / (ct * rho * Math.pow(D, 4)));
+  }
+
+  // Solves the steady-state operating point of the actuator circuit.
+  // Optional ctx = { cells, capacity_mah, R_esc, pd, c_mean } supplies the
+  // battery/ESC/propeller context for the effective resistance and the
+  // theory.md coefficient model; sensible defaults apply when omitted.
+  function calc_motor_point(motor, V, D, rho, tMotor, ctx) {
     const kv = motor.kv;
     const temp = (tMotor !== undefined) ? tMotor : 25.0;
-    // Temperature dependent resistance Rw(T) = Rw0 * (1 + 0.00393 * (T - 20))
-    const rm = motor.rm_ohm * (1.0 + 0.00393 * (temp - 20.0));
+    ctx = ctx || {};
+    const pd = (ctx.pd !== undefined) ? ctx.pd : DEFAULT_PD;
+    const c_mean = (ctx.c_mean !== undefined) ? ctx.c_mean : prop_mean_chord(D);
+
+    // Total effective circuit resistance (theory.md §3): motor winding (temp
+    // dependent) + ESC + 4 * battery internal resistance.
+    const rm = effective_resistance({
+      rm0_ohm: motor.rm_ohm,
+      tempC: temp,
+      R_esc: (ctx.R_esc !== undefined) ? ctx.R_esc : R_ESC_PHASE,
+      cells: ctx.cells,
+      capacity_mah: ctx.capacity_mah
+    });
     const i0 = motor.i0_a;
 
     const ke = 30.0 / (kv * Math.PI); // back-EMF constant
     const d5 = Math.pow(D, 5);
-    
-    // solve quadratic: a * w^2 + b * w + c = 0
-    const a = (CQ_COEFF * rho * d5 * rm) / (4.0 * Math.PI * Math.PI * ke);
+
+    // The torque coefficient depends weakly on speed (via Reynolds number), so
+    // we evaluate it at an estimated operating speed and refine. Solve the
+    // quadratic a * w^2 + b * w + c = 0 each pass.
+    let w = V / ke; // no-load upper bound as the initial estimate
     const b = ke;
     const c = i0 * rm - V;
+    for (let it = 0; it < 3; it++) {
+      const n_est = Math.max(w / (2.0 * Math.PI), 1e-3);
+      const cq = prop_coefficients({
+        pitch_diameter_ratio: pd,
+        n_rps: n_est,
+        D: D,
+        rho: rho,
+        c_mean: c_mean,
+        mu: MU_AIR
+      }).cq;
+      const a = (cq * rho * d5 * rm) / (4.0 * Math.PI * Math.PI * ke);
+      const disc = b * b - 4.0 * a * c;
+      if (disc < 0) return null; // Stall condition
+      w = (-b + Math.sqrt(disc)) / (2.0 * a);
+    }
 
-    const disc = b * b - 4.0 * a * c;
-    if (disc < 0) return null; // Stall condition
-
-    const w = (-b + Math.sqrt(disc)) / (2.0 * a);
     const rpm = w * 30.0 / Math.PI;
     const i_mech = (V - ke * w) / rm;
     const i_total = Math.max(0, i_mech);
 
     const n = w / (2.0 * Math.PI);
-    const t_val = get_aero_thrust(n, D, rho);
-    const q_val = get_prop_torque(n, D, rho);
+    const t_val = get_aero_thrust(n, D, rho, pd, c_mean);
+    const q_val = get_prop_torque(n, D, rho, pd, c_mean);
     const p_mech = q_val * w;
     const p_elec = V * i_total;
 
@@ -226,7 +380,15 @@ const Calc = (function () {
     massBudget: get_mass_budget,
     hoverFlightTime: est_hover_time,
     propulsionMargin: get_prop_margin,
-    solveHoverThrottle: solve_hover_throttle
+    solveHoverThrottle: solve_hover_throttle,
+    // Centralized theory.md physics helpers (single source of truth).
+    ocvPerCell: ocv_per_cell,
+    batteryInternalR: battery_internal_r,
+    motorResistanceTemp: motor_resistance_temp,
+    effectiveResistance: effective_resistance,
+    propCoefficients: prop_coefficients,
+    pitchDiameterRatio: prop_pd,
+    meanChord: prop_mean_chord
   };
 })();
 window.Calc = Calc;
@@ -1593,13 +1755,19 @@ const FlightSim = (function () {
     const frame = _cfg.frame;
 
     const soc_start = _eTot > 0 ? _eRem / _eTot : 1.0;
-    // LiPo cell OCV curve fit: 3.5 + 0.16*soc + 0.54*soc^2 - 0.45*(1-soc)^4
-    const V_ocv_cell = 3.5 + 0.16 * soc_start + 0.54 * soc_start * soc_start - 0.45 * Math.pow(1.0 - soc_start, 4);
+    // Per-cell LiPo OCV per theory.md §5 (centralized helper).
+    const V_ocv_cell = Calc.ocvPerCell(soc_start);
     const V_oc_start = cells * V_ocv_cell;
-    const R_batt = cells * 0.008;
+    const R_batt = Calc.batteryInternalR(cells, _cfg.battery.capacity_mah);
     const V_batt_curr = Math.max(cells * 3.0, V_oc_start - _iLast * R_batt);
 
-    const op_max = Calc.solveOperatingPoint(motor, V_batt_curr, propeller.diameter_m, rho, _tMotor);
+    const motorCtx = {
+      cells: cells,
+      capacity_mah: _cfg.battery.capacity_mah,
+      pd: Calc.pitchDiameterRatio(propeller)
+    };
+
+    const op_max = Calc.solveOperatingPoint(motor, V_batt_curr, propeller.diameter_m, rho, _tMotor, motorCtx);
     const T_max = op_max ? op_max.thrust : 0.0;
 
     let thrust = 0.0;
@@ -1729,9 +1897,41 @@ const FlightSim = (function () {
             window.DroneModel.setSimRPM(0);
           }
           document.getElementById('btnPlay').textContent = (_fMode === 'manual') ? 'Start Flight' : 'Start Hover';
-          
-          const nextBtn = document.getElementById('nextModuleContainer');
-          if (nextBtn) nextBtn.style.display = 'block';
+
+          // Gate the proceed button on authority ratio pass
+          const _margin = window.VLAB && window.VLAB.state && window.VLAB.state.computed && window.VLAB.state.computed.margin;
+          const _authorityPass = _margin && _margin.pass === true;
+
+          if (_authorityPass) {
+            // Stamp hoverSimDone into vlabModule1 so module 2 can gate the unlock card
+            try {
+              const _m1Raw = localStorage.getItem('vlabModule1');
+              if (_m1Raw) {
+                const _m1State = JSON.parse(_m1Raw);
+                _m1State.hoverSimDone = true;
+                localStorage.setItem('vlabModule1', JSON.stringify(_m1State));
+              }
+            } catch (e) { /* ignore */ }
+
+            const nextBtn = document.getElementById('nextModuleContainer');
+            if (nextBtn) nextBtn.style.display = 'block';
+            const failCard = document.getElementById('nextModuleFailCard');
+            if (failCard) failCard.style.display = 'none';
+          } else {
+            // Authority ratio FAIL — show warning, block proceed
+            const nextBtn = document.getElementById('nextModuleContainer');
+            if (nextBtn) nextBtn.style.display = 'none';
+            const failCard = document.getElementById('nextModuleFailCard');
+            if (failCard) {
+              const ratio = _margin ? _margin.margin_ratio.toFixed(2) : '—';
+              const rating = _margin ? _margin.rating : 'FAIL';
+              const msgEl = document.getElementById('nextModuleFailMsg');
+              if (msgEl) {
+                msgEl.textContent = `Authority ratio is ${rating} (${ratio}:1) — minimum 1.30:1 required. Select a larger propeller, higher-KV motor, or higher-cell battery to achieve hover capability.`;
+              }
+              failCard.style.display = 'block';
+            }
+          }
         }
       }
       _yVal = Math.min(_yVal, 4.0);
@@ -2280,10 +2480,10 @@ const UI = (function () {
     const rps = r.op_point ? r.op_point.rpm / 60.0 : 100;
 
     document.getElementById('calcA_eval').innerHTML =
-      'T_req = (' + r.mass_kg.toFixed(4) + ' kg &times; 9.80665 m/s&sup2;) / 4 = ' + r.T_required_n.toFixed(4) + ' N per motor';
+      '<i>T</i><sub>req</sub> = (' + r.mass_kg.toFixed(4) + ' kg &times; 9.80665 m/s&sup2;) / 4 = ' + r.T_required_n.toFixed(4) + ' N per motor';
 
     document.getElementById('calcB_eval').innerHTML =
-      'T_aero = ' + Calc.Ct.toFixed(5) + ' &times; ' + r.rho.toFixed(4) + ' kg/m&sup3; &times; (' +
+      '<i>T</i><sub>aero</sub> = ' + Calc.Ct.toFixed(5) + ' &times; ' + r.rho.toFixed(4) + ' kg/m&sup3; &times; (' +
       rps.toFixed(1) + ' rps)&sup2; &times; (' + r.sel.propeller.diameter_m.toFixed(4) + ' m)<sup>4</sup> = ' + r.T_aero_n.toFixed(4) + ' N';
 
     document.getElementById('sumMass').textContent = r.mass_kg.toFixed(4) + ' kg';
@@ -2394,7 +2594,7 @@ const UI = (function () {
     const marginDesc = document.getElementById('sumMarginDesc');
     const marginCard = document.getElementById('sumMarginCard');
     if (marginVal) marginVal.textContent = '—';
-    if (marginDesc) marginDesc.textContent = 'T_aero / T_req';
+    if (marginDesc) marginDesc.innerHTML = '<i>T</i><sub>aero</sub> / <i>T</i><sub>req</sub>';
     if (marginCard) {
       marginCard.className = 'card-item';
     }
@@ -3120,10 +3320,23 @@ window.Mod2UI = Mod2UI;
     init: function () {
       const stored = localStorage.getItem('vlabModule1');
       if (stored) {
-        const nextBtn = document.getElementById('nextModuleContainer');
-        if (nextBtn) {
-          nextBtn.style.display = 'block';
-        }
+        // Migration: if hoverSimDone field missing (old session), treat as done
+        try {
+          const _s = JSON.parse(stored);
+          if (_s.hoverSimDone === undefined) {
+            _s.hoverSimDone = true;
+            localStorage.setItem('vlabModule1', JSON.stringify(_s));
+          }
+        } catch(e) {}
+
+        // Only restore the proceed button if hover sim was completed with a passing authority ratio
+        try {
+          const _storedState = JSON.parse(localStorage.getItem('vlabModule1'));
+          if (_storedState.hoverSimDone === true) {
+            const nextBtn = document.getElementById('nextModuleContainer');
+            if (nextBtn) nextBtn.style.display = 'block';
+          }
+        } catch (e) { /* ignore */ }
         const configSections = document.getElementById('configSections');
         const configPanelChevron = document.getElementById('configPanelChevron');
         if (configSections && configPanelChevron) {
@@ -3254,6 +3467,26 @@ window.Mod2UI = Mod2UI;
       document.getElementById('btn_lock_assembly').addEventListener('click', function () {
         _runAnalysisPipeline();
 
+        // Preserve hoverSimDone from existing stored state — only reset it if
+        // the component selections have actually changed from what was locked before.
+        let _prevHoverSimDone = false;
+        try {
+          const _prevRaw = localStorage.getItem('vlabModule1');
+          if (_prevRaw) {
+            const _prev = JSON.parse(_prevRaw);
+            const _sameSelections = (
+              _prev.fId  === (window.VLAB.state.selections.frame             ? window.VLAB.state.selections.frame.id             : null) &&
+              _prev.mId  === (window.VLAB.state.selections.motor             ? window.VLAB.state.selections.motor.id             : null) &&
+              _prev.pId  === (window.VLAB.state.selections.propeller         ? window.VLAB.state.selections.propeller.id         : null) &&
+              _prev.bId  === (window.VLAB.state.selections.battery           ? window.VLAB.state.selections.battery.id           : null) &&
+              _prev.eId  === (window.VLAB.state.selections.esc               ? window.VLAB.state.selections.esc.id               : null) &&
+              _prev.fcId === (window.VLAB.state.selections.flight_controller ? window.VLAB.state.selections.flight_controller.id : null) &&
+              _prev.rId  === (window.VLAB.state.selections.receiver          ? window.VLAB.state.selections.receiver.id          : null)
+            );
+            if (_sameSelections) _prevHoverSimDone = !!_prev.hoverSimDone;
+          }
+        } catch (e) { /* ignore */ }
+
         const compactState = {
           fId: window.VLAB.state.selections.frame ? window.VLAB.state.selections.frame.id : null,
           mId: window.VLAB.state.selections.motor ? window.VLAB.state.selections.motor.id : null,
@@ -3266,9 +3499,21 @@ window.Mod2UI = Mod2UI;
           T_req: window.VLAB.state.computed.T_required,
           alt: window.VLAB.state.altitude_m,
           rho: window.VLAB.state.rho,
-          isLocked: true
+          isLocked: true,
+          hoverSimDone: _prevHoverSimDone
         };
         localStorage.setItem('vlabModule1', JSON.stringify(compactState));
+
+        // Restore or hide proceed/fail cards based on preserved hover state
+        const _nxt = document.getElementById('nextModuleContainer');
+        const _fail = document.getElementById('nextModuleFailCard');
+        if (_prevHoverSimDone) {
+          if (_nxt) _nxt.style.display = 'block';
+          if (_fail) _fail.style.display = 'none';
+        } else {
+          if (_nxt) _nxt.style.display = 'none';
+          if (_fail) _fail.style.display = 'none';
+        }
 
         document.getElementById('tab_test').disabled = false;
         document.getElementById('tab_hover').disabled = false;
@@ -3699,7 +3944,19 @@ window.Mod2UI = Mod2UI;
       return;
     }
 
-    window.VLAB_MOD2.data = JSON.parse(raw);
+    // Migration: if vlabModule1 exists but has no hoverSimDone field,
+    // treat it as done (user completed hover sim before this field was added).
+    // Also, if vlabModule2Sweep exists alongside it, the experiments were
+    // both completed — honour that state.
+    try {
+      const _migState = JSON.parse(raw);
+      if (_migState.hoverSimDone === undefined) {
+        _migState.hoverSimDone = true; // assume done for existing sessions
+        localStorage.setItem('vlabModule1', JSON.stringify(_migState));
+      }
+    } catch(e) {}
+
+    window.VLAB_MOD2.data = JSON.parse(localStorage.getItem('vlabModule1'));
 
     fetch('db/db.json')
       .then(r => r.json())
@@ -3910,10 +4167,15 @@ window.Mod2UI = Mod2UI;
     if (sweepRaw) {
       try {
         const sweepData = JSON.parse(sweepRaw);
+        // Only show the unlock card if module 1 hover sim was also completed
+        const _m1RestoreRaw = localStorage.getItem('vlabModule1');
+        let _hoverSimDone = false;
+        try { _hoverSimDone = _m1RestoreRaw ? JSON.parse(_m1RestoreRaw).hoverSimDone === true : false; } catch(e) {}
+
         if (sweepData && sweepData.isDone && sweepData.dataPoints) {
           const dataPoints = sweepData.dataPoints;
           const nextContainer = document.getElementById('nextModuleContainer');
-          if (nextContainer) {
+          if (nextContainer && _hoverSimDone) {
             nextContainer.style.display = 'block';
           }
 
@@ -3949,8 +4211,9 @@ window.Mod2UI = Mod2UI;
 
           _showMsg(`Actuator profiling complete. Peak efficiency reached at ${peakThr}% throttle. Copper winding loss dominates high throttle range.`);
 
-          if (Mod2UI.initUnlockScene) {
-            Mod2UI.initUnlockScene();
+          if (_hoverSimDone && Mod2UI.initUnlockScene) {
+            // Defer so the container is visible and canvas has dimensions before WebGL init
+            requestAnimationFrame(function() { Mod2UI.initUnlockScene(); });
           }
         }
       } catch (e) {
@@ -4011,6 +4274,13 @@ window.Mod2UI = Mod2UI;
     }
 
     // Sync updated choices back to local storage record vlabModule1
+    // Preserve hoverSimDone from whatever is currently stored
+    let _existingHoverDone = false;
+    try {
+      const _existingRaw = localStorage.getItem('vlabModule1');
+      if (_existingRaw) _existingHoverDone = !!JSON.parse(_existingRaw).hoverSimDone;
+    } catch(e) {}
+
     const compactState = {
       fId: sel.frame ? sel.frame.id : null,
       mId: sel.motor ? sel.motor.id : null,
@@ -4022,7 +4292,8 @@ window.Mod2UI = Mod2UI;
       pldIds: (sel.payloads || []).map(p => p.id),
       T_req: T_req,
       alt: window.VLAB_MOD2.data.altitude_m,
-      rho: rho
+      rho: rho,
+      hoverSimDone: _existingHoverDone
     };
     localStorage.setItem('vlabModule1', JSON.stringify(compactState));
 
@@ -4122,17 +4393,20 @@ window.Mod2UI = Mod2UI;
     }
 
     const cells = batt ? batt.cells : 4;
+    const capacity_mah = batt ? batt.capacity_mah : 1500;
     const soc = 0.95; // Assume 95% charge for static slider input
-    const V_cell_ocv = 3.5 + 0.16 * soc + 0.54 * soc * soc - 0.45 * Math.pow(1 - soc, 4);
+    const V_cell_ocv = Calc.ocvPerCell(soc);
     const V_ocv = cells * V_cell_ocv;
-    const R_int = cells * 0.008;
+    const R_int = Calc.batteryInternalR(cells, capacity_mah);
+    const propSel = window.VLAB_MOD2.data.selections.propeller;
+    const motorCtx = { cells: cells, capacity_mah: capacity_mah, pd: Calc.pitchDiameterRatio(propSel) };
 
     let V_applied = (pct / 100.0) * V_ocv;
-    let op = Calc.solveOperatingPoint(motor, V_applied, D, rho, _tMotorMod2);
+    let op = Calc.solveOperatingPoint(motor, V_applied, D, rho, _tMotorMod2, motorCtx);
     if (op) {
       const I_total = op.curr * 4;
       V_applied = Math.max(cells * 3.0, (pct / 100.0) * (V_ocv - I_total * R_int));
-      op = Calc.solveOperatingPoint(motor, V_applied, D, rho, _tMotorMod2);
+      op = Calc.solveOperatingPoint(motor, V_applied, D, rho, _tMotorMod2, motorCtx);
     }
     
     const freeRpm = motor.kv * V_applied;
@@ -4180,6 +4454,12 @@ window.Mod2UI = Mod2UI;
     const rho = window.VLAB_MOD2.data.rho;
     const motor = window.VLAB_MOD2.data.selections.motor;
     const batt = window.VLAB_MOD2.data.selections.battery;
+    const propSel = window.VLAB_MOD2.data.selections.propeller;
+    const sweepMotorCtx = {
+      cells: batt ? batt.cells : 4,
+      capacity_mah: batt ? batt.capacity_mah : 1500,
+      pd: Calc.pitchDiameterRatio(propSel)
+    };
     
     const btn = document.getElementById('btn_profile_sweep');
     const status = document.getElementById('sweepStatus');
@@ -4233,12 +4513,18 @@ window.Mod2UI = Mod2UI;
         
         localStorage.setItem('vlabModule2Sweep', JSON.stringify({ isDone: true, dataPoints: dataPoints }));
 
+        // Only show the unlock card if module 1 hover sim was also completed
+        const _m1Check = localStorage.getItem('vlabModule1');
+        let _hoverDone = false;
+        try { _hoverDone = _m1Check ? JSON.parse(_m1Check).hoverSimDone === true : false; } catch(e) {}
+
         const nextContainer = document.getElementById('nextModuleContainer');
-        if (nextContainer) {
+        if (nextContainer && _hoverDone) {
           nextContainer.style.display = 'block';
         }
-        if (Mod2UI.initUnlockScene) {
-          Mod2UI.initUnlockScene();
+        if (_hoverDone && Mod2UI.initUnlockScene) {
+          // Defer so the container is visible and canvas has dimensions before WebGL init
+          requestAnimationFrame(function() { Mod2UI.initUnlockScene(); });
         }
         return;
       }
@@ -4248,16 +4534,18 @@ window.Mod2UI = Mod2UI;
       // Calculate voltage sag for this step
       const cells = batt ? batt.cells : 4;
       const soc = _eTotMod2 > 0 ? _eRemMod2 / _eTotMod2 : 1.0;
-      const V_cell_ocv = 3.5 + 0.16 * soc + 0.54 * soc * soc - 0.45 * Math.pow(1 - soc, 4);
+      // Per-cell LiPo OCV per theory.md §5 (centralized helper).
+      const V_cell_ocv = Calc.ocvPerCell(soc);
       const V_ocv = cells * V_cell_ocv;
-      const R_int = cells * 0.008;
+      // Battery internal resistance scales with capacity per theory.md §3.
+      const R_int = Calc.batteryInternalR(cells, sweepMotorCtx.capacity_mah);
 
       let V_applied = (thrPct / 100.0) * V_ocv;
-      let op = Calc.solveOperatingPoint(motor, V_applied, D, rho, _tMotorMod2);
+      let op = Calc.solveOperatingPoint(motor, V_applied, D, rho, _tMotorMod2, sweepMotorCtx);
       if (op) {
         const I_total = op.curr * 4;
         V_applied = Math.max(cells * 3.0, (thrPct / 100.0) * (V_ocv - I_total * R_int));
-        op = Calc.solveOperatingPoint(motor, V_applied, D, rho, _tMotorMod2);
+        op = Calc.solveOperatingPoint(motor, V_applied, D, rho, _tMotorMod2, sweepMotorCtx);
       }
       
       if (op) {
