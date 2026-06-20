@@ -687,7 +687,11 @@
       "cl_max": 1.2,
       "stall_angle_deg": 15,
       "color_hex": "#3b82f6",
-      "reference": "NACA TR-824"
+      "reference": "NACA TR-824",
+      "cd0": 0.0120,
+      "cl_alpha_per_rad": 6.868,
+      "ar_eff": 6.0,
+      "oswald_e": 0.85
     },
     {
       "id": "naca_2412",
@@ -699,7 +703,11 @@
       "cl_max": 1.4,
       "stall_angle_deg": 14,
       "color_hex": "#10b981",
-      "reference": "NACA TR-824"
+      "reference": "NACA TR-824",
+      "cd0": 0.0125,
+      "cl_alpha_per_rad": 6.868,
+      "ar_eff": 6.0,
+      "oswald_e": 0.85
     },
     {
       "id": "naca_4412",
@@ -711,8 +719,18 @@
       "cl_max": 1.6,
       "stall_angle_deg": 13,
       "color_hex": "#f59e0b",
-      "reference": "NACA TR-824"
+      "reference": "NACA TR-824",
+      "cd0": 0.0130,
+      "cl_alpha_per_rad": 6.868,
+      "ar_eff": 6.0,
+      "oswald_e": 0.85
     }
+  ],
+
+  "blade_materials": [
+    { "id": "glass_nylon",  "label": "Glass Nylon",  "density_kg_m3": 1200, "color_hex": "#f1f5f9" },
+    { "id": "carbon_nylon", "label": "Carbon Nylon", "density_kg_m3": 1350, "color_hex": "#374151" },
+    { "id": "carbon_fibre", "label": "Carbon Fibre", "density_kg_m3": 1550, "color_hex": "#1c1c1e" }
   ],
 
   "drag_coefficients": {
