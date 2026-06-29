@@ -1,0 +1,6 @@
+node_modules
+build
+plugins
+package-lock.json
+package.json
+experiment-descriptor.json
