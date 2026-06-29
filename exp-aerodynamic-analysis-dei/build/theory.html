@@ -1,0 +1,656 @@
+<!DOCTYPE html><html lang="en"><head>
+    <meta charset="utf-8">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta content="" name="description">
+    <meta content="" name="author">
+    
+    	<meta name="experiment-short-name" content="aerodynamic-analysis">
+    	<meta name="developer-institute" content="DEI">
+    	<meta name="learning-unit" content="AERODYNAMIC ANALYSIS: PROPELLER BLADE AIRFOIL, DRAG &amp; ADVANCE RATIO">
+    	<meta name="task-name" content="Theory">
+    
+    <!-- For iPhone -->
+    <meta name="msapplication-TileColor" content="#4076e0">
+    <!-- Chrome, Firefox OS and Opera -->
+    <meta name="theme-color" content="#4076e0">
+    <!-- Windows Phone -->
+    <meta name="msapplication-navbutton-color" content="#4076e0">
+    <title>Virtual Labs</title>
+    <link rel="shortcut icon" href="./assets/images/favicon.ico">
+    <link rel="stylesheet" href="./assets/css/bootstrap.min.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/github-markdown-css/4.0.0/github-markdown.min.css" integrity="sha512-Oy18vBnbSJkXTndr2n6lDMO5NN31UljR8e/ICzVPrGpSud4Gkckb8yUpqhKuUNoE+o9gAb4O/rAxxw1ojyUVzg==" crossorigin="anonymous">
+    <link href="https://fonts.googleapis.com/css2?family=Open+Sans&amp;family=Raleway&amp;display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="./assets/fonts/font-awesome-4.7.0/css/font-awesome.min.css">
+    <link rel="stylesheet" href="./assets/css/github-markdown.min.css">
+    <link rel="stylesheet" href="./assets/css/vlabs-style.css">
+    <link rel="stylesheet" href="./assets/css/toast.css">
+    <link rel="stylesheet" href="./assets/katex_assets/katex.min.css">
+    
+    <script src="./assets/js/jquery-3.4.1.slim.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@popperjs/core@2.5.4/dist/umd/popper.min.js" integrity="sha384-q2kxQ16AaE6UbzuKqyBE9/u/KzioAlnx2maXQHiDX9d4/zp8Ok3f+M7DPm+Ib6IU" crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.0.0-beta1/dist/js/bootstrap.min.js" integrity="sha384-pQQkAEnwaBkjpqZ8RU1fF1AKtTcHJwFl3pblpTlHXybJjHpMYo79HY3hIi4NKxyj" crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+    <style>
+      h1 {
+      font-size: 1.8rem;
+      }
+      h2 {
+      font-size: 1.4rem;
+      }
+      h3 {
+      font-size: 1.2rem;
+      }
+
+      h2, h3 {
+      font-weight: 800;
+      }
+    </style>
+    
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.2.1/css/all.min.css"></head>
+  <body class="p-0 container-fluid vlabs-page d-flex flex-column justify-content-between">
+  
+      <header class="vlabs-header sticky-top bg-white">
+        <nav class="p-0 navbar navbar-light d-flex align-items-stretch">
+          
+          <button class="navbar-toggler px-4" type="button" onclick="toggle()">
+            <span class="navbar-toggler-icon"></span>
+          </button>
+      
+          <div class="d-flex justify-content-center">        
+            <a href="https://vlab.co.in" class="navbar-brand">
+              <img src="./assets/images/vlabs-color-small-moe.jpg" alt="vlabs logo" class="vlabs-logo">
+            </a>
+          </div>
+          
+          <div id="headerNavbar" class="d-none border-top flex-grow-1 d-lg-flex align-items-center justify-content-end">
+            <div class="svc-rating-display">
+                <rating-display spreadsheetid="1x12nhpp0QvnsA6x-O1sV4IA9SAbfVsq_wiexWkutOmU" sheetname="Experiment-Database" columnname="Experiment Short Name" columnvalue="aerodynamic-analysis" imagesdirectory="./plugins/svc-rating/images/">
+                </rating-display>
+            </div>      <div class="svc-rating-submit">
+                <rating-submit title="Rate" this="" experiment="">
+                </rating-submit>
+            </div>      <bug-report id="bug-report" title="[BUG REPORT] AERODYNAMIC ANALYSIS: PROPELLER BLADE AIRFOIL, DRAG &amp; ADVANCE RATIO" page-type="text" context-info="{&quot;organisation&quot;:&quot;Virtual Labs&quot;,&quot;developer_institute&quot;:&quot;DEI&quot;,&quot;expname&quot;:&quot;AERODYNAMIC ANALYSIS: PROPELLER BLADE AIRFOIL, DRAG &amp; ADVANCE RATIO&quot;,&quot;labname&quot;:&quot;Virtual Lab&quot;,&quot;phase&quot;:&quot;Testing&quot;}" checkbox-json="{&quot;text&quot;:[&quot;Insufficient Content&quot;],&quot;video&quot;:[&quot;Insufficient Content&quot;],&quot;assesment&quot;:[&quot;Incorrect Options&quot;,&quot;Incorrect Answer&quot;,&quot;Incorrect Question&quot;],&quot;assessment&quot;:[&quot;Incorrect Options&quot;,&quot;Incorrect Answer&quot;,&quot;Incorrect Question&quot;],&quot;simulation&quot;:[&quot;Simulation Not Working&quot;,&quot;Incorrect Results/Observations&quot;,&quot;Insufficient/Incorrect Instructions&quot;],&quot;DEFAULT&quot;:[&quot;Page Not Loading&quot;,&quot;Content Not Visible&quot;,&quot;Incorrect Content&quot;]}" button_style="border: none; color: #fff; background-color: #288ec8; text-align: center; font-size: 1.05rem; border-radius: 1em;padding: 0.6em 1.2em; margin: 0 10px" position="override" custom_button_class="v-button"></bug-report>
+          </div>
+        </nav>
+      </header>
+      <div class="container-fluid flex-fill d-flex flex-column vlabs-page-main">
+        <div class="row d-flex justify-content-between">
+          <div class="flex-column">
+          <div class="row py-4 px-4 breadcrumbs">
+          	<div class="title is-4 tools">Tools</div>
+          	<span class="mx-2">
+          		<i aria-hidden="true" class="fa fa-angle-right"></i>
+          	</span>
+          	<a href="performance-report.html" class="my-2 mx-3" target="_blank">
+          		<button class="v-button">Performance Tool</button>
+          	</a>
+          	<a href="validator-report.html" class="my-2 mx-3" target="_blank">
+          		<button class="v-button">Validation Tool</button>
+          	</a>
+          </div>
+          </div>
+        </div>
+        <div class="row flex-grow-1 d-flex flex-nowrap flex-column flex-lg-row">
+          <div class="modal fade popupmenu" id="popupMenu" tabindex="-1" aria-labelledby="exampleModalLabel" aria-hidden="true">
+              <div class="modal-dialog modal-dialog-centered modal-dialog-scrollable">
+                  <div class="modal-content">
+                      <div class="modal-header">
+                          <h5 class="modal-title" id="exampleModalLabel">
+                              <a href="https://vlab.co.in" class="navbar-brand">
+                                  <img src="./assets/images/vlabs-color-small-moe.jpg" alt="vlabs logo" class="vlabs-logo">
+                              </a>
+                          </h5>
+                          <button type="button" class="btn-close align-self-center" data-bs-dismiss="modal" aria-label="Close"></button>
+                      </div>
+                      <div class="modal-body nav-menu">
+                              <div>
+                                  <div class="d-flex nav-menu-body">
+                                      <a href="index.html" class="p-2 ">
+                                      Aim
+                                      </a>
+                                      
+                                  </div>
+                                  <div id="t-" class="collapse">
+                                      <div class="px-3 d-flex flex-column tasks align-items-center align-items-lg-start">
+                                      </div>
+                                  </div>
+                              </div>
+                              <div>
+                                  <div class="d-flex nav-menu-body">
+                                      <a href="theory.html" class="p-2  current-item ">
+                                      Theory
+                                      </a>
+                                      
+                                  </div>
+                                  <div id="t-" class="collapse">
+                                      <div class="px-3 d-flex flex-column tasks align-items-center align-items-lg-start">
+                                      </div>
+                                  </div>
+                              </div>
+                              <div>
+                                  <div class="d-flex nav-menu-body">
+                                      <a href="pretest.html" class="p-2 ">
+                                      Pretest
+                                      </a>
+                                      
+                                  </div>
+                                  <div id="t-" class="collapse">
+                                      <div class="px-3 d-flex flex-column tasks align-items-center align-items-lg-start">
+                                      </div>
+                                  </div>
+                              </div>
+                              <div>
+                                  <div class="d-flex nav-menu-body">
+                                      <a href="procedure.html" class="p-2 ">
+                                      Procedure
+                                      </a>
+                                      
+                                  </div>
+                                  <div id="t-" class="collapse">
+                                      <div class="px-3 d-flex flex-column tasks align-items-center align-items-lg-start">
+                                      </div>
+                                  </div>
+                              </div>
+                              <div>
+                                  <div class="d-flex nav-menu-body">
+                                      <a href="simulation.html" class="p-2 ">
+                                      Simulation
+                                      </a>
+                                      
+                                  </div>
+                                  <div id="t-" class="collapse">
+                                      <div class="px-3 d-flex flex-column tasks align-items-center align-items-lg-start">
+                                      </div>
+                                  </div>
+                              </div>
+                              <div>
+                                  <div class="d-flex nav-menu-body">
+                                      <a href="posttest.html" class="p-2 ">
+                                      Posttest
+                                      </a>
+                                      
+                                  </div>
+                                  <div id="t-" class="collapse">
+                                      <div class="px-3 d-flex flex-column tasks align-items-center align-items-lg-start">
+                                      </div>
+                                  </div>
+                              </div>
+                              <div>
+                                  <div class="d-flex nav-menu-body">
+                                      <a href="references.html" class="p-2 ">
+                                      References
+                                      </a>
+                                      
+                                  </div>
+                                  <div id="t-" class="collapse">
+                                      <div class="px-3 d-flex flex-column tasks align-items-center align-items-lg-start">
+                                      </div>
+                                  </div>
+                              </div>
+                              <div>
+                                  <div class="d-flex nav-menu-body">
+                                      <a href="contributors.html" class="p-2 ">
+                                      Contributors
+                                      </a>
+                                      
+                                  </div>
+                                  <div id="t-" class="collapse">
+                                      <div class="px-3 d-flex flex-column tasks align-items-center align-items-lg-start">
+                                      </div>
+                                  </div>
+                              </div>
+                              <div>
+                                  <div class="d-flex nav-menu-body">
+                                      <a href="feedback.html" class="p-2 ">
+                                      Feedback
+                                      </a>
+                                      
+                                  </div>
+                                  <div id="t-" class="collapse">
+                                      <div class="px-3 d-flex flex-column tasks align-items-center align-items-lg-start">
+                                      </div>
+                                  </div>
+                              </div>
+                      </div>
+                  </div>
+              </div>
+          </div>
+          <div class="nav flex-column sidebar nav-menu flex-shrink-0 px-lg-4 align-items-center align-items-lg-start hidden d-none d-lg-flex" id="menu">
+                <div>
+                    <div class="d-flex nav-menu-body">
+                        <a href="index.html" class="p-2 ">
+                        Aim
+                        </a>
+                        
+                    </div>
+                    <div id="t-" class="collapse">
+                        <div class="px-3 d-flex flex-column tasks align-items-center align-items-lg-start">
+                        </div>
+                    </div>
+                </div>
+                <div>
+                    <div class="d-flex nav-menu-body">
+                        <a href="theory.html" class="p-2  current-item ">
+                        Theory
+                        </a>
+                        
+                    </div>
+                    <div id="t-" class="collapse">
+                        <div class="px-3 d-flex flex-column tasks align-items-center align-items-lg-start">
+                        </div>
+                    </div>
+                </div>
+                <div>
+                    <div class="d-flex nav-menu-body">
+                        <a href="pretest.html" class="p-2 ">
+                        Pretest
+                        </a>
+                        
+                    </div>
+                    <div id="t-" class="collapse">
+                        <div class="px-3 d-flex flex-column tasks align-items-center align-items-lg-start">
+                        </div>
+                    </div>
+                </div>
+                <div>
+                    <div class="d-flex nav-menu-body">
+                        <a href="procedure.html" class="p-2 ">
+                        Procedure
+                        </a>
+                        
+                    </div>
+                    <div id="t-" class="collapse">
+                        <div class="px-3 d-flex flex-column tasks align-items-center align-items-lg-start">
+                        </div>
+                    </div>
+                </div>
+                <div>
+                    <div class="d-flex nav-menu-body">
+                        <a href="simulation.html" class="p-2 ">
+                        Simulation
+                        </a>
+                        
+                    </div>
+                    <div id="t-" class="collapse">
+                        <div class="px-3 d-flex flex-column tasks align-items-center align-items-lg-start">
+                        </div>
+                    </div>
+                </div>
+                <div>
+                    <div class="d-flex nav-menu-body">
+                        <a href="posttest.html" class="p-2 ">
+                        Posttest
+                        </a>
+                        
+                    </div>
+                    <div id="t-" class="collapse">
+                        <div class="px-3 d-flex flex-column tasks align-items-center align-items-lg-start">
+                        </div>
+                    </div>
+                </div>
+                <div>
+                    <div class="d-flex nav-menu-body">
+                        <a href="references.html" class="p-2 ">
+                        References
+                        </a>
+                        
+                    </div>
+                    <div id="t-" class="collapse">
+                        <div class="px-3 d-flex flex-column tasks align-items-center align-items-lg-start">
+                        </div>
+                    </div>
+                </div>
+                <div>
+                    <div class="d-flex nav-menu-body">
+                        <a href="contributors.html" class="p-2 ">
+                        Contributors
+                        </a>
+                        
+                    </div>
+                    <div id="t-" class="collapse">
+                        <div class="px-3 d-flex flex-column tasks align-items-center align-items-lg-start">
+                        </div>
+                    </div>
+                </div>
+                <div>
+                    <div class="d-flex nav-menu-body">
+                        <a href="feedback.html" class="p-2 ">
+                        Feedback
+                        </a>
+                        
+                    </div>
+                    <div id="t-" class="collapse">
+                        <div class="px-3 d-flex flex-column tasks align-items-center align-items-lg-start">
+                        </div>
+                    </div>
+                </div>
+          </div>          <div class="vlabs-page-content px-5 pb-4 flex-grow-1 markdown-body">
+            <div class="text-center fix-spacing">
+              <h2 id="aerodynamic-analysis-propeller-blade-airfoil-drag--advance-ratio">Aerodynamic Analysis: Propeller Blade Airfoil, Drag &amp; Advance Ratio</h2>
+          
+            </div>
+              <h1 id="theoretical-background-aerodynamic-analysis">Theoretical Background: Aerodynamic Analysis</h1>
+          <p>This experiment covers the full aerodynamic picture of the drone. While previous experiments treated thrust as a simple vector, this module breaks down exactly how that thrust is generated by the propeller blade, how the drone's body opposes forward motion, and how efficiently the propeller converts rotational power into forward thrust.</p>
+          <p>Before working through the underlying physics, the animation below walks through the full aerodynamic story — from a single blade section acting as a wing, through lift, drag, and stall, to the spinning propeller and the efficiency it delivers.</p>
+          <p align="center">
+            <video controls="" playsinline="" preload="metadata" width="100%" style="max-width: 860px; border-radius: 8px;">
+              <source src="./videos/aerodynamic_analysis.mp4" type="video/mp4">
+              Your browser does not support the HTML5 video tag. You can
+              <a href="./videos/aerodynamic_analysis.mp4">download the video</a> instead.
+            </video>
+          </p>
+          
+          <hr>
+          <h2 id="1-lift-coefficient-vs-angle-of-attack-sub-calc-a">1. Lift Coefficient vs Angle of Attack (Sub-Calc A)</h2>
+          <p>The lift generated by an airfoil is characterized by the Lift Coefficient (<i>C</i><sub>l</sub>), a dimensionless number representing the lifting capability of the blade section. According to thin airfoil theory, the lift coefficient varies linearly with the Angle of Attack (<i>α</i>) until stall:</p>
+          <p align="center"><b><i>C</i><sub>l</sub> = 2π(<i>α</i> − <i>α</i><sub>0</sub>)</b></p>
+          
+          <p>Where:</p>
+          <ul>
+          <li><i>C</i><sub>l</sub> is the Lift Coefficient, a dimensionless number representing the lifting capability of the airfoil.</li>
+          <li><i>α</i> (alpha) is the Angle of Attack, the angle between the oncoming air and the airfoil's chord line.</li>
+          <li><i>α</i><sub>0</sub> is the zero-lift angle of attack, derived from standard NACA TR-824 wind tunnel data.</li>
+          </ul>
+          <blockquote>
+          <p><strong>Note on slope:</strong> The theoretical lift-curve slope is 2π per <strong>radian</strong> ≈ <strong>0.1097 per degree</strong>. This means each 1° increase in angle of attack adds approximately 0.11 to <i>C</i><sub>l</sub> in the linear regime (e.g., at <i>α</i> = 5° for NACA 0012: <i>C</i><sub>l</sub> = 2π × 5 × π/180 ≈ 0.55).</p>
+          </blockquote>
+          <blockquote>
+          <p><strong>Worked example — lift coefficient of a NACA 2412 section at <i>α</i> = 5°.</strong> Using the zero-lift angle <i>α</i><sub>0</sub> = −2.0° from the NACA airfoil table below:</p>
+          <p align="center"><i>C</i><sub>l</sub> = 2π(<i>α</i> − <i>α</i><sub>0</sub>) = 2π(5° − (−2°)) = 2π × 0.1222 rad = <b>0.768</b></p>
+          This sits well below the section's <i>C</i><sub>l,max</sub> ≈ 1.4 (stall at 14°), so the flow stays fully attached and the linear thin-airfoil result is valid.
+          </blockquote>
+          <h3 id="naca-airfoil-profiles">NACA Airfoil Profiles</h3>
+          <p>The NACA 4-digit airfoil designation describes the geometry:</p>
+          <ul>
+          <li><strong>First digit</strong>: Maximum camber as percentage of chord (0 = symmetric)</li>
+          <li><strong>Second digit</strong>: Location of maximum camber from leading edge (tenths of chord)</li>
+          <li><strong>Third &amp; fourth digits</strong>: Maximum thickness as percentage of chord</li>
+          </ul>
+          <table>
+          <thead>
+          <tr>
+          <th>Airfoil</th>
+          <th>Camber (%)</th>
+          <th>Camber Position</th>
+          <th>Thickness (%)</th>
+          <th><i>α</i><sub>0</sub> (deg)</th>
+          </tr>
+          </thead>
+          <tbody><tr>
+          <td>NACA 0012</td>
+          <td>0</td>
+          <td>N/A</td>
+          <td>12</td>
+          <td>0.0</td>
+          </tr>
+          <tr>
+          <td>NACA 2412</td>
+          <td>2</td>
+          <td>40%</td>
+          <td>12</td>
+          <td>-2.0</td>
+          </tr>
+          <tr>
+          <td>NACA 4412</td>
+          <td>4</td>
+          <td>40%</td>
+          <td>12</td>
+          <td>-4.0</td>
+          </tr>
+          </tbody></table>
+          <h3 id="stall-characteristics">Stall Characteristics</h3>
+          <p>As the angle of attack increases, the lift coefficient increases linearly until the flow separates from the upper surface. This separation causes:</p>
+          <ul>
+          <li><strong>Stall</strong>: A sudden loss of lift</li>
+          <li><strong>Cl_max</strong>: The maximum lift coefficient before stall</li>
+          <li><strong>Stall angle</strong>: The angle of attack at which Cl_max occurs</li>
+          </ul>
+          <p>The heavily cambered NACA 4412 achieves a higher <i>C</i><sub>l,max</sub> ≈ 1.6 compared to the symmetric NACA 0012 (<i>C</i><sub>l,max</sub> ≈ 1.2), but stalls at a lower angle of attack.</p>
+          <blockquote>
+          <p><strong>Low-Re Stall Note:</strong> The stall angles listed (e.g., NACA 0012 at 15°) are based on high-Reynolds-number wind tunnel data (<i>Re</i> &gt; 1×10<sup>6</sup>). Drone propeller tips typically operate at <i>Re</i> = 50,000–200,000, where stall generally occurs earlier at 12–14°. The curves in this experiment are high-Re educational approximations; see Section 5 for low-Reynolds number considerations.</p>
+          </blockquote>
+          <p><img src="./images/airfoil_profiles.png" alt="Airfoil Profiles Comparison"></p>
+          <hr>
+          <h2 id="2-aerodynamic-drag-sub-calc-b">2. Aerodynamic Drag (Sub-Calc B)</h2>
+          <p>The aerodynamic drag force opposing the drone's forward motion is calculated using the drag equation:</p>
+          <p align="center"><b><i>F</i><sub>D</sub> = 0.5 · <i>ρ</i> · <i>V</i><sup>2</sup> · <i>C</i><sub>d</sub> · <i>A</i><sub>frontal</sub></b></p>
+          
+          <p>Where:</p>
+          <ul>
+          <li><i>F</i><sub>D</sub> is the Drag force opposing the drone's motion, measured in Newtons (N).</li>
+          <li><i>ρ</i> (rho) is the air density (1.225 kg/m<sup>3</sup> at sea level).</li>
+          <li><i>V</i> is the wind speed or forward airspeed, measured in metres per second (m/s).</li>
+          <li><i>C</i><sub>d</sub> is the Drag coefficient. For a standard X-frame bluff body, this is approximated as <strong>1.05</strong> based on NASA TN-D-8236. <strong>Note:</strong> This value applies to the clean airframe body. In actual forward flight, rotor downwash turbulence and interference effects typically add 20–30% additional drag to the total system, not captured by this simplified body-only model.</li>
+          <li><i>A</i><sub>frontal</sub> is the frontal cross-sectional area of the drone.</li>
+          </ul>
+          <blockquote>
+          <p><strong>Worked example — frame drag of the 250 mm build at top wind speed.</strong> For the cf_250 frame (<i>A</i><sub>frontal</sub> = 0.0085 m<sup>2</sup>), the X-frame drag coefficient <i>C</i><sub>d</sub> = 1.05, sea-level <i>ρ</i> = 1.225 kg/m<sup>3</sup> and the maximum tunnel speed <i>V</i> = 15 m/s:</p>
+          <p align="center"><i>F</i><sub>D</sub> = 0.5 · <i>ρ</i> · <i>V</i><sup>2</sup> · <i>C</i><sub>d</sub> · <i>A</i> = 0.5 · 1.225 · 15<sup>2</sup> · 1.05 · 0.0085 = <b>1.23 N</b></p>
+          That is roughly 125 g-force of drag — modest at 15 m/s, but because <i>F</i><sub>D</sub> ∝ <i>V</i><sup>2</sup> it quadruples if the airspeed doubles.
+          </blockquote>
+          <h3 id="quadratic-drag-relationship">Quadratic Drag Relationship</h3>
+          <p>The drag equation demonstrates that drag force scales with the <strong>square of velocity</strong>. This fundamental relationship means:</p>
+          <ul>
+          <li>Doubling speed quadruples drag</li>
+          <li>Power required to overcome drag scales with <i>V</i><sup>3</sup></li>
+          </ul>
+          <p>When plotting <i>F</i><sub>D</sub> versus <i>V</i><sup>2</sup>, the relationship yields a perfectly linear regression with slope equal to 0.5 · <i>ρ</i> · <i>C</i><sub>d</sub> · <i>A</i>.</p>
+          <p><img src="./images/drag_setup.png" alt="Drag Force Setup"></p>
+          <hr>
+          <h2 id="3-advance-ratio-sub-calc-c">3. Advance Ratio (Sub-Calc C)</h2>
+          <p>The Advance Ratio (<i>J</i>) is a dimensionless parameter relating forward speed to propeller tip speed:</p>
+          <p align="center"><b><i>J</i> = <sup><i>V</i></sup> ⁄ <sub>(<i>n</i> · <i>D</i>)</sub></b></p>
+          
+          <p>Where:</p>
+          <ul>
+          <li><i>J</i> is the Advance Ratio, a dimensionless parameter.</li>
+          <li><i>V</i> is the forward airspeed (m/s).</li>
+          <li><i>n</i> is the propeller rotational speed in revolutions per second (RPS).</li>
+          <li><i>D</i> is the propeller diameter in metres.</li>
+          </ul>
+          <blockquote>
+          <p><strong>Worked example — advance ratio of the 5045 prop at 12,000 RPM.</strong> Taking <i>n</i> = 200 RPS (12,000 RPM) for the 5045 prop (<i>D</i> = 0.127 m) at a forward speed <i>V</i> = 12 m/s:</p>
+          <p align="center"><i>J</i> = <sup><i>V</i></sup> ⁄ <sub>(<i>n</i> · <i>D</i>)</sub> = <sup>12</sup> ⁄ <sub>(200 × 0.127)</sub> = <b>0.472</b></p>
+          This is just below the propeller's optimal <i>J</i> ≈ 0.55; reaching the peak-efficiency point at this RPM requires <i>V</i> = 0.55 × 200 × 0.127 ≈ 13.97 m/s.
+          </blockquote>
+          <h3 id="physical-interpretation">Physical Interpretation</h3>
+          <ul>
+          <li><strong>J = 0 (Hover)</strong>: The propeller operates in static conditions with no forward motion.</li>
+          <li><strong>J &gt; 0 (Forward Flight)</strong>: The propeller advances through the air, reducing the effective angle of attack.</li>
+          <li><strong>High J</strong>: The propeller may experience windmilling or thrust reversal.</li>
+          <li><strong>Optimal J</strong>: At the advance ratio where peak propulsive efficiency occurs, the effective blade angle of attack is at its most efficient point on the blade section's lift-to-drag polar — the blade operates closest to its design Cl/Cd maximum.</li>
+          </ul>
+          <p>The advance ratio bridges the gap between static hover performance and forward cruise efficiency.</p>
+          <p><img src="./images/advance_ratio_diagram.png" alt="Advance Ratio Diagram"></p>
+          <hr>
+          <h2 id="4-propulsive-efficiency-sub-calc-c">4. Propulsive Efficiency (Sub-Calc C)</h2>
+          <p>Propulsive efficiency (<i>η</i><sub>prop</sub>) measures how effectively the propeller converts rotational power into forward thrust:</p>
+          <p align="center"><b><i>η</i><sub>prop</sub> = <sup>(<i>T</i> · <i>V</i>)</sup> ⁄ <sub>(2π · <i>n</i> · <i>Q</i>)</sub></b></p>
+          
+          <p>Where:</p>
+          <ul>
+          <li><i>η</i><sub>prop</sub> is the Propulsive efficiency, expressed as a percentage (%).</li>
+          <li><i>T</i> is the Thrust (N).</li>
+          <li><i>V</i> is the Forward airspeed (m/s).</li>
+          <li><i>n</i> is the Rotational speed (RPS).</li>
+          <li><i>Q</i> is the Propeller torque (N·m), derived via the torque coefficient.</li>
+          </ul>
+          <h3 id="torque-calculation">Torque Calculation</h3>
+          <p>The propeller torque is calculated using:</p>
+          <p align="center"><b><i>Q</i> = <i>C</i><sub>q</sub> · <i>ρ</i> · <i>n</i><sup>2</sup> · <i>D</i><sup>5</sup></b></p>
+          
+          <p>Where <i>C</i><sub>q</sub> ≈ 0.0122 is the torque coefficient for a standard 5045 propeller (calibrated to forward-flight propulsive efficiency — distinct from static-hover bench test values where induced inflow and tip-loss effects shift Cq; the forward-flight Cq yields a peak propulsive efficiency of ≈ 78% at the optimal advance ratio).</p>
+          <blockquote>
+          <p><strong>Worked example — thrust, torque and efficiency at the optimal advance ratio.</strong> Running the 5045 prop (<i>C</i><sub>t</sub> = 0.109, <i>C</i><sub>q</sub> = 0.01223, <i>D</i> = 0.127 m) at <i>n</i> = 200 RPS, with <i>V</i> = 13.97 m/s so that <i>J</i> = 0.55:</p>
+          <p align="center"><i>T</i> = <i>C</i><sub>t</sub> · <i>ρ</i> · <i>n</i><sup>2</sup> · <i>D</i><sup>4</sup> = 0.109 · 1.225 · 200<sup>2</sup> · 0.127<sup>4</sup> = <b>1.39 N</b></p>
+          <p align="center"><i>Q</i> = <i>C</i><sub>q</sub> · <i>ρ</i> · <i>n</i><sup>2</sup> · <i>D</i><sup>5</sup> = 0.01223 · 1.225 · 200<sup>2</sup> · 0.127<sup>5</sup> = <b>0.0198 N·m</b></p>
+          <p align="center"><i>η</i><sub>prop</sub> = <sup>(<i>T</i> · <i>V</i>)</sup> ⁄ <sub>(2π · <i>n</i> · <i>Q</i>)</sub> = <sup>(1.39 × 13.97)</sup> ⁄ <sub>(2π × 200 × 0.0198)</sub> = <b>0.780 = 78.0%</b></p>
+          The result lands exactly on the calibrated peak of ≈ 78% for the 5045 at <i>J</i> ≈ 0.55 — the propeller is operating at its most efficient cruise point.
+          </blockquote>
+          <h3 id="efficiency-curve-characteristics">Efficiency Curve Characteristics</h3>
+          <ul>
+          <li><strong>At Hover (V = 0)</strong>: <i>η</i><sub>prop</sub> = 0 (no useful work is done)</li>
+          <li><strong>Peak Efficiency</strong>: Occurs at optimal advance ratio (<i>J</i> ≈ 0.55 for 5045 propeller)</li>
+          <li><strong>Beyond Peak</strong>: Efficiency drops as the advancing blade stalls</li>
+          </ul>
+          <p><img src="./images/efficiency_curve.png" alt="Propulsive Efficiency Curve"></p>
+          <hr>
+          <h2 id="5-low-reynolds-number-considerations">5. Low Reynolds Number Considerations</h2>
+          <p>Small drone propellers operate in a low Reynolds number regime (<i>Re</i> &lt; 200,000) where viscous effects dominate. The Reynolds number is calculated as:</p>
+          <p align="center"><b><i>Re</i> = <sup>(<i>ρ</i> · <i>v</i><sub>tip</sub> · <i>c</i><sub>mean</sub>)</sup> ⁄ <sub><i>μ</i></sub></b></p>
+          
+          <p>Where:</p>
+          <ul>
+          <li><i>v</i><sub>tip</sub> = π · <i>n</i> · <i>D</i> is the blade tip speed</li>
+          <li><i>c</i><sub>mean</sub> is the mean blade chord</li>
+          <li><i>μ</i> is the air dynamic viscosity</li>
+          </ul>
+          <blockquote>
+          <p><strong>Worked example — blade-tip Reynolds number.</strong> With <i>n</i> = 200 RPS, <i>D</i> = 0.127 m, mean blade chord <i>c</i><sub>mean</sub> = 0.012 m and <i>μ</i> = 1.81×10<sup>−5</sup> Pa·s:</p>
+          <p align="center"><i>v</i><sub>tip</sub> = π · <i>n</i> · <i>D</i> = π × 200 × 0.127 = <b>79.8 m/s</b></p>
+          <p align="center"><i>Re</i> = <sup>(<i>ρ</i> · <i>v</i><sub>tip</sub> · <i>c</i><sub>mean</sub>)</sup> ⁄ <sub><i>μ</i></sub> = <sup>(1.225 × 79.8 × 0.012)</sup> ⁄ <sub>1.81×10<sup>−5</sup></sub> = <b>6.5×10<sup>4</sup></b></p>
+          At <i>Re</i> ≈ 65,000 the blade sits firmly in the low-Reynolds regime (<i>Re</i> &lt; 200,000), so viscous effects are significant and the high-Re lift curves should be treated as educational approximations.
+          </blockquote>
+          <h3 id="reality-check-low-reynolds-dilemma">Reality Check: Low-Reynolds Dilemma</h3>
+          <p>Thin airfoil theory breaks down near stall angles (<i>α</i> &gt; 12°) and at low Reynolds numbers. At <i>Re</i> = 50,000 (typical propeller tip conditions):</p>
+          <ul>
+          <li>A symmetric airfoil might actually outperform a cambered one</li>
+          <li>The curves provided are high-Re approximations</li>
+          <li>Results should be treated as educational tools rather than direct design lookup charts</li>
+          </ul>
+          <hr>
+          <h2 id="6-rotor-airframe-interference">6. Rotor-Airframe Interference</h2>
+          <p>The drag calculation treats the drone as a clean body in a wind tunnel. In actual forward flight:</p>
+          <ul>
+          <li>Rotors blast a turbulent downwash that interacts with the frame</li>
+          <li>Effective frontal drag is typically <strong>15-30% higher</strong> than clean-body predictions</li>
+          <li>This rotor-airframe interference is not captured in the basic drag equation</li>
+          </ul>
+          <hr>
+          <h2 id="7-cruise-power-budget">7. Cruise Power Budget</h2>
+          <p>The total power required for forward cruise combines the propulsive power and the aerodynamic drag power:</p>
+          <p align="center"><b><i>P</i><sub>cruise</sub> = <sup>(<i>T</i> · <i>V</i>)</sup> ⁄ <sub><i>η</i><sub>prop</sub></sub> + <i>F</i><sub>D</sub> · <i>V</i></b></p>
+          
+          <p>Where <i>F</i><sub>D</sub> is the drag force from Sub-Calc B. The minimum total power cruise speed is found at d<i>P</i><sub>cruise</sub>/d<i>V</i> = 0, which occurs at a lower airspeed than the minimum drag speed. This cruise power budget will be used directly in Experiment 7 range and endurance calculations.</p>
+          <blockquote>
+          <p><strong>Worked example — cruise power budget of the reference quad.</strong> At the <i>J</i> = 0.55 cruise point (<i>V</i> = 13.97 m/s, <i>η</i><sub>prop</sub> = 0.78): each of the 4 props delivers <i>T</i> = 1.39 N (total thrust 4<i>T</i> = 5.56 N), and the cf_250 airframe drag at this speed is <i>F</i><sub>D</sub> = 0.5 · 1.225 · 13.97<sup>2</sup> · 1.05 · 0.0085 = 1.07 N:</p>
+          <p align="center"><i>P</i><sub>cruise</sub> = <sup>((4<i>T</i>) · <i>V</i>)</sup> ⁄ <sub><i>η</i><sub>prop</sub></sub> + <i>F</i><sub>D</sub> · <i>V</i> = <sup>(5.56 × 13.97)</sup> ⁄ <sub>0.78</sub> + 1.07 × 13.97 = 99.5 + 14.9 = <b>114 W</b></p>
+          About 114 W of shaft power sustains this cruise (99.5 W of propeller shaft power plus a 14.9 W parasitic-drag allowance) — the value carried forward into the Experiment 7 range and endurance budget.
+          </blockquote>
+          <hr>
+          <h2 id="8-cross-experiment-relationships">8. Cross-Experiment Relationships</h2>
+          <p>This experiment completes the aerodynamic characterisation of the drone in conjunction with Experiments 1 and 2:</p>
+          <ul>
+          <li><strong>Thrust coefficients (Ct):</strong> The Ct values used in Sub-Calc C (propulsive efficiency) are the same physical propeller aerodynamic coefficients used in Experiment 1's propulsion engine. The values are consistent across all three experiments via the shared component database.</li>
+          <li><strong>Frontal area (A_frontal):</strong> The frontal area used for drag calculation in Sub-Calc B is a structural property of the frame selected in Experiment 2. Selecting a larger frame directly increases the drag force calculated here.</li>
+          <li><strong>Drag output → Experiment 7:</strong> The drag force calculated at cruise speed in Sub-Calc B feeds into Experiment 7's range and endurance calculations as the required cruise drag input. The calculated aerodynamic drag value (<i>F</i><sub>D</sub>) is stored as <code>vlabExp3_dragForce</code> in browser local storage for use in Experiment 7.</li>
+          </ul>
+          <hr>
+          <h2 id="summary-of-key-formulas">Summary of Key Formulas</h2>
+          <table>
+          <thead>
+          <tr>
+          <th>Parameter</th>
+          <th>Formula</th>
+          <th>Units</th>
+          </tr>
+          </thead>
+          <tbody><tr>
+          <td>Lift Coefficient</td>
+          <td><i>C</i><sub>l</sub> = 2π(<i>α</i> − <i>α</i><sub>0</sub>)</td>
+          <td>Dimensionless</td>
+          </tr>
+          <tr>
+          <td>Drag Force</td>
+          <td><i>F</i><sub>D</sub> = 0.5 · <i>ρ</i> · <i>V</i><sup>2</sup> · <i>C</i><sub>d</sub> · <i>A</i></td>
+          <td>N</td>
+          </tr>
+          <tr>
+          <td>Advance Ratio</td>
+          <td><i>J</i> = <i>V</i> / (<i>n</i> · <i>D</i>)</td>
+          <td>Dimensionless</td>
+          </tr>
+          <tr>
+          <td>Propulsive Efficiency</td>
+          <td><i>η</i><sub>prop</sub> = (<i>T</i> · <i>V</i>) / (2π · <i>n</i> · <i>Q</i>)</td>
+          <td>%</td>
+          </tr>
+          <tr>
+          <td>Propeller Torque</td>
+          <td><i>Q</i> = <i>C</i><sub>q</sub> · <i>ρ</i> · <i>n</i><sup>2</sup> · <i>D</i><sup>5</sup></td>
+          <td>N·m</td>
+          </tr>
+          </tbody></table>
+          
+          </div>
+          <div class="bug-report-mobile">
+              <bug-report id="bug-report" title="[BUG REPORT] AERODYNAMIC ANALYSIS: PROPELLER BLADE AIRFOIL, DRAG &amp; ADVANCE RATIO" page-type="text" context-info="{&quot;organisation&quot;:&quot;Virtual Labs&quot;,&quot;developer_institute&quot;:&quot;DEI&quot;,&quot;expname&quot;:&quot;AERODYNAMIC ANALYSIS: PROPELLER BLADE AIRFOIL, DRAG &amp; ADVANCE RATIO&quot;,&quot;labname&quot;:&quot;Virtual Lab&quot;,&quot;phase&quot;:&quot;Testing&quot;}" checkbox-json="{&quot;text&quot;:[&quot;Insufficient Content&quot;],&quot;video&quot;:[&quot;Insufficient Content&quot;],&quot;assesment&quot;:[&quot;Incorrect Options&quot;,&quot;Incorrect Answer&quot;,&quot;Incorrect Question&quot;],&quot;assessment&quot;:[&quot;Incorrect Options&quot;,&quot;Incorrect Answer&quot;,&quot;Incorrect Question&quot;],&quot;simulation&quot;:[&quot;Simulation Not Working&quot;,&quot;Incorrect Results/Observations&quot;,&quot;Insufficient/Incorrect Instructions&quot;],&quot;DEFAULT&quot;:[&quot;Page Not Loading&quot;,&quot;Content Not Visible&quot;,&quot;Incorrect Content&quot;]}" position="override" button_style="
+                          position: fixed; 
+                          bottom: 20px;
+                          right: 20px;
+                          z-index: 1;
+                          font-size: 0;
+                          padding: 25px;
+                          border-radius: 50%;
+                          border: none;
+                          background-color: #0fc0ff;
+                          background-image: url(data:image/png;base64,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);
+                          background-repeat: no-repeat;
+                          background-position: center;
+                          background-size: 30px;
+                          filter: invert(1);">
+              </bug-report>
+          </div>        </div>
+      </div>
+      <footer class="text-light pt-2 vlabs-footer d-flex flex-column">
+        <div class="row px-5 mx-0">
+          <div class="col d-flex flex-column">
+            <span class="font-weight-bold vlabs-footer-sect-name pb-2 mb-3">Community Links</span>
+            <a href="https://www.sakshat.ac.in/" class="text-light">Sakshat Portal</a>
+            <a href="http://outreach.vlabs.ac.in/" class="text-light">Outreach Portal</a>
+            <a href="https://vlab.co.in/faq" class="text-light">FAQ: Virtual Labs</a>
+          </div>
+          <div class="col d-flex flex-column">
+            <span class="font-weight-bold vlabs-footer-sect-name pb-2 mb-3">Contact Us</span>
+            <span> Phone: General Information: 011-26582050 </span>
+            <span> Email: support@vlabs.ac.in </span>
+          </div>
+          <div class="col d-flex flex-column">
+            <span class="font-weight-bold vlabs-footer-sect-name pb-2 mb-3">Follow Us</span>
+            <div class="social-links">
+      	<a class="p-2 mt-1 mr-2 d-inline-flex justify-content-center align-items-center" style="background: #55acee;" href="https://twitter.com/TheVirtualLabs">
+      	  <i class="fab fa-twitter"></i>
+      	</a>
+      	<a class="p-2 mt-1 mr-2 d-inline-flex justify-content-center align-items-center" style="background: #3b5998;" href="https://www.facebook.com/Virtual-Labs-IIT-Delhi-301510159983871/">
+      	  <i class="fab fa-facebook"></i>
+      	</a>
+      	<a class="p-2 mt-1 mr-2 d-inline-flex justify-content-center align-items-center" style="background: #e52d27;" href="https://www.youtube.com/watch?v=asxRaOgk6a0">
+      	  <i class="fab fa-youtube"></i>
+      	</a>
+      	<a class="p-2 mt-1 mr-2 d-inline-flex justify-content-center align-items-center" style="background: #2867B2;" href="https://in.linkedin.com/in/virtual-labs-008ba9136">
+      	  <i class="fab fa-linkedin"></i>
+      	</a>
+            </div>
+          </div>
+        </div>
+        <div class="m-0 py-2 text-center" style="font-family: &quot;Open Sans&quot;, sans-serif; background: #212121;">
+          <a class="text-primary font-weight-bold" href="https://www.gnu.org/licenses/agpl-3.0.en.html"> AGPL 3.0 </a>
+          &nbsp;&amp;&nbsp;
+          <a class="text-primary font-weight-bold" href="https://creativecommons.org/licenses/by-nc-sa/4.0/"> Creative Commons (CC BY-NC-SA 4.0) </a>
+        </div>
+      </footer>
+    <script src="./assets/js/toggleSidebar.js"></script>
+    <script src="./assets/js/event-handler.js"></script>
+
+
+    <script>
+      if ('serviceWorker' in navigator) {
+        window.addEventListener('load', () => {
+            navigator.serviceWorker.register("sw.js");
+        });
+      }
+    </script>
+  
+
+<script type="module" src="https://virtual-labs.github.io/svc-bug-report/client/src/bug-report.js"></script><script type="module" src="plugins\svc-rating\index.js"></script><script type="module" src="plugins\svc-rating\config.js"></script><script type="module" src="https://apis.google.com/js/api.js"></script></body></html>

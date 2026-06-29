@@ -1,0 +1,289 @@
+{
+  "meta": {
+    "version": "1.0.0",
+    "experiment": "Experiment 04 — Power Electronics: ESC Calibration, PWM Mapping & Dead-Band Verification",
+    "lab": "Drone Technology Virtual Lab",
+    "domain": "ECE + EE",
+    "configuration": "Quadcopter — 4 ESCs, 4 motors",
+    "note": "Power-electronics component database. Pulse widths are in microseconds (us). Resistances in ohms. Temperatures in degrees Celsius. Motor electrical values follow SI units and are kept identical to Experiment 01 so the inter-experiment current linkage stays consistent."
+  },
+
+  "calibration": {
+    "description": "Standard servo-PWM throttle protocol used to calibrate an ESC. The transmitter/flight-controller emits a high pulse every refresh period; the pulse WIDTH (not its frequency) encodes throttle.",
+    "pulse_min_us": 1000,
+    "pulse_max_us": 2000,
+    "pulse_range_us": 1000,
+    "deadband_us": 50,
+    "deadband_end_us": 1050,
+    "arm_pulse_us": 1000,
+    "neutral_pulse_us": 1500,
+    "timer_tick_us": 1.0,
+    "timer_clock_hz": 1000000,
+    "throttle_min_pct": 0,
+    "throttle_max_pct": 100,
+    "note": "Dead-band: any pulse from 1000 us up to 1050 us commands 0% (motor armed but stationary) to stop electrical jitter from spinning the rotor at idle. timer_tick_us = 1.0 us means the throttle command is quantised into pulse_range_us / timer_tick_us = 1000 discrete steps (0.1% per step), independent of the refresh frequency."
+  },
+
+  "pwm_protocols": [
+    {
+      "id": "pwm_50",
+      "label": "Standard PWM — 50 Hz",
+      "type": "analog",
+      "refresh_hz": 50,
+      "period_us": 20000,
+      "pulse_min_us": 1000,
+      "pulse_max_us": 2000,
+      "throttle_levels": 1000,
+      "latency_ms": 20.0,
+      "duty_min_pct": 5.0,
+      "duty_max_pct": 10.0,
+      "legacy": true,
+      "note": "Original RC servo standard. Long 20 ms refresh; the active 1000–2000 us pulse occupies only 5–10% of the frame."
+    },
+    {
+      "id": "pwm_400",
+      "label": "Oneshot / Fast PWM — 400 Hz",
+      "type": "analog",
+      "refresh_hz": 400,
+      "period_us": 2500,
+      "pulse_min_us": 1000,
+      "pulse_max_us": 2000,
+      "throttle_levels": 1000,
+      "latency_ms": 2.5,
+      "duty_min_pct": 40.0,
+      "duty_max_pct": 80.0,
+      "legacy": false,
+      "note": "8x faster refresh than 50 Hz. SAME 1000 step microsecond resolution — only the latency improves (20 ms -> 2.5 ms)."
+    },
+    {
+      "id": "pwm_500",
+      "label": "Fast PWM — 500 Hz",
+      "type": "analog",
+      "refresh_hz": 500,
+      "period_us": 2000,
+      "pulse_min_us": 1000,
+      "pulse_max_us": 2000,
+      "throttle_levels": 1000,
+      "latency_ms": 2.0,
+      "duty_min_pct": 50.0,
+      "duty_max_pct": 100.0,
+      "legacy": false,
+      "note": "Practical analog ceiling: at 500 Hz the 2000 us max pulse fills the entire 2000 us frame (100% duty), leaving no idle gap."
+    },
+    {
+      "id": "oneshot125",
+      "label": "OneShot125",
+      "type": "analog",
+      "refresh_hz": 4000,
+      "period_us": 250,
+      "pulse_min_us": 125,
+      "pulse_max_us": 250,
+      "throttle_levels": 1000,
+      "latency_ms": 0.25,
+      "duty_min_pct": 50.0,
+      "duty_max_pct": 100.0,
+      "legacy": false,
+      "note": "Pulse band compressed 8x (125–250 us) so the frame can refresh up to 4 kHz. Resolution still 1000 steps because the timer tick shrinks proportionally (0.125 us)."
+    },
+    {
+      "id": "dshot300",
+      "label": "DShot300 (digital)",
+      "type": "digital",
+      "bitrate_bps": 300000,
+      "frame_bits": 16,
+      "throttle_levels": 2000,
+      "frame_time_us": 53.333,
+      "refresh_hz": 18000,
+      "latency_ms": 0.053,
+      "legacy": false,
+      "note": "Digital protocol: an 11-bit throttle value (2048 codes, 2000 usable) plus telemetry+CRC in a 16-bit frame. Immune to analog calibration drift; no dead-band needed."
+    },
+    {
+      "id": "dshot600",
+      "label": "DShot600 (digital)",
+      "type": "digital",
+      "bitrate_bps": 600000,
+      "frame_bits": 16,
+      "throttle_levels": 2000,
+      "frame_time_us": 26.667,
+      "refresh_hz": 37000,
+      "latency_ms": 0.027,
+      "legacy": false,
+      "note": "Twice the bitrate of DShot300; 26.7 us per frame. The modern standard for racing/freestyle quads."
+    }
+  ],
+
+  "escs": [
+    {
+      "id": "esc_20a",
+      "label": "20A BLHeli_S (x4)",
+      "current_a": 20,
+      "burst_current_a": 25,
+      "rds_on_ohm": 0.0035,
+      "mass_g_each": 8.1,
+      "quantity": 4,
+      "firmware": "BLHeli_S",
+      "mosfet_count": 6,
+      "supported_protocols": ["pwm_50", "pwm_400", "pwm_500", "oneshot125", "dshot300"],
+      "r_th_c_per_w": 22,
+      "board_mm": [25, 13, 4],
+      "note": "Entry-class individual ESC. Smaller MOSFET die -> higher conduction resistance (3.5 mOhm/phase)."
+    },
+    {
+      "id": "esc_30a",
+      "label": "30A BLHeli_32 (x4)",
+      "current_a": 30,
+      "burst_current_a": 40,
+      "rds_on_ohm": 0.0030,
+      "mass_g_each": 9.5,
+      "quantity": 4,
+      "firmware": "BLHeli_32",
+      "mosfet_count": 6,
+      "supported_protocols": ["pwm_50", "pwm_400", "pwm_500", "oneshot125", "dshot300", "dshot600"],
+      "r_th_c_per_w": 18,
+      "board_mm": [27, 14, 4],
+      "note": "Workhorse 30A ESC. 3.0 mOhm/phase is the 'typical' value used in the Sub-Calc C governing formula."
+    },
+    {
+      "id": "esc_40a",
+      "label": "40A BLHeli_32 (x4)",
+      "current_a": 40,
+      "burst_current_a": 55,
+      "rds_on_ohm": 0.0022,
+      "mass_g_each": 11.2,
+      "quantity": 4,
+      "firmware": "BLHeli_32",
+      "mosfet_count": 6,
+      "supported_protocols": ["pwm_50", "pwm_400", "pwm_500", "oneshot125", "dshot300", "dshot600"],
+      "r_th_c_per_w": 15,
+      "board_mm": [30, 15, 5],
+      "note": "Larger die, lower 2.2 mOhm/phase conduction loss; better for high-current 6S builds."
+    },
+    {
+      "id": "esc_4in1_45a",
+      "label": "4-in-1 45A Stack",
+      "current_a": 45,
+      "burst_current_a": 60,
+      "rds_on_ohm": 0.0020,
+      "mass_g_each": 22.4,
+      "quantity": 1,
+      "firmware": "BLHeli_32",
+      "mosfet_count": 24,
+      "supported_protocols": ["pwm_400", "pwm_500", "oneshot125", "dshot300", "dshot600"],
+      "r_th_c_per_w": 12,
+      "board_mm": [46, 46, 6],
+      "note": "Four ESCs on one board sharing a copper-pour heatsink. Lower per-phase resistance and thermal resistance."
+    },
+    {
+      "id": "esc_4in1_60a",
+      "label": "4-in-1 60A Stack",
+      "current_a": 60,
+      "burst_current_a": 80,
+      "rds_on_ohm": 0.0016,
+      "mass_g_each": 25.5,
+      "quantity": 1,
+      "firmware": "BLHeli_32",
+      "mosfet_count": 24,
+      "supported_protocols": ["pwm_400", "pwm_500", "oneshot125", "dshot300", "dshot600"],
+      "r_th_c_per_w": 10,
+      "board_mm": [50, 50, 7],
+      "note": "High-current cinematic/heavy-lift stack. 1.6 mOhm/phase keeps dissipation low even at 40A+ per motor."
+    }
+  ],
+
+  "motors": [
+    {
+      "id": "1806_2300",
+      "label": "1806 — 2300 KV",
+      "kv": 2300,
+      "rm_ohm": 0.118,
+      "i0_a": 0.25,
+      "max_current_a": 20,
+      "hover_current_a": 4.2,
+      "full_current_a": 18.5,
+      "recommended_prop_in": "5-6"
+    },
+    {
+      "id": "2204_2300",
+      "label": "2204 — 2300 KV",
+      "kv": 2300,
+      "rm_ohm": 0.095,
+      "i0_a": 0.30,
+      "max_current_a": 25,
+      "hover_current_a": 7.2,
+      "full_current_a": 23.0,
+      "recommended_prop_in": "5-6"
+    },
+    {
+      "id": "2207_1600",
+      "label": "2207 — 1600 KV",
+      "kv": 1600,
+      "rm_ohm": 0.075,
+      "i0_a": 0.40,
+      "max_current_a": 35,
+      "hover_current_a": 9.5,
+      "full_current_a": 32.0,
+      "recommended_prop_in": "6-7"
+    },
+    {
+      "id": "2212_920",
+      "label": "2212 — 920 KV",
+      "kv": 920,
+      "rm_ohm": 0.142,
+      "i0_a": 0.35,
+      "max_current_a": 22,
+      "hover_current_a": 8.0,
+      "full_current_a": 20.0,
+      "recommended_prop_in": "9-10"
+    },
+    {
+      "id": "2808_1200",
+      "label": "2808 — 1200 KV",
+      "kv": 1200,
+      "rm_ohm": 0.082,
+      "i0_a": 0.50,
+      "max_current_a": 40,
+      "hover_current_a": 12.5,
+      "full_current_a": 38.0,
+      "recommended_prop_in": "9-11"
+    },
+    {
+      "id": "3508_700",
+      "label": "3508 — 700 KV",
+      "kv": 700,
+      "rm_ohm": 0.065,
+      "i0_a": 0.45,
+      "max_current_a": 28,
+      "hover_current_a": 10.0,
+      "full_current_a": 26.0,
+      "recommended_prop_in": "11-13"
+    }
+  ],
+
+  "batteries": [
+    { "id": "lipo_3s_1500", "label": "3S 1500 mAh", "cells": 3, "capacity_mah": 1500, "voltage_nominal_v": 11.1, "c_rating": 75, "mass_g": 134 },
+    { "id": "lipo_4s_1500", "label": "4S 1500 mAh", "cells": 4, "capacity_mah": 1500, "voltage_nominal_v": 14.8, "c_rating": 95, "mass_g": 178 },
+    { "id": "lipo_4s_3000", "label": "4S 3000 mAh", "cells": 4, "capacity_mah": 3000, "voltage_nominal_v": 14.8, "c_rating": 35, "mass_g": 320 },
+    { "id": "lipo_6s_1300", "label": "6S 1300 mAh", "cells": 6, "capacity_mah": 1300, "voltage_nominal_v": 22.2, "c_rating": 95, "mass_g": 232 },
+    { "id": "lipo_6s_5000", "label": "6S 5000 mAh", "cells": 6, "capacity_mah": 5000, "voltage_nominal_v": 22.2, "c_rating": 30, "mass_g": 720 }
+  ],
+
+  "thermal": {
+    "description": "ESC self-heating model. The conduction loss P = I^2 * R is removed through the board's thermal resistance to ambient. A heatsink lowers R_th.",
+    "ambient_c": 25,
+    "limit_c": 80,
+    "heatsink_threshold_w": 2.0,
+    "mosfet_rdson_tempco_per_c": 0.006,
+    "r_th_bare_c_per_w": 18,
+    "r_th_heatsink_c_per_w": 9,
+    "cp_j_per_kg_k": 800,
+    "heatsink_mass_g": 12,
+    "sim_fast_forward": 30,
+    "note": "mosfet_rdson_tempco_per_c = 0.006 /degC models the silicon power-MOSFET Rds(on) temperature dependence. The ESC conduction loss lives in the MOSFET channel, whose on-resistance climbs ~1.45x by 100 degC (datasheet-typical for the logic-level FETs used in hobby ESCs) -- well above annealed copper's 0.00393 /degC. R(T) = R25 * (1 + 0.006*(T-25)). At 80 degC the conduction resistance is ~33% higher, so the static P = I^2*R model under-predicts hot-running dissipation (Contradiction 2). cp_j_per_kg_k and heatsink_mass_g give the lumped heat capacity C_th = mass*cp for the transient time constant tau = R_th*C_th; sim_fast_forward speeds the watched climb without altering the steady value."
+  },
+
+  "air_constants": {
+    "g_m_s2": 9.80665,
+    "note": "Kept for cross-experiment consistency with the shared lab constants."
+  }
+}

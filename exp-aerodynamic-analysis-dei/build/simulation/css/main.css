@@ -1,0 +1,722 @@
+
+
+:root {
+  --bg:            #ffffff;
+  --surface:       #f9fafb;
+  --surface-2:     #f3f4f6;
+  --border:        #e5e7eb;
+  --border-light:  #f3f4f6;
+
+  --text-primary:  #111827;
+  --text-secondary:#374151;
+  --text-tertiary: #6b7280;
+
+  --accent:        #ffbf00;
+  --accent-light:  #fffbeb;
+  --accent-dark:   #000000;
+
+  --success:       #10b981;
+  --success-light: #ecfdf5;
+  --warning:       #f59e0b;
+  --warning-light: #fef3c7;
+  --danger:        #ef4444;
+  --danger-light:  #fef2f2;
+
+  --header-h:      0px;
+  --panel-w:       320px;
+  --right-w:       360px;
+
+  --radius:        6px;
+  --radius-lg:     10px;
+
+  --font: 'Inter', system-ui, -apple-system, sans-serif;
+  --font-mono: 'JetBrains Mono', 'Fira Code', monospace;
+  --transition: 120ms cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+/* ── Base Reset ── */
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+html { font-size: 13px; -webkit-font-smoothing: antialiased; }
+body {
+  font-family: var(--font);
+  background: var(--bg);
+  color: var(--text-primary);
+  line-height: 1.5;
+  height: 100vh;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+h1, h2, h3, h4 { font-weight: 600; color: var(--text-primary); }
+p { color: var(--text-secondary); }
+.mono { font-family: var(--font-mono); }
+
+/* ── Scrollbars ── */
+::-webkit-scrollbar { width: 4px; height: 4px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
+::-webkit-scrollbar-thumb:hover { background: var(--text-tertiary); }
+
+/* ── Workspace ── */
+.work_zone {
+  flex: 1;
+  display: flex;
+  overflow: hidden;
+  height: calc(100vh - var(--header-h));
+}
+
+/* ── Column 1: Config Panel (Left) ── */
+.cfg_aside {
+  width: var(--panel-w);
+  border-right: 1px solid var(--border);
+  background: var(--surface);
+  display: flex;
+  flex-direction: column;
+  overflow-y: auto;
+  flex-shrink: 0;
+}
+.pane_lbl {
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--border);
+}
+.pane_lbl > div > span:first-child {
+  font-size: 0.9rem;
+  font-weight: 700;
+  color: var(--text-primary);
+  display: block;
+}
+.panel-note {
+  font-size: 0.72rem;
+  color: var(--text-tertiary);
+  font-weight: 400;
+  display: block;
+  margin-top: 2px;
+}
+.config-sections {
+  padding: 12px 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  overflow-y: auto;
+  flex: 1;
+}
+.config-group {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.config-group-title {
+  font-size: 0.78rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  color: var(--text-secondary);
+  letter-spacing: 0.05em;
+  margin-bottom: 6px;
+}
+
+/* ── Tile Grid (IDENTICAL to exp2, with input-overlay click) ── */
+.tiles-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 6px;
+}
+.tiles-grid:has(> :nth-child(2):last-child) {
+  grid-template-columns: repeat(2, 1fr);
+}
+.component-tile {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  padding: 8px 6px;
+  border: 1px solid #e2e8f0;
+  border-radius: 6px;
+  background: #ffffff;
+  cursor: pointer;
+  position: relative;
+  transition: all var(--transition);
+  min-height: 52px;
+}
+.component-tile:hover {
+  border-color: #cbd5e1;
+  background: #f8fafc;
+}
+.component-tile.selected,
+.component-tile:has(input:checked) {
+  border-color: var(--accent);
+  background: var(--accent-light);
+  box-shadow: 0 0 0 2px rgba(255, 191, 0, 0.08);
+}
+.component-tile input {
+  position: absolute;
+  opacity: 0;
+  cursor: pointer;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  margin: 0;
+}
+.tile-label {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  width: 100%;
+}
+.tile-name {
+  font-size: 0.74rem;
+  font-weight: 600;
+  color: var(--text-primary);
+  line-height: 1.25;
+}
+.tile-spec {
+  font-size: 0.65rem;
+  color: #64748b;
+  font-family: var(--font);
+  font-weight: 500;
+  margin-top: 1px;
+}
+
+/* ── Blade Count Segmented Selector ── */
+.blade-count-selector {
+  display: flex;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  overflow: hidden;
+  background: var(--surface-2);
+}
+.blade-count-btn {
+  flex: 1;
+  padding: 7px 10px;
+  background: transparent;
+  border: none;
+  border-right: 1px solid var(--border);
+  font-family: var(--font);
+  font-size: 0.8rem;
+  font-weight: 500;
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: all var(--transition);
+  text-align: center;
+}
+.blade-count-btn:last-child { border-right: none; }
+.blade-count-btn:hover:not(.active) { background: var(--surface); color: var(--text-primary); }
+.blade-count-btn.active { background: var(--accent); color: #fff; font-weight: 700; }
+
+/* ── Slider Controls (IDENTICAL to exp2 altitude-control) ── */
+.slider-row,
+.altitude-control { display: flex; flex-direction: column; gap: 6px; }
+.slider-row {
+  flex-direction: row;
+  align-items: center;
+  gap: 8px;
+}
+.slider-label {
+  font-size: 0.78rem;
+  font-weight: 500;
+  color: var(--text-secondary);
+  flex: 0 0 108px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.alt-row { display: flex; justify-content: space-between; align-items: center; }
+.alt-label { font-size: 0.78rem; font-weight: 500; color: var(--text-secondary); }
+.alt-value {
+  font-size: 0.8rem;
+  font-weight: 600;
+  font-family: var(--font-mono);
+  flex: 0 0 auto;
+  text-align: right;
+}
+.alt-slider {
+  width: 100%;
+  appearance: none;
+  height: 4px;
+  border-radius: 2px;
+  background: var(--border);
+  outline: none;
+  cursor: pointer;
+  flex: 1;
+  min-width: 0;
+}
+.alt-slider::-webkit-slider-thumb {
+  appearance: none;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: var(--accent);
+  border: 2px solid var(--bg);
+  box-shadow: 0 0 0 1px var(--accent);
+  cursor: pointer;
+}
+.alt-slider::-moz-range-thumb {
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: var(--accent);
+  border: 2px solid var(--bg);
+  box-shadow: 0 0 0 1px var(--accent);
+  cursor: pointer;
+}
+
+/* ── Derivation Box (matches exp2 deriv_box aesthetic) ── */
+.derivation-box,
+.prop-summary-card {
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 10px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+.deriv-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  font-size: 0.76rem;
+  gap: 6px;
+}
+.deriv-label {
+  color: var(--text-tertiary);
+  white-space: nowrap;
+  font-weight: 500;
+}
+.deriv-val {
+  color: var(--text-primary);
+  font-weight: 600;
+  text-align: right;
+  font-family: var(--font-mono);
+}
+
+/* ── Column 2: Viewport, Charts (Middle) ── */
+.mid_col {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  overflow-x: hidden;
+  overflow-y: auto;
+  border-right: 1px solid var(--border);
+}
+.viewport-tabs {
+  display: flex;
+  background: var(--bg);
+  border-bottom: 1px solid var(--border);
+  padding: 0 4px;
+}
+.vp-tab {
+  background: none;
+  border: none;
+  border-bottom: 2px solid transparent;
+  padding: 6px 12px;
+  font-family: var(--font);
+  font-size: 0.8rem;
+  font-weight: 500;
+  color: var(--text-tertiary);
+  cursor: pointer;
+  transition: all var(--transition);
+}
+.vp-tab:hover { color: var(--text-primary); }
+.vp-tab.active,
+.vp-tab[aria-selected="true"] { color: var(--accent); border-bottom-color: var(--accent); font-weight: 600; }
+
+/* ── Canvas Holder (IDENTICAL to exp2 — fixed 340px) ── */
+.cnvs_holder {
+  position: relative;
+  width: calc(100% - 28px);
+  height: 340px;
+  margin: 12px 14px;
+  background: #cbd2db;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  overflow: hidden;
+  flex-shrink: 0;
+}
+#mainCanvas { width: 100%; height: 100%; display: block; cursor: grab; }
+#mainCanvas:active { cursor: grabbing; }
+
+/* ── Simulation Control Bar (below viewport, IDENTICAL to exp2 sim_ctrls) ── */
+.sim_ctrls {
+  padding: 8px 14px;
+  background: var(--surface);
+  border-bottom: 1px solid var(--border);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+}
+.sim_ctrls .btn_run { width: auto; padding: 6px 16px; }
+.btn-sim-ghost {
+  padding: 6px 14px;
+  background: transparent;
+  color: var(--text-secondary);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  font-family: var(--font);
+  font-size: 0.8rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all var(--transition);
+}
+.btn-sim-ghost:hover { background: var(--surface-2); }
+.sim-controls-note { font-size: 0.72rem; color: var(--text-tertiary); margin-left: auto; }
+
+/* ── Viewport HUD Glassmorphism Monitor (IDENTICAL to exp2 hud_monitor) ── */
+.analysis-hud {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  width: 200px;
+  background: rgba(255, 255, 255, 0.82);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 10px 12px;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.05);
+  font-family: var(--font);
+  z-index: 10;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.analysis-hud.hidden { display: none; }
+.hud-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 0.72rem;
+}
+.hud-label { color: var(--text-secondary); font-weight: 500; }
+.hud-val { font-family: var(--font-mono); font-weight: 600; color: var(--text-primary); }
+.hud-stall-clean { color: var(--success); font-weight: 700; }
+.hud-stall-warn  { color: var(--danger);  font-weight: 700; }
+
+/* ── Error Banner ── */
+.error-banner {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  background: var(--danger-light);
+  border-top: 2px solid var(--danger);
+  padding: 10px 16px;
+  font-size: 0.8rem;
+  color: #991b1b;
+  font-weight: 500;
+  flex-shrink: 0;
+}
+.error-banner.hidden { display: none; }
+.error-banner svg { flex-shrink: 0; color: var(--danger); }
+
+/* ── Chart Sections (matches exp2 chart-container) ── */
+.chart-section {
+  padding: 12px 14px;
+  border-top: 1px solid var(--border);
+  display: flex;
+  flex-direction: column;
+  flex-shrink: 0;
+}
+.chart-section.hidden,
+.res_section.hidden,
+.config-group.hidden,
+#propGeomGroup.hidden,
+#tab2ControlGroup.hidden { display: none; }
+.chart-header h3 { font-size: 0.82rem; margin-bottom: 2px; }
+.chart-desc { font-size: 0.7rem; color: var(--text-tertiary); margin-bottom: 8px; }
+.chart-wrap { position: relative; height: 160px; width: 100%; }
+
+/* Blade element charts side by side */
+.blade-element-row { display: flex; flex-direction: row; gap: 12px; }
+.blade-chart-col { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 5px; }
+.blade-chart-title { font-size: 0.74rem; font-weight: 600; color: var(--text-secondary); }
+.blade-chart-col .chart-wrap { height: 170px; }
+
+/* ── Column 3: Results & Analytics (Right) — IDENTICAL to exp2 ── */
+.right-panel {
+  width: var(--right-w);
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  overflow-y: auto;
+  background: var(--surface);
+}
+.res_section { padding: 16px; display: flex; flex-direction: column; gap: 14px; }
+.results-header h2 { font-size: 0.9rem; border-bottom: 1px solid var(--border); padding-bottom: 6px; }
+.results-header h3 { font-size: 0.82rem; }
+
+/* Result cards (IDENTICAL to exp2 cards_box / card-item) */
+.result-cards-grid,
+.bemt-cards-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px; }
+.result-card {
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 10px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+.card-label {
+  font-size: 0.72rem;
+  text-transform: uppercase;
+  color: var(--text-tertiary);
+  font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.card-value {
+  font-size: 1.15rem;
+  font-weight: 700;
+  font-family: var(--font-mono);
+  color: var(--text-primary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* ── Checklist (IDENTICAL to exp2) ── */
+.checklist-container {
+  display: flex;
+  flex-direction: column;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 8px 12px;
+}
+.checklist-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 0;
+  font-size: 0.8rem;
+  color: var(--text-secondary);
+  border-bottom: 1px solid var(--border-light);
+}
+.checklist-item:last-child { border-bottom: none; }
+.chk-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  font-size: 0.65rem;
+  font-weight: bold;
+  flex-shrink: 0;
+}
+.chk-icon.done { background: var(--success-light); color: var(--success); }
+.chk-icon.pending { background: var(--border-light); color: var(--text-tertiary); border: 1.5px solid var(--border); }
+.checklist-label { font-weight: 500; }
+.checklist-val {
+  margin-left: auto;
+  font-family: var(--font-mono);
+  font-size: 0.72rem;
+  color: var(--text-tertiary);
+  max-width: 150px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* ── Live Commentary Panel (IDENTICAL to exp2) ── */
+.commentary-panel {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  background: var(--accent-light);
+  border-left: 4px solid var(--accent);
+  padding: 12px 14px;
+  margin: 10px 14px 0 14px;
+  border-radius: 0 4px 4px 0;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.05);
+}
+.commentary-icon { color: var(--accent); flex-shrink: 0; margin-top: 2px; }
+.commentary-content { display: flex; flex-direction: column; gap: 4px; }
+.commentary-title {
+  font-size: 0.75rem;
+  font-weight: 700;
+  color: var(--text-primary);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+.commentary-text { font-size: 0.8rem; color: var(--text-secondary); line-height: 1.4; }
+
+/* ── Action Buttons (IDENTICAL to exp2) ── */
+.panel-actions { padding: 12px; background: var(--bg); border-top: 1px solid var(--border); display: flex; flex-direction: column; gap: 8px; }
+.btn_run {
+  width: 100%;
+  padding: 8px 16px;
+  background: var(--accent);
+  color: #fff;
+  border: none;
+  border-radius: var(--radius);
+  font-family: var(--font);
+  font-size: 0.82rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all var(--transition);
+  text-align: center;
+}
+.btn_run:hover:not(:disabled) { background: var(--accent-dark); }
+.btn_run:disabled { opacity: 0.4; cursor: not-allowed; }
+.btn_prm {
+  width: 100%;
+  padding: 8px 16px;
+  background: var(--accent);
+  color: #fff;
+  border: none;
+  border-radius: var(--radius);
+  font-family: var(--font);
+  font-size: 0.82rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all var(--transition);
+  text-align: center;
+}
+.btn_prm:hover:not(:disabled) { background: var(--accent-dark); }
+.btn_prm:disabled { opacity: 0.4; cursor: not-allowed; }
+
+/* Chevron */
+.chevron-icon { transition: transform 0.2s; }
+
+/* Generic visibility helper */
+.hidden { display: none !important; }
+
+/* Cross-experiment handoff status badge */
+.handoff-badge {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  background: var(--success-light);
+  border: 1px solid #a7f3d0;
+  border-radius: var(--radius);
+  padding: 8px 12px;
+  color: #065f46;
+  font-size: 0.72rem;
+  font-weight: 500;
+  line-height: 1.35;
+}
+.handoff-badge.fallback {
+  background: var(--surface-2);
+  border-color: var(--border);
+  color: var(--text-tertiary);
+}
+
+/* AoA live-effect diagram (Tab 2 left panel) */
+.aoa-explain {
+  font-size: 0.72rem;
+  color: var(--text-secondary);
+  line-height: 1.45;
+  margin-bottom: 6px;
+}
+.aoa-canvas {
+  width: 100%;
+  height: auto;
+  display: block;
+  background: #f8fafc;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+}
+
+/* ── Responsive ── */
+@media (max-width: 1000px) {
+  body, .work_zone { height: auto; overflow: visible; overflow-y: auto; }
+  .work_zone { flex-direction: column; }
+  .cfg_aside, .mid_col, .right-panel { width: 100%; border-right: none; height: auto; overflow: visible !important; }
+  .cnvs_holder { height: 300px; }
+  .blade-element-row { flex-direction: column; }
+}
+@media (max-width: 600px) {
+  .cnvs_holder { height: 250px; }
+  .viewport-tabs { flex-wrap: wrap; }
+  .vp-tab { flex: 1 1 auto; text-align: center; padding: 8px; }
+  .tiles-grid, .tiles-grid:has(> :nth-child(2):last-child) { grid-template-columns: repeat(2, 1fr); }
+  .result-cards-grid, .bemt-cards-grid { grid-template-columns: 1fr; }
+}
+@media (max-width: 480px) {
+  .tiles-grid, .tiles-grid:has(> :nth-child(2):last-child) { grid-template-columns: 1fr; }
+  .cnvs_holder { height: 220px; }
+}
+
+/* ════════════════════════════════════════════════════════════════════════
+   MODULE 2 — Frame Aerodynamic Drag + Advance Ratio & Propulsive Efficiency
+   (index2.html). ADDITIVE ONLY. No existing rule or CSS variable is modified.
+
+   Reuses the Module 1 primitives unchanged:
+     .work_zone .cfg_aside .right-panel .viewport-tabs .vp-tab
+     .component-tile .tiles-grid .slider-row .alt-slider .result-card
+     .chart-section(.hidden) .chart-wrap .checklist-* .commentary-panel
+     .handoff-badge(.fallback) .prop-summary-card/.deriv-* .btn_run/.btn_prm
+     .analysis-hud + .hud-row/.hud-label/.hud-val   (Tab 2 HUD rows — task 2.4
+       is fully covered by these existing classes; the #hudJ/#hudEta/#hudRpm/
+       #hudVtrim spans carry .hud-val, so no new HUD rule is required)
+     .hidden { display:none !important; }            (already present — reused)
+   ════════════════════════════════════════════════════════════════════════ */
+
+/* ── 2.2 Right-panel result-card grids (children are .result-card) ──────────
+   #frameDragCards  → four Tab 1 cards  (#valQ #valDrag #valCdA #valReFrame)
+   #advResultsSection → six Tab 2 cards (#bemtThrust #bemtTorque #bemtEta
+                        #bemtJ #bemtFOM #valVtrim)
+   Hidden via the generic `.hidden` helper (display:none !important) which
+   correctly overrides these non-important display:grid rules. */
+#frameDragCards,
+#advResultsSection {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 8px;
+}
+
+/* ── 2.3 Chart section wrappers ─────────────────────────────────────────────
+   Chart.js runs with maintainAspectRatio:false, so every contained .chart-wrap
+   needs an explicit height. A more-specific selector overrides the base
+   .chart-wrap (160px) for Module-2 charts only — same additive pattern already
+   used by `.blade-chart-col .chart-wrap`. */
+#dragSpeedSection .chart-wrap,   /* Tab 1 centre — Drag vs Speed (#dragSpeedChart) */
+#secondarySection .chart-wrap,   /* Tab 2 centre — J vs V (#secondaryChart) */
+#advChartsSection .chart-wrap {  /* Tab 2 right  — #etaJChart + #thrustPowerChart */
+  height: 200px;
+}
+
+/* #advChartsSection stacks the two Tab-2 right-panel charts (#etaJChart above
+   #thrustPowerChart) vertically with consistent spacing. */
+#advChartsSection {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+/* ── Responsive: collapse the Module-2 card grids to a single column on narrow
+   viewports, matching Module 1's .result-cards-grid / .bemt-cards-grid. ───── */
+@media (max-width: 600px) {
+  #frameDragCards,
+  #advResultsSection { grid-template-columns: 1fr; }
+}
+
+/* ════════════════════════════════════════════════════════════════════════
+   MODULE 2 — Task 6 enhancement styling (design §10). ADDITIVE ONLY.
+   No existing rule or CSS variable is modified.
+
+   6.1 Centre 2D diagram canvases (#frameFlowDiagram, #velocityTriangleDiagram):
+       NO new rule — both already carry class `.aoa-canvas`, which provides
+       `width:100%; height:auto; display:block` full-width responsive sizing.
+       Their intrinsic width/height attributes (288×172) preserve the aspect
+       ratio, so the column-fit is already handled. (Adding a rule would only
+       duplicate `.aoa-canvas`.)
+
+   6.3 Tab-2 dual-axis charts (#ctCqChart, #dragThrustChart):
+       NO new rule — both sit in `.chart-wrap` elements inside #advChartsSection,
+       which the existing `#advChartsSection .chart-wrap { height: 200px; }` rule
+       already sizes, identically to the #thrustPowerChart wrap. Fully consistent.
+   ════════════════════════════════════════════════════════════════════════ */
+
+/* ── 6.2 Frontal-area W×H readout (#areaWxH) ─────────────────────────────────
+   The span already carries `.mono` (monospace family). This adds only the
+   small size + muted tertiary colour for the compact readout beside the area
+   slider, reusing the existing --text-tertiary variable. */
+#areaWxH {
+  font-size: 0.72rem;
+  color: var(--text-tertiary);
+}

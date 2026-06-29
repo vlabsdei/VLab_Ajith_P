@@ -1,0 +1,395 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <script>
+    window.addEventListener('unhandledrejection', function (event) {
+      if (event.reason && (String(event.reason.message || event.reason).includes('tabs:outgoing') || String(event.reason.message || event.reason).includes('No Listener'))) {
+        event.preventDefault();
+      }
+    });
+    window.addEventListener('error', function (event) {
+      if (event.message && (event.message.includes('tabs:outgoing') || event.message.includes('No Listener'))) {
+        event.preventDefault();
+      }
+    });
+  </script>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>AeroSim Actuator System Integration Suite</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600;700&family=Share+Tech&family=Share+Tech+Mono&family=VT323&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="css/main.css">
+</head>
+<body>
+  <main class="work_zone" id="workspace">
+
+    <aside class="cfg_aside" id="configPanel">
+      <div class="pane_lbl" id="configPanelTitle" style="cursor: pointer; display: flex; align-items: center; justify-content: space-between;">
+        <div>
+          <span>Actuator Array Components</span>
+          <span class="panel-note">Swap parts to analyze specs</span>
+        </div>
+        <svg id="configPanelChevron" xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="transition: transform 0.2s ease; color: var(--text-tertiary);">
+          <polyline points="18 15 12 9 6 15"></polyline>
+        </svg>
+      </div>
+
+      <div class="config-sections" id="configSections"></div>
+
+      <div class="panel-section" id="sectionAltitude">
+        <div class="config-group-title">Rotor Operating Environment</div>
+        <div class="altitude-control">
+          <div class="alt-row">
+            <label class="alt-label" for="alt_rng_input">Density Altitude</label>
+            <span class="alt-value" id="altitudeValue">0 m</span>
+          </div>
+          <input type="range" id="alt_rng_input" class="alt-slider"
+                 min="0" max="3000" step="50" value="0"
+                 aria-label="Density Altitude">
+          <div class="alt-ticks">
+            <span>0m</span><span>1000m</span><span>2000m</span><span>3000m</span>
+          </div>
+          <div class="density-readout">
+            <span class="density-label">Density (&rho;)</span>
+            <span class="density-val" id="densityValue">1.2250</span>
+            <span class="density-unit">kg/m³</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="panel-actions" id="panelActions">
+          <a href="index.html" class="btn_prm" style="text-decoration: none; display: block; text-align: center;">&larr; Back to Assembly</a>
+      </div>
+
+      <div class="mass-budget" id="massBudget" style="display:none">
+        <div class="budget-header">
+          <h3>Mass Distribution Breakdown</h3>
+        </div>
+        <table class="budget-table" id="tbl_mass_cost">
+          <thead>
+            <tr>
+              <th>Rotor Component</th>
+              <th>Qty</th>
+              <th>Unit (g)</th>
+              <th>Total (g)</th>
+            </tr>
+          </thead>
+          <tbody id="tbl_mass_body"></tbody>
+          <tfoot>
+            <tr class="budget-total-row">
+              <td colspan="3">Total Vehicle Mass</td>
+              <td id="totalMassCell">—</td>
+            </tr>
+          </tfoot>
+        </table>
+      </div>
+    </aside>
+
+    <section class="mid_col">
+      <div class="viewport-container">
+        <div class="viewport-tabs" role="tablist">
+          <button class="vp-tab active" id="btn_tab_rpm" role="tab" aria-selected="true" data-tab="1">
+            1. KV &amp; Loaded RPM
+          </button>
+          <button class="vp-tab" id="btn_tab_eff" role="tab" aria-selected="false" data-tab="2">
+            2. Efficiency Profiling
+          </button>
+        </div>
+
+        <div class="cnvs_holder" id="canvasWrapper">
+          <canvas id="droneCanvas" aria-label="Rotor 3D scene"></canvas>
+          
+          <div class="hud_monitor" id="standHudOverlay">
+            <div class="stand-hud-header">[ BENCH RECORDER ACTIVE ]</div>
+            <div class="stand-hud-row">
+              <span class="stand-hud-lbl">THROTTLE</span>
+              <span class="stand-hud-val" id="hudThrottle">0%</span>
+            </div>
+            <div class="stand-hud-row">
+              <span class="stand-hud-lbl">BUS VOLTAGE</span>
+              <span class="stand-hud-val" id="hudVoltage">0.0 V</span>
+            </div>
+            <div class="stand-hud-row">
+              <span class="stand-hud-lbl">BUS CURRENT</span>
+              <span class="stand-hud-val" id="hudCurrent">0.0 A</span>
+            </div>
+            <div class="stand-hud-row">
+              <span class="stand-hud-lbl">RPM (LOADED)</span>
+              <span class="stand-hud-val" id="hudRPM">0</span>
+            </div>
+            <div class="stand-hud-row">
+              <span class="stand-hud-lbl">THRUST</span>
+              <span class="stand-hud-val" id="hudThrust">0.00 N</span>
+            </div>
+          </div>
+        </div>
+
+        <div class="sim_ctrls" id="ctrl_rpm">
+          <label for="throttleSlider" style="font-size:0.75rem; font-weight:600; color:var(--text-secondary);">Test Throttle:</label>
+          <input type="range" id="throttleSlider" class="alt-slider" min="0" max="100" step="1" value="0" style="flex: 1; max-width: 180px;">
+          <span class="mono" id="throttleValue" style="font-size:0.82rem; font-weight:700; color:var(--accent); min-width: 36px;">0%</span>
+          <span class="sim-controls-note">Observe RPM drop under aerodynamic load</span>
+        </div>
+
+        <div class="sim_ctrls" id="ctrl_eff" style="display:none; justify-content: flex-start; gap: 15px;">
+          <button class="btn_prm" id="btn_profile_sweep">Run Efficiency Sweep (30-100%)</button>
+          <span class="sim-controls-note" id="sweepStatus">Ready to profile motor</span>
+        </div>
+      </div>
+
+      <div class="commentary-panel" id="liveCommentaryPanel">
+        <div class="commentary-icon">
+          <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <circle cx="12" cy="12" r="10"></circle>
+            <line x1="12" y1="16" x2="12" y2="12"></line>
+            <line x1="12" y1="8" x2="12.01" y2="8"></line>
+          </svg>
+        </div>
+        <div class="commentary-content">
+          <h4 class="commentary-title">AeroSim Instructor</h4>
+          <p class="commentary-text" id="liveCommentaryText">Increase throttle to observe how the motor's actual loaded RPM is lower than its theoretical free-spin RPM due to winding resistance.</p>
+        </div>
+      </div>
+
+      <div class="deriv_box" id="calculationsPanel">
+        <div class="calc-panel-header">
+          <h3 id="calcHeaderTitle">Loaded RPM Equations</h3>
+        </div>
+        <div class="calc-flow" id="calcFlowRpm">
+          <div class="calc-step">
+            <div class="step-header">
+              <span class="step-num">01</span>
+              <h4>Equivalent Actuator Circuit</h4>
+            </div>
+            <p class="step-desc">Internal winding resistance (<i>R</i><sub>m</sub>) acts as a resistor, converting energy directly into waste heat.</p>
+            <div class="circuit-diagram" id="circuitDiagram" style="margin-top: 10px;">
+              <div style="display: flex; justify-content: space-between; align-items: center; background: var(--bg); border: 1px solid var(--border); padding: 15px; border-radius: var(--radius);">
+                 <div style="text-align: center;">
+                   <div style="font-size: 0.7rem; color: var(--text-tertiary);">SOURCE V</div>
+                   <div class="mono" id="circVbatt" style="font-weight: 700; color: var(--accent); font-size: 1.1rem;">0.0V</div>
+                 </div>
+                 <div style="color: var(--text-secondary);">→</div>
+                 <div style="text-align: center;">
+                   <div style="font-size: 0.7rem; color: var(--text-tertiary);">WINDING DROP (Rm)</div>
+                   <div class="mono" id="circVdrop" style="font-weight: 700; color: var(--danger); font-size: 1.1rem;">-0.0V</div>
+                   <div style="font-size: 0.65rem; color: var(--danger);">Heat Dissipation</div>
+                 </div>
+                 <div style="color: var(--text-secondary);">→</div>
+                 <div style="text-align: center;">
+                   <div style="font-size: 0.7rem; color: var(--text-tertiary);">BACK-EMF (Rotation)</div>
+                   <div class="mono" id="circVbemf" style="font-weight: 700; color: var(--success); font-size: 1.1rem;">0.0V</div>
+                   <div style="font-size: 0.65rem; color: var(--success);">Mechanical Work</div>
+                 </div>
+              </div>
+            </div>
+            <p class="step-desc" style="margin-top: 15px;"><strong>System Note:</strong> Winding drop reduces effective voltage. Heavy propeller loads increase winding current, raising thermal losses and lowering back-EMF, which limits maximum RPM.</p>
+          </div>
+          <div class="calc-step" style="margin-top: 15px;">
+            <div class="step-header">
+              <span class="step-num">02</span>
+              <h4>Actual Loaded RPM</h4>
+            </div>
+            <p class="step-desc">The motor shaft rate is determined by the remaining back-EMF voltage:</p>
+            <div class="math-block mono"><i>n</i><sub>loaded</sub> = <i>KV</i> &times; <i>V</i><sub>bemf</sub></div>
+            <div class="math-eval mono" id="calc_nloaded">&mdash;</div>
+          </div>
+        </div>
+
+        <div class="calc-flow" id="calcFlowEff" style="display:none;">
+          <div class="calc-step">
+            <div class="step-header">
+              <span class="step-num">01</span>
+              <h4>Power Allocation Flow</h4>
+            </div>
+            <p class="step-desc">Applied electrical power divides into useful shaft power and thermal heat losses.</p>
+            <div class="sankey-diagram" id="sankeyDiagram" style="margin-top: 10px;">
+              <div style="background: var(--bg); border: 1px solid var(--border); padding: 15px; border-radius: var(--radius);">
+                <div style="display: flex; justify-content: space-between; margin-bottom: 5px; font-size: 0.8rem; font-weight: 600;">
+                  <span>Input Power (<i>P</i><sub>elec</sub>)</span>
+                  <span id="sankeyPelec" class="mono">0.0 W</span>
+                </div>
+                <div style="height: 20px; background: var(--text-primary); border-radius: 4px; margin-bottom: 15px;"></div>
+                
+                <div style="display: flex; align-items: flex-start; gap: 10px;">
+                  <div style="flex: 1;">
+                    <div style="display: flex; justify-content: space-between; margin-bottom: 5px; font-size: 0.8rem; font-weight: 600; color: var(--success);">
+                      <span>Shaft Power (<i>P</i><sub>mech</sub>)</span>
+                      <span id="sankeyPmech" class="mono">0.0 W</span>
+                    </div>
+                    <div id="sankeyBarMech" style="height: 20px; background: var(--success); border-radius: 4px; width: 100%;"></div>
+                  </div>
+                  <div style="flex: 1;">
+                    <div style="display: flex; justify-content: space-between; margin-bottom: 5px; font-size: 0.8rem; font-weight: 600; color: var(--danger);">
+                      <span>Copper Loss (<i>I</i><sup>2</sup><i>R</i>)</span>
+                      <span id="sankeyPloss" class="mono">0.0 W</span>
+                    </div>
+                    <div id="sankeyBarLoss" style="height: 20px; background: var(--danger); border-radius: 4px; width: 0%;"></div>
+                  </div>
+                </div>
+              </div>
+            </div>
+            <p class="step-desc" style="margin-top: 15px;"><strong>System Note:</strong> Thermal loss rises quadratically with phase current. For maximum efficiency, design the vehicle so that its required hover thrust aligns with the peak of the motor efficiency curve.</p>
+          </div>
+          <div class="calc-step" style="margin-top: 15px;">
+            <div class="step-header">
+              <span class="step-num">02</span>
+              <h4>Actuator Efficiency</h4>
+            </div>
+            <p class="step-desc">Ratio of output mechanical shaft power to input electrical power:</p>
+            <div class="math-block mono">&eta;<sub>m</sub> = <i>P</i><sub>mech</sub> / <i>P</i><sub>elec</sub></div>
+            <div class="math-eval mono" id="calc_eff">&mdash;</div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="right-panel">
+      
+      <div class="res_section">
+        <div class="results-header">
+          <h2 id="summarySectionHeader">Actuator Analytics</h2>
+        </div>
+
+        <div class="summary-cards" style="grid-template-columns: repeat(3, 1fr);">
+          <div class="summary-card" id="summaryCardKV">
+            <span class="card-title">Motor KV Rating</span>
+            <div class="card-val mono" id="sumKV">&mdash;</div>
+            <span class="card-unit">RPM/Volt</span>
+          </div>
+
+          <div class="summary-card" id="summaryCardHoverReq">
+            <span class="card-title">Hover Shaft Rate</span>
+            <div class="card-val mono" id="sumHoverRPM">&mdash;</div>
+            <span class="card-unit" id="sumHoverDesc">Required for Hover</span>
+          </div>
+
+          <div class="summary-card" id="summaryCardHoverEff">
+            <span class="card-title">Hover Efficiency</span>
+            <div class="card-val mono" id="sumHoverEff">&mdash;</div>
+            <span class="card-unit">Percent (%)</span>
+          </div>
+
+          <div class="summary-card" id="sumEffCard">
+            <span class="card-title">Peak Efficiency</span>
+            <div class="card-val mono" id="sumPeakEff">&mdash;</div>
+            <span class="card-unit" id="sumPeakEffDesc">Run sweep</span>
+          </div>
+
+          <div class="summary-card" id="sumMaxThrustCard">
+            <span class="card-title">Max Thrust (100%)</span>
+            <div class="card-val mono" id="sumMaxThrust">&mdash;</div>
+            <span class="card-unit">Newtons</span>
+          </div>
+          
+          <div class="summary-card" id="sumMaxCurrentCard">
+            <span class="card-title">Max Current (100%)</span>
+            <div class="card-val mono" id="sumMaxCurrent">&mdash;</div>
+            <span class="card-unit">Amps</span>
+          </div>
+        </div>
+
+        <div class="chart-container" id="rpmGaugeContainer">
+          <div class="chart-header">
+            <h3>Virtual Tachometer</h3>
+            <p class="chart-desc">Loaded vs Free-Spin RPM</p>
+          </div>
+          <div class="chart-canvas-wrapper" style="height: 140px; position: relative;">
+            <canvas id="tacho_chart_canvas"></canvas>
+            <div style="position: absolute; top: 50%; left: 50%; transform: translate(-50%, -30%); text-align: center;">
+              <div id="tachoRpmVal" class="mono" style="font-size: 1.5rem; font-weight: 700; color: var(--accent); line-height: 1;">0</div>
+              <div style="font-size: 0.7rem; color: var(--text-tertiary); font-weight: 600; text-transform: uppercase;">RPM</div>
+            </div>
+          </div>
+          
+          <div class="gauge-legend" style="display: flex; justify-content: center; gap: 12px; margin-top: 8px; font-size: 0.7rem; color: var(--text-secondary);">
+            <div style="display: flex; align-items: center; gap: 4px;">
+              <span style="display: inline-block; width: 8px; height: 8px; border-radius: 50%; background-color: var(--accent);"></span>
+              <span>Loaded RPM</span>
+            </div>
+            <div style="display: flex; align-items: center; gap: 4px;">
+              <span style="display: inline-block; width: 8px; height: 8px; border-radius: 50%; background-color: var(--danger);"></span>
+              <span>Copper Loss</span>
+            </div>
+            <div style="display: flex; align-items: center; gap: 4px;">
+              <span style="display: inline-block; width: 8px; height: 8px; border-radius: 50%; background-color: var(--border-light);"></span>
+              <span>Reserve KV</span>
+            </div>
+          </div>
+
+          <div id="rpmComparisonReadout" class="mono" style="margin-top: 15px; font-size: 0.78rem; border-top: 1px dashed var(--border); padding-top: 10px; display: flex; flex-direction: column; gap: 6px;">
+            <div style="display: flex; justify-content: space-between; color: var(--text-secondary);">
+              <span>Theoretical Free-Spin:</span>
+              <span id="valFreeSpin" style="font-weight: 600; color: var(--text-primary);">0 RPM</span>
+            </div>
+            <div style="display: flex; justify-content: space-between; color: var(--text-secondary);">
+              <span>Actual Loaded:</span>
+              <span id="valLoaded" style="font-weight: 600; color: var(--accent);">0 RPM</span>
+            </div>
+            <div style="display: flex; justify-content: space-between; color: var(--danger);">
+              <span>Thermal Winding Loss:</span>
+              <span id="valLost" style="font-weight: 600;">0 RPM (0.0%)</span>
+            </div>
+          </div>
+        </div>
+
+        <div class="chart-container" id="effChartContainer" style="display:none">
+          <div class="chart-header">
+            <h3>Efficiency vs. Throttle</h3>
+            <p class="chart-desc">Inverted-U curve showing optimal operating point</p>
+          </div>
+          <div class="chart-canvas-wrapper" style="height: 140px;">
+            <canvas id="effChart"></canvas>
+          </div>
+
+          <div class="chart-header" style="margin-top: 15px; border-top: 1px solid var(--border); padding-top: 15px;">
+            <h3>Thrust Profile</h3>
+            <p class="chart-desc">Thrust (N) vs. Current (A)</p>
+          </div>
+          <div class="chart-canvas-wrapper" style="height: 140px; margin-bottom: 15px;">
+            <canvas id="thrustChart"></canvas>
+          </div>
+          
+          <table class="data-table" id="effTable">
+            <thead>
+              <tr>
+                <th>Thr%</th>
+                <th>RPM</th>
+                <th>Thrust(N)</th>
+                <th>Curr(A)</th>
+                <th>P<sub>in</sub>(W)</th>
+                <th>P<sub>loss</sub>(W)</th>
+                <th>Eff%</th>
+              </tr>
+            </thead>
+            <tbody id="effTableBody"></tbody>
+          </table>
+        </div>
+
+        <div class="next-module-container" id="nextModuleContainer" style="display:none; margin-top: 20px; padding: 16px; background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); text-align: center; overflow: hidden;">
+          <div style="font-size: 0.72rem; font-weight: 700; color: var(--success); text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 4px;">Actuator Matching Completed</div>
+          <h3 style="font-size: 1.1rem; margin-bottom: 12px; color: var(--text-primary); font-weight: 700;">Vehicle Config Ready</h3>
+          
+          <div class="unlock-canvas-wrapper" style="height: 180px; width: 100%; background: var(--surface-2); border: 1px solid var(--border); border-radius: var(--radius); overflow: hidden; position: relative; margin-bottom: 4px;">
+            <canvas id="unlockCanvas" style="width: 100%; height: 100%; display: block;"></canvas>
+            <div style="position: absolute; bottom: 8px; right: 8px; font-size: 0.65rem; color: var(--text-secondary); font-family: var(--font-mono); pointer-events: none; background: rgba(255, 255, 255, 0.8); padding: 2px 6px; border-radius: 4px; border: 1px solid var(--border);">Drag to Rotate 3D Model</div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+  </main>
+
+  <script src="https://cdn.jsdelivr.net/npm/three@0.147.0/build/three.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/three@0.147.0/examples/js/controls/OrbitControls.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+
+  <script src="https://cdn.jsdelivr.net/npm/three@0.147.0/examples/js/loaders/GLTFLoader.js"></script>
+  <script>
+    window.GLTFLoader = THREE.GLTFLoader;
+  </script>
+
+  <script src="js/main.js"></script>
+
+</body>
+</html>

@@ -1,0 +1,31 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=1920, initial-scale=1" />
+<title>Flight Control System — 3D Explainer</title>
+<style>
+  html, body {
+    margin: 0; padding: 0; background: #05070d; overflow: hidden;
+    width: 1920px; height: 1080px;
+  }
+  #stage {
+    position: relative; width: 1920px; height: 1080px;
+    background: #05070d;
+  }
+  #webgl, #overlay {
+    position: absolute; top: 0; left: 0; width: 1920px; height: 1080px;
+  }
+  #webgl { z-index: 1; }
+  #overlay { z-index: 2; pointer-events: none; }
+</style>
+</head>
+<body>
+  <div id="stage">
+    <canvas id="webgl" width="1920" height="1080"></canvas>
+    <canvas id="overlay" width="1920" height="1080"></canvas>
+  </div>
+  <script src="./lib/three.min.js"></script>
+  <script src="./scene.js"></script>
+</body>
+</html>

@@ -1,0 +1,175 @@
+{
+  "version": 2.0,
+  "questions": [
+    {
+      "question": "Q1. Why does a quadcopter require an active electronic control loop to fly level?",
+      "answers": {
+        "a": "Because the motors are too weak to lift it without help",
+        "b": "Because it is open-loop unstable — any small disturbance torque integrates into a tumble unless continuously corrected",
+        "c": "Because the battery voltage drifts during flight",
+        "d": "Because the propellers are not balanced"
+      },
+      "explanations": {
+        "a": "Incorrect — thrust capacity is a separate issue from stability.",
+        "b": "Correct — the rigid-body plant is a double integrator, so the vehicle cannot hold attitude on its own; the control loop manufactures the stabilising torque.",
+        "c": "Incorrect — voltage sag affects thrust margin, not the fundamental need for feedback.",
+        "d": "Incorrect — balance reduces vibration but does not make an unstable plant stable."
+      },
+      "correctAnswer": "b",
+      "difficulty": "beginner"
+    },
+    {
+      "question": "Q2. In a PID controller, what does the Proportional (K<sub>p</sub>) term contribute?",
+      "answers": {
+        "a": "A corrective action proportional to the present error",
+        "b": "A corrective action proportional to the accumulated past error",
+        "c": "A corrective action proportional to the rate of change of error",
+        "d": "A constant bias regardless of error"
+      },
+      "explanations": {
+        "a": "Correct — the proportional term acts like a spring, producing a restoring effort proportional to how far the present error is from zero.",
+        "b": "Incorrect — that describes the integral term.",
+        "c": "Incorrect — that describes the derivative term.",
+        "d": "Incorrect — a PID term is never independent of the error signal."
+      },
+      "correctAnswer": "a",
+      "difficulty": "beginner"
+    },
+    {
+      "question": "Q3. What is the main effect of the Derivative (K<sub>d</sub>) term on a control loop?",
+      "answers": {
+        "a": "It removes steady-state error",
+        "b": "It adds damping, reducing overshoot and oscillation",
+        "c": "It increases the steady-state gain",
+        "d": "It has no effect on a stable system"
+      },
+      "explanations": {
+        "a": "Incorrect — eliminating steady-state error is the integral term's job.",
+        "b": "Correct — the derivative term reacts to how fast the error is changing, acting as electronic damping that calms overshoot.",
+        "c": "Incorrect — it does not change the DC gain.",
+        "d": "Incorrect — derivative action strongly shapes the transient response."
+      },
+      "correctAnswer": "b",
+      "difficulty": "beginner"
+    },
+    {
+      "question": "Q4. Which controller term is responsible for driving steady-state error to exactly zero?",
+      "answers": {
+        "a": "Proportional",
+        "b": "Derivative",
+        "c": "Integral",
+        "d": "None — steady-state error can never be removed"
+      },
+      "explanations": {
+        "a": "Incorrect — proportional control leaves a finite residual error against a constant disturbance.",
+        "b": "Incorrect — the derivative term shapes the transient, not the steady state.",
+        "c": "Correct — the integral term keeps accumulating error and injecting effort until the error is exactly zero.",
+        "d": "Incorrect — integral action removes constant steady-state error entirely."
+      },
+      "correctAnswer": "c",
+      "difficulty": "beginner"
+    },
+    {
+      "question": "Q5. The damping ratio &zeta; of a second-order system is 0.4. How would its step response be described?",
+      "answers": {
+        "a": "Overdamped — no overshoot, very slow",
+        "b": "Critically damped — fastest with no overshoot",
+        "c": "Underdamped — overshoots and oscillates before settling",
+        "d": "Undamped — oscillates forever"
+      },
+      "explanations": {
+        "a": "Incorrect — overdamped means &zeta; > 1.",
+        "b": "Incorrect — critically damped means &zeta; = 1.",
+        "c": "Correct — 0 < &zeta; < 1 is underdamped: the response overshoots and rings before settling.",
+        "d": "Incorrect — undamped means &zeta; = 0."
+      },
+      "correctAnswer": "c",
+      "difficulty": "intermediate"
+    },
+    {
+      "question": "Q6. What does a MEMS gyroscope directly measure, and what is its main weakness for attitude estimation?",
+      "answers": {
+        "a": "Absolute tilt angle; weakness is slow response",
+        "b": "Angular rate; weakness is that integrating it lets a small bias drift without bound",
+        "c": "Linear acceleration; weakness is temperature sensitivity",
+        "d": "Magnetic heading; weakness is interference"
+      },
+      "explanations": {
+        "a": "Incorrect — a gyro does not read absolute angle directly.",
+        "b": "Correct — a gyro measures angular rate; obtaining angle requires integration, which accumulates the bias into unbounded drift.",
+        "c": "Incorrect — that describes an accelerometer.",
+        "d": "Incorrect — that describes a magnetometer."
+      },
+      "correctAnswer": "b",
+      "difficulty": "intermediate"
+    },
+    {
+      "question": "Q7. Why can an accelerometer estimate tilt, and what corrupts that estimate on a flying drone?",
+      "answers": {
+        "a": "It senses the gravity vector; vibration and motion noise corrupt it",
+        "b": "It senses angular rate; bias corrupts it",
+        "c": "It senses air pressure; wind corrupts it",
+        "d": "It senses rotation speed; temperature corrupts it"
+      },
+      "explanations": {
+        "a": "Correct — the accelerometer senses the gravity direction (giving an absolute, drift-free tilt) but motor vibration and translational acceleration add heavy noise.",
+        "b": "Incorrect — that is a gyroscope.",
+        "c": "Incorrect — that is a barometer.",
+        "d": "Incorrect — that is closer to a gyroscope."
+      },
+      "correctAnswer": "a",
+      "difficulty": "intermediate"
+    },
+    {
+      "question": "Q8. What is the purpose of a complementary (or Kalman) filter in a flight controller?",
+      "answers": {
+        "a": "To amplify the motor signals",
+        "b": "To fuse complementary sensors so each covers the other's weakness, yielding one clean estimate",
+        "c": "To filter the PWM output to the ESCs",
+        "d": "To regulate the battery voltage"
+      },
+      "explanations": {
+        "a": "Incorrect — it is an estimation filter, not a power amplifier.",
+        "b": "Correct — it blends the drift-free-but-noisy accelerometer with the smooth-but-drifting gyro to produce a single accurate attitude estimate.",
+        "c": "Incorrect — that is unrelated signal conditioning.",
+        "d": "Incorrect — voltage regulation is a power-electronics task."
+      },
+      "correctAnswer": "b",
+      "difficulty": "beginner"
+    },
+    {
+      "question": "Q9. In the Ziegler–Nichols method, what is the 'ultimate gain' K<sub>u</sub>?",
+      "answers": {
+        "a": "The maximum gain the hardware can physically output",
+        "b": "The proportional gain at which the loop oscillates with constant (sustained) amplitude",
+        "c": "The gain that gives zero overshoot",
+        "d": "The gain at which the motor saturates"
+      },
+      "explanations": {
+        "a": "Incorrect — it is a property of the control loop, not a hardware output limit.",
+        "b": "Correct — K<sub>u</sub> is the proportional gain at the stability boundary, where the response is a sustained constant-amplitude oscillation.",
+        "c": "Incorrect — at K<sub>u</sub> the system is marginally stable, far from zero overshoot.",
+        "d": "Incorrect — saturation is a hardware nonlinearity, not the ultimate gain."
+      },
+      "correctAnswer": "b",
+      "difficulty": "intermediate"
+    },
+    {
+      "question": "Q10. How does a larger, heavier airframe (higher moment of inertia J) affect the attitude response for the same PID gains?",
+      "answers": {
+        "a": "It responds faster",
+        "b": "It responds more slowly — higher inertia lowers the natural frequency",
+        "c": "Inertia has no effect on the control response",
+        "d": "It becomes unstable immediately"
+      },
+      "explanations": {
+        "a": "Incorrect — more inertia resists angular acceleration, slowing the response.",
+        "b": "Correct — since &omega;<sub>n</sub> = &radic;(K<sub>p</sub>/J), a larger J lowers the natural frequency and slows the loop, usually requiring higher gains.",
+        "c": "Incorrect — inertia is central to the plant dynamics.",
+        "d": "Incorrect — higher inertia does not by itself cause instability."
+      },
+      "correctAnswer": "b",
+      "difficulty": "intermediate"
+    }
+  ]
+}

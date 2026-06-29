@@ -1,0 +1,163 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Flight Control Lab — Module 1 · PID Tuning &amp; Ziegler–Nichols</title>
+  <link rel="stylesheet" href="css/main.css">
+</head>
+<body data-start="pidstep">
+  <main class="workspace">
+    <!-- Column 1 — Configuration -->
+    <aside class="config-panel">
+      <div class="panel-title">
+        <span>Loop Setup</span>
+        <p class="panel-note">Pick the airframe (sets the roll inertia J), set the PID gains, then auto-tune the inner rate loop with Ziegler–Nichols.</p>
+      </div>
+      <div class="config-sections">
+        <div class="config-group">
+          <div class="config-group-title">Airframe &amp; Inertia</div>
+          <label class="field-label" for="airframeSelect">Airframe (sets J)</label>
+          <select id="airframeSelect" class="config-select"></select>
+        </div>
+
+        <div class="config-group">
+          <div class="config-group-title">PID Gains</div>
+          <div class="slider-row"><label for="kpSlider">Proportional K<sub>p</sub></label><output id="kpOut">0.60</output></div>
+          <input id="kpSlider" class="alt-slider" type="range" min="0" max="2" step="0.05" value="0.6">
+          <div class="slider-row"><label for="kiSlider">Integral K<sub>i</sub></label><output id="kiOut">0.00</output></div>
+          <input id="kiSlider" class="alt-slider" type="range" min="0" max="1" step="0.02" value="0">
+          <div class="slider-row"><label for="kdSlider">Derivative K<sub>d</sub></label><output id="kdOut">0.040</output></div>
+          <input id="kdSlider" class="alt-slider" type="range" min="0" max="0.12" step="0.002" value="0.04">
+        </div>
+
+        <div class="config-group">
+          <div class="config-group-title">Ziegler–Nichols Auto-Tune</div>
+          <label class="field-label" for="tuningSelect">Tuning method</label>
+          <select id="tuningSelect" class="config-select">
+            <option value="manual">Manual / proportional sweep</option>
+            <option value="classic">Classic Ziegler–Nichols</option>
+            <option value="tyreus">Tyreus–Luyben (robust)</option>
+          </select>
+          <div class="slider-row"><label for="znSlider">Proportional sweep gain</label><output id="znOut">8.0</output></div>
+          <input id="znSlider" class="alt-slider" type="range" min="0" max="30" step="0.5" value="8">
+          <div class="alt-ticks"><span>0</span><span>find K_u</span><span>30</span></div>
+        </div>
+
+        <div class="config-group">
+          <div class="config-group-title">Disturbance</div>
+          <label class="switch"><input id="disturbanceToggle" type="checkbox"><span>Apply CG-offset torque (from Exp 2)</span></label>
+        </div>
+      </div>
+
+      <div class="panel-section">
+        <div class="config-group-title">Objective</div>
+        <p class="panel-note">Map the PID gains onto overshoot and settling time for the chosen inertia, find the ultimate gain by sweeping the rate loop, and apply the Ziegler–Nichols table for a robust tune that holds overshoot within the 25% target.</p>
+      </div>
+    </aside>
+
+    <!-- Column 2 — Viewport, controls & derivations -->
+    <section class="middle-panel">
+      <div class="viewport-container">
+        <nav class="viewport-tabs" role="tablist" aria-label="Stages">
+          <button class="vp-tab active" data-mode="pidstep" type="button">1. PID Step Response</button>
+          <button class="vp-tab" data-mode="ziegler" type="button">2. Ziegler–Nichols</button>
+        </nav>
+
+        <div class="canvas-wrapper">
+          <canvas id="benchCanvas" width="1180" height="620" aria-label="Drone roll attitude responding to the control loop"></canvas>
+          <div class="bench-attitude" id="benchAttitude"></div>
+          <div class="bench-hud" id="benchHud"></div>
+        </div>
+
+        <div class="sim-controls">
+          <button id="stepBtn" class="btn-sim" type="button">Apply Step</button>
+          <button id="autotuneBtn" class="btn-sim-ghost" type="button">Auto-tune (Z-N)</button>
+          <button id="resetBtn" class="btn-sim-ghost" type="button">Reset</button>
+          <span class="sim-controls-note">Apply a step and read the overshoot and settling time from the live response.</span>
+        </div>
+      </div>
+
+      <div class="commentary-panel">
+        <div class="commentary-icon">
+          <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="16" x2="12" y2="12"></line><line x1="12" y1="8" x2="12.01" y2="8"></line></svg>
+        </div>
+        <div class="commentary-content">
+          <h4 class="commentary-title">Instructor</h4>
+          <p class="commentary-text" id="labMessage">Set the PID gains and apply a step to study the attitude response.</p>
+        </div>
+      </div>
+
+      <div class="calculations-panel">
+        <div class="calc-panel-header"><h3>Theoretical Derivations</h3></div>
+        <div class="calc-flow">
+          <div class="calc-step">
+            <div class="step-header"><span class="step-num">01</span><h4 id="calcTitle1">Natural Frequency &amp; Damping</h4></div>
+            <p class="step-desc" id="calcDesc1">Second-order roll loop on the 1/(J s²) inertia plant.</p>
+            <div class="math-block" id="calcForm1">wn = sqrt(Kp / J) · z = Kd / (2 sqrt(Kp J))</div>
+            <div class="math-eval" id="eqA">—</div>
+          </div>
+          <div class="calc-step">
+            <div class="step-header"><span class="step-num">02</span><h4 id="calcTitle2">Transient Metrics</h4></div>
+            <p class="step-desc" id="calcDesc2">Overshoot and 2% settling time follow from the damping ratio.</p>
+            <div class="math-block" id="calcForm2">Mp = exp(-pi z / sqrt(1 - z²)),  ts = 4 / (z wn)</div>
+            <div class="math-eval" id="eqB">—</div>
+          </div>
+          <div class="calc-step">
+            <div class="step-header"><span class="step-num">03</span><h4 id="calcTitle3">Disturbance Rejection</h4></div>
+            <p class="step-desc" id="calcDesc3">Steady tilt under a CG-offset torque; integral action nulls it.</p>
+            <div class="math-block" id="calcForm3">e_ss = Td / Kp</div>
+            <div class="math-eval" id="eqC">—</div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Column 3 — Results -->
+    <aside class="right-panel">
+      <div class="results-section">
+        <div class="results-header"><h2>Response Summary</h2></div>
+        <div class="summary-cards">
+          <div class="summary-card"><span class="card-title" id="cardT1">Overshoot Mp</span><div class="card-val" id="cardV1">—</div></div>
+          <div class="summary-card"><span class="card-title" id="cardT2">Settling t_s</span><div class="card-val" id="cardV2">—</div></div>
+          <div class="summary-card"><span class="card-title" id="cardT3">Damping z</span><div class="card-val" id="cardV3">—</div></div>
+          <div class="summary-card margin-card" id="card4"><span class="card-title" id="cardT4">Stability</span><div class="card-val" id="cardV4">—</div></div>
+        </div>
+      </div>
+
+      <div class="results-section">
+        <div class="chart-container">
+          <div class="chart-header">
+            <h3 id="primaryChartTitle">Roll Angle Step Response</h3>
+            <p class="chart-desc" id="primaryChartTag">theta(t)</p>
+          </div>
+          <div class="chart-canvas-wrapper"><canvas id="scopeCanvas" width="820" height="260"></canvas></div>
+        </div>
+      </div>
+
+      <div class="results-section">
+        <div class="results-header"><h2>Computed Quantities</h2></div>
+        <div id="metricList"></div>
+      </div>
+
+      <div class="results-section">
+        <div class="results-header"><h2>Loop Analysis</h2></div>
+        <div class="probe-list" id="probeList"></div>
+      </div>
+
+      <div class="results-section">
+        <div class="results-header"><h2>Tuning Checklist</h2></div>
+        <div class="checklist-container" id="checklist"></div>
+        <div class="panel-actions" style="padding:0;border:none;">
+          <a id="btnNextModule" class="primary-link is-locked" href="index1.html" aria-disabled="true">Complete the objectives to continue →</a>
+          <p class="panel-note" id="nextHint" style="margin-top:8px;">Keep overshoot within the 25% target, switch on the disturbance and add integral gain to null the steady-state error, then apply a Ziegler–Nichols auto-tune to unlock Module 2.</p>
+        </div>
+      </div>
+    </aside>
+  </main>
+
+  <script src="https://cdn.jsdelivr.net/npm/three@0.147.0/build/three.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/three@0.147.0/examples/js/controls/OrbitControls.js"></script>
+  <script src="js/main.js"></script>
+<script src="..\assets\js\iframeResize.js"></script></body>
+</html>

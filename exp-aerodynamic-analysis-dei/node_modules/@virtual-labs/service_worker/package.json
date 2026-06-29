@@ -1,0 +1,11 @@
+{
+  "name": "@virtual-labs/service_worker",
+  "version": "1.0.1",
+  "description": "A service worker generator built for virtual labs",
+  "main": "main.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "author": "",
+  "license": "ISC"
+}

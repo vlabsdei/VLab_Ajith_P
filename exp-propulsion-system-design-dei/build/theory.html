@@ -1,0 +1,610 @@
+<!DOCTYPE html><html lang="en"><head>
+    <meta charset="utf-8">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta content="" name="description">
+    <meta content="" name="author">
+    
+    	<meta name="experiment-short-name" content="propulsion-system-design">
+    	<meta name="developer-institute" content="DEI">
+    	<meta name="learning-unit" content="PROPULSION SYSTEM DESIGN: PROPELLER GEOMETRY, THRUST &amp; MOTOR MATCHING">
+    	<meta name="task-name" content="Theory">
+    
+    <!-- For iPhone -->
+    <meta name="msapplication-TileColor" content="#4076e0">
+    <!-- Chrome, Firefox OS and Opera -->
+    <meta name="theme-color" content="#4076e0">
+    <!-- Windows Phone -->
+    <meta name="msapplication-navbutton-color" content="#4076e0">
+    <title>Virtual Labs</title>
+    <link rel="shortcut icon" href="./assets/images/favicon.ico">
+    <link rel="stylesheet" href="./assets/css/bootstrap.min.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/github-markdown-css/4.0.0/github-markdown.min.css" integrity="sha512-Oy18vBnbSJkXTndr2n6lDMO5NN31UljR8e/ICzVPrGpSud4Gkckb8yUpqhKuUNoE+o9gAb4O/rAxxw1ojyUVzg==" crossorigin="anonymous">
+    <link href="https://fonts.googleapis.com/css2?family=Open+Sans&amp;family=Raleway&amp;display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="./assets/fonts/font-awesome-4.7.0/css/font-awesome.min.css">
+    <link rel="stylesheet" href="./assets/css/github-markdown.min.css">
+    <link rel="stylesheet" href="./assets/css/vlabs-style.css">
+    <link rel="stylesheet" href="./assets/css/toast.css">
+    <link rel="stylesheet" href="./assets/katex_assets/katex.min.css">
+    
+    <script src="./assets/js/jquery-3.4.1.slim.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@popperjs/core@2.5.4/dist/umd/popper.min.js" integrity="sha384-q2kxQ16AaE6UbzuKqyBE9/u/KzioAlnx2maXQHiDX9d4/zp8Ok3f+M7DPm+Ib6IU" crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.0.0-beta1/dist/js/bootstrap.min.js" integrity="sha384-pQQkAEnwaBkjpqZ8RU1fF1AKtTcHJwFl3pblpTlHXybJjHpMYo79HY3hIi4NKxyj" crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+    <style>
+      h1 {
+      font-size: 1.8rem;
+      }
+      h2 {
+      font-size: 1.4rem;
+      }
+      h3 {
+      font-size: 1.2rem;
+      }
+
+      h2, h3 {
+      font-weight: 800;
+      }
+    </style>
+    
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.2.1/css/all.min.css"></head>
+  <body class="p-0 container-fluid vlabs-page d-flex flex-column justify-content-between">
+  
+      <header class="vlabs-header sticky-top bg-white">
+        <nav class="p-0 navbar navbar-light d-flex align-items-stretch">
+          
+          <button class="navbar-toggler px-4" type="button" onclick="toggle()">
+            <span class="navbar-toggler-icon"></span>
+          </button>
+      
+          <div class="d-flex justify-content-center">        
+            <a href="https://vlab.co.in" class="navbar-brand">
+              <img src="./assets/images/vlabs-color-small-moe.jpg" alt="vlabs logo" class="vlabs-logo">
+            </a>
+          </div>
+          
+          <div id="headerNavbar" class="d-none border-top flex-grow-1 d-lg-flex align-items-center justify-content-end">
+            <div class="svc-rating-display">
+                <rating-display spreadsheetid="1x12nhpp0QvnsA6x-O1sV4IA9SAbfVsq_wiexWkutOmU" sheetname="Experiment-Database" columnname="Experiment Short Name" columnvalue="propulsion-system-design" imagesdirectory="./plugins/svc-rating/images/">
+                </rating-display>
+            </div>      <div class="svc-rating-submit">
+                <rating-submit title="Rate" this="" experiment="">
+                </rating-submit>
+            </div>      <bug-report id="bug-report" title="[BUG REPORT] PROPULSION SYSTEM DESIGN: PROPELLER GEOMETRY, THRUST &amp; MOTOR MATCHING" page-type="text" context-info="{&quot;organisation&quot;:&quot;Virtual Labs&quot;,&quot;developer_institute&quot;:&quot;DEI&quot;,&quot;expname&quot;:&quot;PROPULSION SYSTEM DESIGN: PROPELLER GEOMETRY, THRUST &amp; MOTOR MATCHING&quot;,&quot;labname&quot;:&quot;Virtual Lab&quot;,&quot;phase&quot;:&quot;Testing&quot;}" checkbox-json="{&quot;text&quot;:[&quot;Insufficient Content&quot;],&quot;video&quot;:[&quot;Insufficient Content&quot;],&quot;assesment&quot;:[&quot;Incorrect Options&quot;,&quot;Incorrect Answer&quot;,&quot;Incorrect Question&quot;],&quot;assessment&quot;:[&quot;Incorrect Options&quot;,&quot;Incorrect Answer&quot;,&quot;Incorrect Question&quot;],&quot;simulation&quot;:[&quot;Simulation Not Working&quot;,&quot;Incorrect Results/Observations&quot;,&quot;Insufficient/Incorrect Instructions&quot;],&quot;DEFAULT&quot;:[&quot;Page Not Loading&quot;,&quot;Content Not Visible&quot;,&quot;Incorrect Content&quot;]}" button_style="border: none; color: #fff; background-color: #288ec8; text-align: center; font-size: 1.05rem; border-radius: 1em;padding: 0.6em 1.2em; margin: 0 10px" position="override" custom_button_class="v-button"></bug-report>
+          </div>
+        </nav>
+      </header>
+      <div class="container-fluid flex-fill d-flex flex-column vlabs-page-main">
+        <div class="row d-flex justify-content-between">
+          <div class="flex-column">
+          <div class="row py-4 px-4 breadcrumbs">
+          	<div class="title is-4 tools">Tools</div>
+          	<span class="mx-2">
+          		<i aria-hidden="true" class="fa fa-angle-right"></i>
+          	</span>
+          	<a href="performance-report.html" class="my-2 mx-3" target="_blank">
+          		<button class="v-button">Performance Tool</button>
+          	</a>
+          	<a href="validator-report.html" class="my-2 mx-3" target="_blank">
+          		<button class="v-button">Validation Tool</button>
+          	</a>
+          </div>
+          </div>
+        </div>
+        <div class="row flex-grow-1 d-flex flex-nowrap flex-column flex-lg-row">
+          <div class="modal fade popupmenu" id="popupMenu" tabindex="-1" aria-labelledby="exampleModalLabel" aria-hidden="true">
+              <div class="modal-dialog modal-dialog-centered modal-dialog-scrollable">
+                  <div class="modal-content">
+                      <div class="modal-header">
+                          <h5 class="modal-title" id="exampleModalLabel">
+                              <a href="https://vlab.co.in" class="navbar-brand">
+                                  <img src="./assets/images/vlabs-color-small-moe.jpg" alt="vlabs logo" class="vlabs-logo">
+                              </a>
+                          </h5>
+                          <button type="button" class="btn-close align-self-center" data-bs-dismiss="modal" aria-label="Close"></button>
+                      </div>
+                      <div class="modal-body nav-menu">
+                              <div>
+                                  <div class="d-flex nav-menu-body">
+                                      <a href="index.html" class="p-2 ">
+                                      Aim
+                                      </a>
+                                      
+                                  </div>
+                                  <div id="t-" class="collapse">
+                                      <div class="px-3 d-flex flex-column tasks align-items-center align-items-lg-start">
+                                      </div>
+                                  </div>
+                              </div>
+                              <div>
+                                  <div class="d-flex nav-menu-body">
+                                      <a href="theory.html" class="p-2  current-item ">
+                                      Theory
+                                      </a>
+                                      
+                                  </div>
+                                  <div id="t-" class="collapse">
+                                      <div class="px-3 d-flex flex-column tasks align-items-center align-items-lg-start">
+                                      </div>
+                                  </div>
+                              </div>
+                              <div>
+                                  <div class="d-flex nav-menu-body">
+                                      <a href="pretest.html" class="p-2 ">
+                                      Pretest
+                                      </a>
+                                      
+                                  </div>
+                                  <div id="t-" class="collapse">
+                                      <div class="px-3 d-flex flex-column tasks align-items-center align-items-lg-start">
+                                      </div>
+                                  </div>
+                              </div>
+                              <div>
+                                  <div class="d-flex nav-menu-body">
+                                      <a href="procedure.html" class="p-2 ">
+                                      Procedure
+                                      </a>
+                                      
+                                  </div>
+                                  <div id="t-" class="collapse">
+                                      <div class="px-3 d-flex flex-column tasks align-items-center align-items-lg-start">
+                                      </div>
+                                  </div>
+                              </div>
+                              <div>
+                                  <div class="d-flex nav-menu-body">
+                                      <a href="simulation.html" class="p-2 ">
+                                      Simulation
+                                      </a>
+                                      
+                                  </div>
+                                  <div id="t-" class="collapse">
+                                      <div class="px-3 d-flex flex-column tasks align-items-center align-items-lg-start">
+                                      </div>
+                                  </div>
+                              </div>
+                              <div>
+                                  <div class="d-flex nav-menu-body">
+                                      <a href="posttest.html" class="p-2 ">
+                                      Posttest
+                                      </a>
+                                      
+                                  </div>
+                                  <div id="t-" class="collapse">
+                                      <div class="px-3 d-flex flex-column tasks align-items-center align-items-lg-start">
+                                      </div>
+                                  </div>
+                              </div>
+                              <div>
+                                  <div class="d-flex nav-menu-body">
+                                      <a href="references.html" class="p-2 ">
+                                      References
+                                      </a>
+                                      
+                                  </div>
+                                  <div id="t-" class="collapse">
+                                      <div class="px-3 d-flex flex-column tasks align-items-center align-items-lg-start">
+                                      </div>
+                                  </div>
+                              </div>
+                              <div>
+                                  <div class="d-flex nav-menu-body">
+                                      <a href="contributors.html" class="p-2 ">
+                                      Contributors
+                                      </a>
+                                      
+                                  </div>
+                                  <div id="t-" class="collapse">
+                                      <div class="px-3 d-flex flex-column tasks align-items-center align-items-lg-start">
+                                      </div>
+                                  </div>
+                              </div>
+                              <div>
+                                  <div class="d-flex nav-menu-body">
+                                      <a href="feedback.html" class="p-2 ">
+                                      Feedback
+                                      </a>
+                                      
+                                  </div>
+                                  <div id="t-" class="collapse">
+                                      <div class="px-3 d-flex flex-column tasks align-items-center align-items-lg-start">
+                                      </div>
+                                  </div>
+                              </div>
+                      </div>
+                  </div>
+              </div>
+          </div>
+          <div class="nav flex-column sidebar nav-menu flex-shrink-0 px-lg-4 align-items-center align-items-lg-start hidden d-none d-lg-flex" id="menu">
+                <div>
+                    <div class="d-flex nav-menu-body">
+                        <a href="index.html" class="p-2 ">
+                        Aim
+                        </a>
+                        
+                    </div>
+                    <div id="t-" class="collapse">
+                        <div class="px-3 d-flex flex-column tasks align-items-center align-items-lg-start">
+                        </div>
+                    </div>
+                </div>
+                <div>
+                    <div class="d-flex nav-menu-body">
+                        <a href="theory.html" class="p-2  current-item ">
+                        Theory
+                        </a>
+                        
+                    </div>
+                    <div id="t-" class="collapse">
+                        <div class="px-3 d-flex flex-column tasks align-items-center align-items-lg-start">
+                        </div>
+                    </div>
+                </div>
+                <div>
+                    <div class="d-flex nav-menu-body">
+                        <a href="pretest.html" class="p-2 ">
+                        Pretest
+                        </a>
+                        
+                    </div>
+                    <div id="t-" class="collapse">
+                        <div class="px-3 d-flex flex-column tasks align-items-center align-items-lg-start">
+                        </div>
+                    </div>
+                </div>
+                <div>
+                    <div class="d-flex nav-menu-body">
+                        <a href="procedure.html" class="p-2 ">
+                        Procedure
+                        </a>
+                        
+                    </div>
+                    <div id="t-" class="collapse">
+                        <div class="px-3 d-flex flex-column tasks align-items-center align-items-lg-start">
+                        </div>
+                    </div>
+                </div>
+                <div>
+                    <div class="d-flex nav-menu-body">
+                        <a href="simulation.html" class="p-2 ">
+                        Simulation
+                        </a>
+                        
+                    </div>
+                    <div id="t-" class="collapse">
+                        <div class="px-3 d-flex flex-column tasks align-items-center align-items-lg-start">
+                        </div>
+                    </div>
+                </div>
+                <div>
+                    <div class="d-flex nav-menu-body">
+                        <a href="posttest.html" class="p-2 ">
+                        Posttest
+                        </a>
+                        
+                    </div>
+                    <div id="t-" class="collapse">
+                        <div class="px-3 d-flex flex-column tasks align-items-center align-items-lg-start">
+                        </div>
+                    </div>
+                </div>
+                <div>
+                    <div class="d-flex nav-menu-body">
+                        <a href="references.html" class="p-2 ">
+                        References
+                        </a>
+                        
+                    </div>
+                    <div id="t-" class="collapse">
+                        <div class="px-3 d-flex flex-column tasks align-items-center align-items-lg-start">
+                        </div>
+                    </div>
+                </div>
+                <div>
+                    <div class="d-flex nav-menu-body">
+                        <a href="contributors.html" class="p-2 ">
+                        Contributors
+                        </a>
+                        
+                    </div>
+                    <div id="t-" class="collapse">
+                        <div class="px-3 d-flex flex-column tasks align-items-center align-items-lg-start">
+                        </div>
+                    </div>
+                </div>
+                <div>
+                    <div class="d-flex nav-menu-body">
+                        <a href="feedback.html" class="p-2 ">
+                        Feedback
+                        </a>
+                        
+                    </div>
+                    <div id="t-" class="collapse">
+                        <div class="px-3 d-flex flex-column tasks align-items-center align-items-lg-start">
+                        </div>
+                    </div>
+                </div>
+          </div>          <div class="vlabs-page-content px-5 pb-4 flex-grow-1 markdown-body">
+            <div class="text-center fix-spacing">
+              <h2 id="propulsion-system-design-propeller-geometry-thrust--motor-matching">Propulsion System Design: Propeller Geometry, Thrust &amp; Motor Matching</h2>
+          
+            </div>
+              <h1 id="theoretical-background-multirotor-propulsion-systems">Theoretical Background: Multirotor Propulsion Systems</h1>
+          <p>A multirotor's propulsion system converts electrical energy stored in a chemical battery into aerodynamic thrust. Designing an efficient and safe drone requires understanding the coupled physics of aerodynamics, electro-circuit kinetics, thermodynamics, and battery chemistry.</p>
+          <p>Before working through the underlying physics, the animation below presents an exploded view of a complete propulsion unit. It separates the carbon-fibre frame, the BLDC motor, the propeller, the battery, and the avionics stack so each component can be identified before it is analysed in the sections that follow.</p>
+          <p align="center">
+            <video controls="" playsinline="" preload="metadata" width="100%" style="max-width: 860px; border-radius: 8px;">
+              <source src="./videos/propulsion_exploded_view.mp4" type="video/mp4">
+              Your browser does not support the HTML5 video tag. You can
+              <a href="./videos/propulsion_exploded_view.mp4">download the video</a> instead.
+            </video>
+          </p>
+          
+          <hr>
+          <h2 id="1-aerodynamic-force-balance--hover-state"><strong>1. Aerodynamic Force Balance &amp; Hover State</strong></h2>
+          <p>For a multirotor to maintain a stationary hover in three-dimensional space, the net vertical force acting on the aircraft must be zero. The total thrust generated by the <i>N</i><sub>motors</sub> propellers must balance the gravity load (weight) of the drone:</p>
+          <p align="center">Σ <i>F</i><sub><i>y</i></sub> = <i>N</i><sub>motors</sub> · <i>T</i> - <i>M</i><sub>total</sub> · <i>g</i> = 0</p>
+          
+          <p align="center"><b><i>T</i><sub>required</sub> = <sup>(<i>M</i><sub>total</sub> · <i>g</i>)</sup> ⁄ <sub><i>N</i><sub>motors</sub></sub></b></p>
+          
+          <p>Where:</p>
+          <ul>
+          <li><i>T</i><sub>required</sub> is the static thrust required per motor-propeller unit [N].</li>
+          <li><i>M</i><sub>total</sub> is the total All-Up Mass (AUM) of the quadcopter, including the frame, electronics, battery, propulsion units, and any payload [kg].</li>
+          <li><i>g</i> is the acceleration due to gravity (9.80665 m/s<sup>2</sup>).</li>
+          <li><i>N</i><sub>motors</sub> is the number of motors (typically 4 for standard quadcopters).</li>
+          </ul>
+          <h3 id="worked-example--hover-thrust"><strong>Worked Example — Hover Thrust</strong></h3>
+          <p>Consider the coherent 5-inch build used throughout this chapter: a 250 mm carbon-fibre frame (<code>cf_250</code>, 68.2 g), four 2204-2300KV motors (25.0 g each), four 5045 propellers (3.1 g each), a 4S 2200 mAh LiPo (<code>4s_2200</code>, 162.0 g), four 30 A ESCs (<code>esc_30a_blheli32</code>, 9.5 g each), an F4 flight controller (6.2 g) and an ELRS receiver (3.5 g). Summing these masses gives an All-Up Mass of <i>M</i><sub>total</sub> = 390.3 g ≈ 0.390 kg. Substituting into the hover balance:</p>
+          <p align="center"><i>T</i><sub>required</sub> = <sup>(0.390 kg · 9.80665 m⁄s<sup>2</sup>)</sup> ⁄ <sub>4</sub> ≈ 0.957 N</p>
+          
+          <p>Each motor-propeller unit must therefore generate about 0.957 N (≈ 97.6 gf) of static thrust to hold a hover — exactly one quarter of the 3.83 N total weight.</p>
+          <p><img src="./images/forces_aerodynamics.png" alt="Forces and Aerodynamics"></p>
+          <hr>
+          <h2 id="2-propeller-aerodynamics-blade-element-momentum-theory"><strong>2. Propeller Aerodynamics (Blade Element Momentum Theory)</strong></h2>
+          <p>Aerodynamic thrust (<i>T</i>) and drag torque (<i>Q</i>) are generated as the propeller blades rotate through the air, creating a pressure differential. Based on dimensional analysis and Blade Element Momentum Theory (BEMT), the performance is expressed as:</p>
+          <p align="center"><i>T</i> = <i>C</i><sub><i>t</i></sub> · ρ · <i>n</i><sup>2</sup> · <i>D</i><sup>4</sup></p>
+          
+          <p align="center"><i>Q</i> = <i>C</i><sub><i>q</i></sub> · ρ · <i>n</i><sup>2</sup> · <i>D</i><sup>5</sup></p>
+          
+          <p>Where:</p>
+          <ul>
+          <li>ρ is the ambient air density [kg/m<sup>3</sup>], derived from altitude (<i>H</i>) using the International Standard Atmosphere (ISA) model:<p align="center">ρ = ρ<sub>0</sub> · (1 - 0.0000225577 · <i>H</i>)<sup>4.25588</sup></p>
+          (with sea-level density ρ<sub>0</sub> = 1.225 kg/m<sup>3</sup>).</li>
+          <li><i>n</i> is the rotational speed of the propeller in revolutions per second [rps] (<i>n</i> = RPM / 60).</li>
+          <li><i>D</i> is the propeller diameter [m].</li>
+          <li><i>C</i><sub><i>t</i></sub> and <i>C</i><sub><i>q</i></sub> are the non-dimensional thrust and torque coefficients.</li>
+          </ul>
+          <p>The velocity vectors, angles, and resulting incremental aerodynamic forces acting on a 2D airfoil cross-section of the blade are shown below:</p>
+          <p><img src="./images/blade_forces_bemt.png" alt="Blade Section Aerodynamics (BEMT)"></p>
+          <h3 id="static-pitch-approximations"><strong>Static Pitch Approximations</strong></h3>
+          <p>In static conditions, the coefficients are heavily dependent on the propeller's pitch-to-diameter ratio (<i>P</i>/<i>D</i>):</p>
+          <p align="center"><i>C</i><sub><i>t</i>_static</sub> ≈ 0.115 · (<sup><i>P</i></sup> ⁄ <sub><i>D</i></sub>)</p>
+          
+          <p align="center"><i>C</i><sub><i>q</i>_static</sub> ≈ <i>C</i><sub><i>t</i>_static</sub> · (0.045 · <i>Re</i><sub>factor</sub> + 0.11 · (<sup><i>P</i></sup> ⁄ <sub><i>D</i></sub>))</p>
+          
+          <h3 id="low-reynolds-number-correction"><strong>Low Reynolds Number Correction</strong></h3>
+          <p>Small drone propellers operate in a low Reynolds number regime (<i>Re</i> &lt; 150,000) where viscous shear stresses dominate, increasing the profile drag coefficient. We apply a correction factor based on the 1/4-power law:</p>
+          <p align="center"><i>Re</i><sub>factor</sub> = (<sup>150,000</sup> ⁄ <sub><i>Re</i></sub>)<sup>0.25</sup></p>
+          
+          <p>Where <i>Re</i> = <sup>(ρ · <i>v</i><sub>tip</sub> · <i>c</i><sub>mean</sub>)</sup> ⁄ <sub>μ</sub>, with <i>v</i><sub>tip</sub> = π · <i>n</i> · <i>D</i> representing blade tip speed, <i>c</i><sub>mean</sub> representing mean blade chord, and μ representing air dynamic viscosity.</p>
+          <h3 id="induced-inflow-correction"><strong>Induced Inflow Correction</strong></h3>
+          <p>As the propeller rotates, it induces a downward vertical velocity (<i>v<sub>i</sub></i>) through the actuator disk, reducing the effective angle of attack of the blades. We calculate the induced advance ratio (<i>J<sub>i</sub></i>) and adjust the coefficients:</p>
+          <p align="center"><i>J</i><sub><i>i</i></sub> = √(<sup>(2 · <i>C</i><sub><i>t</i>_static</sub>)</sup> ⁄ <sub>π</sub>)</p>
+          
+          <p align="center"><i>C</i><sub><i>t</i>_eff</sub> = <i>C</i><sub><i>t</i>_static</sub> · (1 - <i>J</i><sub><i>i</i></sub>)</p>
+          
+          <p align="center"><i>C</i><sub><i>q</i>_eff</sub> = <i>C</i><sub><i>q</i>_static</sub> · (1 + 1.5 · <i>J</i><sub><i>i</i></sub><sup>2</sup>)</p>
+          
+          <h3 id="worked-example--static-thrust--torque-coefficients"><strong>Worked Example — Static Thrust &amp; Torque Coefficients</strong></h3>
+          <p>Take one 5045 propeller (<i>D</i> = 0.127 m, <i>P</i>/<i>D</i> = 0.9, mean chord <i>c</i><sub>mean</sub> ≈ 0.1<i>D</i> = 0.0127 m) spinning at <i>n</i><sub>rpm</sub> = 12,000 RPM (<i>n</i> = 200 rps) in sea-level air (ρ = 1.225 kg/m<sup>3</sup>, μ = 1.81 × 10<sup>-5</sup> Pa·s). Stepping through the coefficient model of this section:</p>
+          <table>
+          <thead>
+          <tr>
+          <th>Quantity</th>
+          <th>Substitution</th>
+          <th>Result</th>
+          </tr>
+          </thead>
+          <tbody><tr>
+          <td><i>C</i><sub><i>t</i>_static</sub></td>
+          <td>0.115 · 0.9</td>
+          <td>0.1035</td>
+          </tr>
+          <tr>
+          <td><i>v</i><sub>tip</sub> = π · <i>n</i> · <i>D</i></td>
+          <td>π · 200 · 0.127</td>
+          <td>79.8 m/s</td>
+          </tr>
+          <tr>
+          <td><i>Re</i></td>
+          <td>(1.225 · 79.8 · 0.0127) ⁄ (1.81 × 10<sup>-5</sup>)</td>
+          <td>6.86 × 10<sup>4</sup></td>
+          </tr>
+          <tr>
+          <td><i>Re</i><sub>factor</sub></td>
+          <td>(150,000 ⁄ 68,590)<sup>0.25</sup></td>
+          <td>1.216</td>
+          </tr>
+          <tr>
+          <td><i>C</i><sub><i>q</i>_static</sub></td>
+          <td>0.1035 · (0.045 · 1.216 + 0.11 · 0.9)</td>
+          <td>0.01591</td>
+          </tr>
+          <tr>
+          <td><i>J</i><sub><i>i</i></sub></td>
+          <td>√(2 · 0.1035 ⁄ π)</td>
+          <td>0.2567</td>
+          </tr>
+          <tr>
+          <td><i>C</i><sub><i>t</i>_eff</sub></td>
+          <td>0.1035 · (1 − 0.2567)</td>
+          <td>0.07693</td>
+          </tr>
+          <tr>
+          <td><i>C</i><sub><i>q</i>_eff</sub></td>
+          <td>0.01591 · (1 + 1.5 · 0.2567<sup>2</sup>)</td>
+          <td>0.01748</td>
+          </tr>
+          </tbody></table>
+          <p>Substituting the effective coefficients into the BEMT relations:</p>
+          <p align="center"><i>T</i> = 0.07693 · 1.225 · 200<sup>2</sup> · 0.127<sup>4</sup> ≈ 0.981 N</p>
+          
+          <p align="center"><i>Q</i> = 0.01748 · 1.225 · 200<sup>2</sup> · 0.127<sup>5</sup> ≈ 0.0283 N·m</p>
+          
+          <p>At 12,000 RPM a single 5045 develops ≈ 0.981 N — just above the 0.957 N per-motor hover requirement from Section 1 — confirming this motor-prop pair reaches hover at a modest throttle with thrust margin to spare.</p>
+          <hr>
+          <h2 id="3-equivalent-electrical-circuit--back-emf"><strong>3. Equivalent Electrical Circuit &amp; Back-EMF</strong></h2>
+          <p>The brushless DC (BLDC) motor acts as an electromechanical transducer. Under steady-state conditions, the electrical loop is represented by an equivalent series circuit containing the battery open-circuit voltage (<i>V</i><sub>oc</sub>), system resistances, and the motor's Back-Electromotive Force (<i>V</i><sub>bemf</sub>).</p>
+          <p><img src="./images/propulsion_circuit_diagram.png" alt="Propulsion Circuit Diagram"></p>
+          <h3 id="total-effective-resistance"><strong>Total Effective Resistance</strong></h3>
+          <p>The total winding resistance (<i>R</i><sub><i>m</i></sub>) is modified to include the battery's internal resistance (<i>R</i><sub>batt</sub>) and the ESC MOSFET resistance (<i>R</i><sub>esc</sub>):</p>
+          <p align="center"><i>R</i><sub><i>m</i>_eff</sub> = <i>R</i><sub>motor</sub> + <i>R</i><sub>esc</sub> + 4 · <i>R</i><sub>batt</sub></p>
+          
+          <ul>
+          <li><strong>ESC Resistance:</strong> Ranging from 2 mΩ to 3 mΩ per phase depending on thermal cooling and rating.</li>
+          <li><strong>Battery Resistance:</strong> Scales with capacity (<i>C</i><sub>mah</sub>) and cell count (<i>S</i>):<p align="center"><i>R</i><sub>batt_nominal</sub> ≈ <i>S</i> · 0.012 · (<sup>1500</sup> ⁄ <sub><i>C</i><sub>mah</sub></sub>) Ω</p></li>
+          </ul>
+          <h3 id="back-emf--applied-voltage"><strong>Back-EMF &amp; Applied Voltage</strong></h3>
+          <p>When the motor spins at speed <i>n</i><sub>rpm</sub>, it generates a counter-voltage opposing the applied voltage:</p>
+          <p align="center"><i>V</i><sub>bemf</sub> = <sup><i>n</i><sub>rpm</sub></sup> ⁄ <sub><i>KV</i></sub></p>
+          
+          <p>Where <i>KV</i> is the motor velocity constant [RPM/V].
+          The effective voltage applied to the windings by the ESC switching MOSFETs under throttle <i>u</i> ∈ [0, 1] is:</p>
+          <p align="center"><i>V</i><sub>applied</sub> = <i>u</i> · <i>V</i><sub>battery_terminal</sub></p>
+          
+          <h3 id="steady-state-current--torque"><strong>Steady-State Current &amp; Torque</strong></h3>
+          <p>The loop current (<i>I</i>) is driven by the difference between the applied voltage and Back-EMF:</p>
+          <p align="center"><i>I</i> = <sup>(<i>V</i><sub>applied</sub> - <i>V</i><sub>bemf</sub>)</sup> ⁄ <sub><i>R</i><sub><i>m</i>_eff</sub></sub></p>
+          
+          <p>The motor produces torque (<i>Q</i><sub><i>m</i></sub>) proportional to this current, which must balance the aerodynamic torque (<i>Q</i>) and winding friction losses:</p>
+          <p align="center"><i>Q</i><sub><i>m</i></sub> = <i>K</i><sub><i>t</i></sub> · (<i>I</i> - <i>I</i><sub>0</sub>)</p>
+          
+          <p>Where <i>K</i><sub><i>t</i></sub> = <sup>60</sup> ⁄ <sub>(2π · <i>KV</i>)</sub> is the motor torque constant [N·m/A], and <i>I</i><sub>0</sub> is the no-load current.</p>
+          <h3 id="worked-example--circuit-operating-point"><strong>Worked Example — Circuit Operating Point</strong></h3>
+          <p>For the 2204-2300KV motor (<i>KV</i> = 2300 RPM/V, <i>R</i><sub>motor</sub> = 0.095 Ω, <i>I</i><sub>0</sub> = 0.30 A) on the 4S 2200 mAh pack through a 30 A ESC (<i>R</i><sub>esc</sub> = 0.0025 Ω), first build the effective resistance. The pack internal resistance is <i>R</i><sub>batt</sub> = 4 · 0.012 · (1500 ⁄ 2200) ≈ 0.0327 Ω, so:</p>
+          <p align="center"><i>R</i><sub><i>m</i>_eff</sub> = 0.095 + 0.0025 + 4 · 0.0327 ≈ 0.2284 Ω</p>
+          
+          <p>At the hover speed <i>n</i><sub>rpm</sub> = 12,000 RPM the back-EMF is:</p>
+          <p align="center"><i>V</i><sub>bemf</sub> = <sup>12,000</sup> ⁄ <sub>2300</sub> ≈ 5.22 V</p>
+          
+          <p>With an applied voltage <i>V</i><sub>applied</sub> ≈ 6.84 V (throttle <i>u</i> ≈ 0.46 of the 14.8 V terminal), the loop current is:</p>
+          <p align="center"><i>I</i> = <sup>(6.84 − 5.22)</sup> ⁄ <sub>0.2284</sub> ≈ 7.12 A</p>
+          
+          <p>With <i>K</i><sub><i>t</i></sub> = <sup>60</sup> ⁄ <sub>(2π · 2300)</sub> ≈ 0.00415 N·m/A, the motor torque <i>Q</i><sub><i>m</i></sub> = 0.00415 · (7.12 − 0.30) ≈ 0.0283 N·m, which exactly balances the aerodynamic torque <i>Q</i> computed in Section 2. The 7.12 A draw sits well below the motor's 25 A limit, so this hover operating point is safe.</p>
+          <hr>
+          <h2 id="4-dynamic-thermal--convective-cooling-kinetics"><strong>4. Dynamic Thermal &amp; Convective Cooling Kinetics</strong></h2>
+          <p>The electrical current flowing through the windings generates heat due to resistive losses (Joule heating). The rate of temperature change (<i>dT</i>/<i>dt</i>) of the motor is solved using a first-order lumped capacitance thermal model:</p>
+          <p align="center"><sup><i>dT</i></sup> ⁄ <sub><i>dt</i></sub> = <sup>(<i>P</i><sub>loss</sub> - (<i>T</i> - <i>T</i><sub>ambient</sub>) · <i>h</i><sub>cooling</sub>)</sup> ⁄ <sub>(<i>M</i><sub>motor</sub> · <i>C</i><sub><i>p</i></sub>)</sub></p>
+          
+          <p>Where:</p>
+          <ul>
+          <li><i>P</i><sub>loss</sub> = <i>I</i><sup>2</sup> · <i>R</i><sub>motor</sub> is the electrical copper loss [W] (iron core losses are neglected for simplicity).</li>
+          <li><i>T</i> is the current winding temperature [°C], and <i>T</i><sub>ambient</sub> is the air temperature (typically 25°C).</li>
+          <li><i>M</i><sub>motor</sub> is the physical mass of the motor [kg], and <i>C</i><sub><i>p</i></sub> is the specific heat capacity of copper/aluminum (900 J/(kg·K)).</li>
+          <li><i>h</i><sub>cooling</sub> is the dynamic convective heat transfer coefficient [W/K], which scales with the propeller wash velocity and blade tip speed:<p align="center"><i>h</i><sub>cooling</sub> = 0.025 + 0.006 · √<i>v</i><sub>tip</sub> + 0.012 · <i>v<sub>i</sub></i></p></li>
+          </ul>
+          <h3 id="worked-example--steady-state-winding-temperature"><strong>Worked Example — Steady-State Winding Temperature</strong></h3>
+          <p>Continuing the hover operating point (<i>I</i> = 7.12 A, <i>R</i><sub>motor</sub> = 0.095 Ω), the copper loss is:</p>
+          <p align="center"><i>P</i><sub>loss</sub> = 7.12<sup>2</sup> · 0.095 ≈ 4.81 W</p>
+          
+          <p>The induced wash speed through the disk (area <i>A</i> = π<i>D</i><sup>2</sup>⁄4 = 0.01267 m<sup>2</sup>) is <i>v<sub>i</sub></i> = √(<i>T</i> ⁄ (2ρ<i>A</i>)) = √(0.981 ⁄ (2 · 1.225 · 0.01267)) ≈ 5.62 m/s, which with the tip speed <i>v</i><sub>tip</sub> = 79.8 m/s gives a cooling coefficient:</p>
+          <p align="center"><i>h</i><sub>cooling</sub> = 0.025 + 0.006 · √79.8 + 0.012 · 5.62 ≈ 0.146 W/K</p>
+          
+          <p>At thermal equilibrium (<i>dT</i>/<i>dt</i> = 0) the steady temperature rise above ambient is <i>P</i><sub>loss</sub> ⁄ <i>h</i><sub>cooling</sub> = 4.81 ⁄ 0.146 ≈ 32.9 °C, so the winding settles near 25 + 32.9 ≈ 57.9 °C — comfortably below the 150 °C insulation limit.</p>
+          <p>If the motor temperature exceeds 150°C, the wire insulation melts, triggering short circuits, motor burnout, and eventual crash.</p>
+          <p>This heat flow and dissipation behavior can be represented by an equivalent thermal RC circuit, where <i>P</i><sub>loss</sub> acts as a current heat flux source, <i>C</i><sub>th</sub> represents the thermal capacitance (storing heat), and <i>R</i><sub>th</sub> represents the thermal resistance of convective cooling:</p>
+          <p><img src="./images/thermal_model_diagram.png" alt="Thermal Equivalent RC Model"></p>
+          <hr>
+          <h2 id="5-battery-voltage-sag--discharge-dynamics"><strong>5. Battery Voltage Sag &amp; Discharge Dynamics</strong></h2>
+          <p>As a Lithium Polymer (LiPo) battery discharges, its open-circuit voltage (<i>V</i><sub>oc</sub>) drops as a function of the State of Charge (<i>SoC</i> ∈ [0, 1]):</p>
+          <p align="center"><i>V</i><sub>oc_cell</sub> = 3.5 + 0.7 · <i>SoC</i> + 0.1 · <i>SoC</i><sup>3</sup></p>
+          
+          <p>Under high current draw, the terminal voltage drops (sags) below the open-circuit voltage due to internal cell resistance:</p>
+          <p align="center"><i>V</i><sub>terminal</sub> = <i>N</i><sub>cells</sub> · (<i>V</i><sub>oc_cell</sub> - <i>I</i> · <i>R</i><sub>cell_eff</sub>)</p>
+          
+          <p>Near depletion (<i>SoC</i> &lt; 0.30), chemical reaction rates slow down, causing cell internal resistance to grow exponentially:</p>
+          <p align="center"><i>R</i><sub>cell_eff</sub> = <i>R</i><sub>cell_nominal</sub> · (1.0 + 0.25 · <i>e</i><sup>5.0 · (0.3 - <i>SoC</i>)</sup>)</p>
+          
+          <p>This voltage sag reduces <i>V</i><sub>applied</sub>, causing a corresponding drop in RPM and thrust, representing battery depletion effects during flight.</p>
+          <h3 id="worked-example--voltage-sag-at-hover"><strong>Worked Example — Voltage Sag at Hover</strong></h3>
+          <p>At half charge (<i>SoC</i> = 0.5) the per-cell open-circuit voltage of the 4S 2200 mAh pack is <i>V</i><sub>oc_cell</sub> = 3.5 + 0.7 · 0.5 + 0.1 · 0.5<sup>3</sup> ≈ 3.863 V. The per-cell nominal resistance is <i>R</i><sub>cell_nominal</sub> = 0.012 · (1500 ⁄ 2200) ≈ 0.00818 Ω. Since <i>SoC</i> &gt; 0.30 the cell resistance is still near nominal:</p>
+          <p align="center"><i>R</i><sub>cell_eff</sub> = 0.00818 · (1 + 0.25 · <i>e</i><sup>5.0 · (0.3 − 0.5)</sup>) ≈ 0.00893 Ω</p>
+          
+          <p>Drawing the hover current <i>I</i> = 7.12 A from Section 3:</p>
+          <p align="center"><i>V</i><sub>terminal</sub> = 4 · (3.863 − 7.12 · 0.00893) ≈ 15.2 V</p>
+          
+          <p>Near depletion (<i>SoC</i> = 0.2) the same current sees a swollen resistance <i>R</i><sub>cell_eff</sub> ≈ 0.01155 Ω and a lower <i>V</i><sub>oc_cell</sub> ≈ 3.641 V, dropping the terminal voltage to ≈ 14.2 V. This ≈ 1 V sag directly lowers <i>V</i><sub>applied</sub>, forcing a higher throttle to hold the same RPM and thrust as the pack empties.</p>
+          
+          </div>
+          <div class="bug-report-mobile">
+              <bug-report id="bug-report" title="[BUG REPORT] PROPULSION SYSTEM DESIGN: PROPELLER GEOMETRY, THRUST &amp; MOTOR MATCHING" page-type="text" context-info="{&quot;organisation&quot;:&quot;Virtual Labs&quot;,&quot;developer_institute&quot;:&quot;DEI&quot;,&quot;expname&quot;:&quot;PROPULSION SYSTEM DESIGN: PROPELLER GEOMETRY, THRUST &amp; MOTOR MATCHING&quot;,&quot;labname&quot;:&quot;Virtual Lab&quot;,&quot;phase&quot;:&quot;Testing&quot;}" checkbox-json="{&quot;text&quot;:[&quot;Insufficient Content&quot;],&quot;video&quot;:[&quot;Insufficient Content&quot;],&quot;assesment&quot;:[&quot;Incorrect Options&quot;,&quot;Incorrect Answer&quot;,&quot;Incorrect Question&quot;],&quot;assessment&quot;:[&quot;Incorrect Options&quot;,&quot;Incorrect Answer&quot;,&quot;Incorrect Question&quot;],&quot;simulation&quot;:[&quot;Simulation Not Working&quot;,&quot;Incorrect Results/Observations&quot;,&quot;Insufficient/Incorrect Instructions&quot;],&quot;DEFAULT&quot;:[&quot;Page Not Loading&quot;,&quot;Content Not Visible&quot;,&quot;Incorrect Content&quot;]}" position="override" button_style="
+                          position: fixed; 
+                          bottom: 20px;
+                          right: 20px;
+                          z-index: 1;
+                          font-size: 0;
+                          padding: 25px;
+                          border-radius: 50%;
+                          border: none;
+                          background-color: #0fc0ff;
+                          background-image: url(data:image/png;base64,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);
+                          background-repeat: no-repeat;
+                          background-position: center;
+                          background-size: 30px;
+                          filter: invert(1);">
+              </bug-report>
+          </div>        </div>
+      </div>
+      <footer class="text-light pt-2 vlabs-footer d-flex flex-column">
+        <div class="row px-5 mx-0">
+          <div class="col d-flex flex-column">
+            <span class="font-weight-bold vlabs-footer-sect-name pb-2 mb-3">Community Links</span>
+            <a href="https://www.sakshat.ac.in/" class="text-light">Sakshat Portal</a>
+            <a href="http://outreach.vlabs.ac.in/" class="text-light">Outreach Portal</a>
+            <a href="https://vlab.co.in/faq" class="text-light">FAQ: Virtual Labs</a>
+          </div>
+          <div class="col d-flex flex-column">
+            <span class="font-weight-bold vlabs-footer-sect-name pb-2 mb-3">Contact Us</span>
+            <span> Phone: General Information: 011-26582050 </span>
+            <span> Email: support@vlabs.ac.in </span>
+          </div>
+          <div class="col d-flex flex-column">
+            <span class="font-weight-bold vlabs-footer-sect-name pb-2 mb-3">Follow Us</span>
+            <div class="social-links">
+      	<a class="p-2 mt-1 mr-2 d-inline-flex justify-content-center align-items-center" style="background: #55acee;" href="https://twitter.com/TheVirtualLabs">
+      	  <i class="fab fa-twitter"></i>
+      	</a>
+      	<a class="p-2 mt-1 mr-2 d-inline-flex justify-content-center align-items-center" style="background: #3b5998;" href="https://www.facebook.com/Virtual-Labs-IIT-Delhi-301510159983871/">
+      	  <i class="fab fa-facebook"></i>
+      	</a>
+      	<a class="p-2 mt-1 mr-2 d-inline-flex justify-content-center align-items-center" style="background: #e52d27;" href="https://www.youtube.com/watch?v=asxRaOgk6a0">
+      	  <i class="fab fa-youtube"></i>
+      	</a>
+      	<a class="p-2 mt-1 mr-2 d-inline-flex justify-content-center align-items-center" style="background: #2867B2;" href="https://in.linkedin.com/in/virtual-labs-008ba9136">
+      	  <i class="fab fa-linkedin"></i>
+      	</a>
+            </div>
+          </div>
+        </div>
+        <div class="m-0 py-2 text-center" style="font-family: &quot;Open Sans&quot;, sans-serif; background: #212121;">
+          <a class="text-primary font-weight-bold" href="https://www.gnu.org/licenses/agpl-3.0.en.html"> AGPL 3.0 </a>
+          &nbsp;&amp;&nbsp;
+          <a class="text-primary font-weight-bold" href="https://creativecommons.org/licenses/by-nc-sa/4.0/"> Creative Commons (CC BY-NC-SA 4.0) </a>
+        </div>
+      </footer>
+    <script src="./assets/js/toggleSidebar.js"></script>
+    <script src="./assets/js/event-handler.js"></script>
+
+
+    <script>
+      if ('serviceWorker' in navigator) {
+        window.addEventListener('load', () => {
+            navigator.serviceWorker.register("sw.js");
+        });
+      }
+    </script>
+  
+
+<script type="module" src="https://virtual-labs.github.io/svc-bug-report/client/src/bug-report.js"></script><script type="module" src="plugins\svc-rating\index.js"></script><script type="module" src="plugins\svc-rating\config.js"></script><script type="module" src="https://apis.google.com/js/api.js"></script></body></html>

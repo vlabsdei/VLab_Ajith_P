@@ -1,0 +1,686 @@
+<!DOCTYPE html><html lang="en"><head>
+    <meta charset="utf-8">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta content="" name="description">
+    <meta content="" name="author">
+    
+    	<meta name="experiment-short-name" content="flight-control-system">
+    	<meta name="developer-institute" content="DEI">
+    	<meta name="learning-unit" content="FLIGHT CONTROL SYSTEM: PID TUNING, ZIEGLER–NICHOLS AUTO-TUNING &amp; SENSOR FUSION">
+    	<meta name="task-name" content="Theory">
+    
+    <!-- For iPhone -->
+    <meta name="msapplication-TileColor" content="#4076e0">
+    <!-- Chrome, Firefox OS and Opera -->
+    <meta name="theme-color" content="#4076e0">
+    <!-- Windows Phone -->
+    <meta name="msapplication-navbutton-color" content="#4076e0">
+    <title>Virtual Labs</title>
+    <link rel="shortcut icon" href="./assets/images/favicon.ico">
+    <link rel="stylesheet" href="./assets/css/bootstrap.min.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/github-markdown-css/4.0.0/github-markdown.min.css" integrity="sha512-Oy18vBnbSJkXTndr2n6lDMO5NN31UljR8e/ICzVPrGpSud4Gkckb8yUpqhKuUNoE+o9gAb4O/rAxxw1ojyUVzg==" crossorigin="anonymous">
+    <link href="https://fonts.googleapis.com/css2?family=Open+Sans&amp;family=Raleway&amp;display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="./assets/fonts/font-awesome-4.7.0/css/font-awesome.min.css">
+    <link rel="stylesheet" href="./assets/css/github-markdown.min.css">
+    <link rel="stylesheet" href="./assets/css/vlabs-style.css">
+    <link rel="stylesheet" href="./assets/css/toast.css">
+    <link rel="stylesheet" href="./assets/katex_assets/katex.min.css">
+    
+    <script src="./assets/js/jquery-3.4.1.slim.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@popperjs/core@2.5.4/dist/umd/popper.min.js" integrity="sha384-q2kxQ16AaE6UbzuKqyBE9/u/KzioAlnx2maXQHiDX9d4/zp8Ok3f+M7DPm+Ib6IU" crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.0.0-beta1/dist/js/bootstrap.min.js" integrity="sha384-pQQkAEnwaBkjpqZ8RU1fF1AKtTcHJwFl3pblpTlHXybJjHpMYo79HY3hIi4NKxyj" crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+    <style>
+      h1 {
+      font-size: 1.8rem;
+      }
+      h2 {
+      font-size: 1.4rem;
+      }
+      h3 {
+      font-size: 1.2rem;
+      }
+
+      h2, h3 {
+      font-weight: 800;
+      }
+    </style>
+    
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.2.1/css/all.min.css"></head>
+  <body class="p-0 container-fluid vlabs-page d-flex flex-column justify-content-between">
+  
+      <header class="vlabs-header sticky-top bg-white">
+        <nav class="p-0 navbar navbar-light d-flex align-items-stretch">
+          
+          <button class="navbar-toggler px-4" type="button" onclick="toggle()">
+            <span class="navbar-toggler-icon"></span>
+          </button>
+      
+          <div class="d-flex justify-content-center">        
+            <a href="https://vlab.co.in" class="navbar-brand">
+              <img src="./assets/images/vlabs-color-small-moe.jpg" alt="vlabs logo" class="vlabs-logo">
+            </a>
+          </div>
+          
+          <div id="headerNavbar" class="d-none border-top flex-grow-1 d-lg-flex align-items-center justify-content-end">
+            <div class="svc-rating-display">
+                <rating-display spreadsheetid="1x12nhpp0QvnsA6x-O1sV4IA9SAbfVsq_wiexWkutOmU" sheetname="Experiment-Database" columnname="Experiment Short Name" columnvalue="flight-control-system" imagesdirectory="./plugins/svc-rating/images/">
+                </rating-display>
+            </div>      <div class="svc-rating-submit">
+                <rating-submit title="Rate" this="" experiment="">
+                </rating-submit>
+            </div>      <bug-report id="bug-report" title="[BUG REPORT] FLIGHT CONTROL SYSTEM: PID TUNING, ZIEGLER–NICHOLS AUTO-TUNING &amp; SENSOR FUSION" page-type="text" context-info="{&quot;organisation&quot;:&quot;Virtual Labs&quot;,&quot;developer_institute&quot;:&quot;DEI&quot;,&quot;expname&quot;:&quot;FLIGHT CONTROL SYSTEM: PID TUNING, ZIEGLER–NICHOLS AUTO-TUNING &amp; SENSOR FUSION&quot;,&quot;labname&quot;:&quot;Virtual Lab&quot;,&quot;phase&quot;:&quot;Testing&quot;}" checkbox-json="{&quot;text&quot;:[&quot;Insufficient Content&quot;],&quot;video&quot;:[&quot;Insufficient Content&quot;],&quot;assesment&quot;:[&quot;Incorrect Options&quot;,&quot;Incorrect Answer&quot;,&quot;Incorrect Question&quot;],&quot;assessment&quot;:[&quot;Incorrect Options&quot;,&quot;Incorrect Answer&quot;,&quot;Incorrect Question&quot;],&quot;simulation&quot;:[&quot;Simulation Not Working&quot;,&quot;Incorrect Results/Observations&quot;,&quot;Insufficient/Incorrect Instructions&quot;],&quot;DEFAULT&quot;:[&quot;Page Not Loading&quot;,&quot;Content Not Visible&quot;,&quot;Incorrect Content&quot;]}" button_style="border: none; color: #fff; background-color: #288ec8; text-align: center; font-size: 1.05rem; border-radius: 1em;padding: 0.6em 1.2em; margin: 0 10px" position="override" custom_button_class="v-button"></bug-report>
+          </div>
+        </nav>
+      </header>
+      <div class="container-fluid flex-fill d-flex flex-column vlabs-page-main">
+        <div class="row d-flex justify-content-between">
+          <div class="flex-column">
+          <div class="row py-4 px-4 breadcrumbs">
+          	<div class="title is-4 tools">Tools</div>
+          	<span class="mx-2">
+          		<i aria-hidden="true" class="fa fa-angle-right"></i>
+          	</span>
+          	<a href="performance-report.html" class="my-2 mx-3" target="_blank">
+          		<button class="v-button">Performance Tool</button>
+          	</a>
+          	<a href="validator-report.html" class="my-2 mx-3" target="_blank">
+          		<button class="v-button">Validation Tool</button>
+          	</a>
+          </div>
+          </div>
+        </div>
+        <div class="row flex-grow-1 d-flex flex-nowrap flex-column flex-lg-row">
+          <div class="modal fade popupmenu" id="popupMenu" tabindex="-1" aria-labelledby="exampleModalLabel" aria-hidden="true">
+              <div class="modal-dialog modal-dialog-centered modal-dialog-scrollable">
+                  <div class="modal-content">
+                      <div class="modal-header">
+                          <h5 class="modal-title" id="exampleModalLabel">
+                              <a href="https://vlab.co.in" class="navbar-brand">
+                                  <img src="./assets/images/vlabs-color-small-moe.jpg" alt="vlabs logo" class="vlabs-logo">
+                              </a>
+                          </h5>
+                          <button type="button" class="btn-close align-self-center" data-bs-dismiss="modal" aria-label="Close"></button>
+                      </div>
+                      <div class="modal-body nav-menu">
+                              <div>
+                                  <div class="d-flex nav-menu-body">
+                                      <a href="index.html" class="p-2 ">
+                                      Aim
+                                      </a>
+                                      
+                                  </div>
+                                  <div id="t-" class="collapse">
+                                      <div class="px-3 d-flex flex-column tasks align-items-center align-items-lg-start">
+                                      </div>
+                                  </div>
+                              </div>
+                              <div>
+                                  <div class="d-flex nav-menu-body">
+                                      <a href="theory.html" class="p-2  current-item ">
+                                      Theory
+                                      </a>
+                                      
+                                  </div>
+                                  <div id="t-" class="collapse">
+                                      <div class="px-3 d-flex flex-column tasks align-items-center align-items-lg-start">
+                                      </div>
+                                  </div>
+                              </div>
+                              <div>
+                                  <div class="d-flex nav-menu-body">
+                                      <a href="pretest.html" class="p-2 ">
+                                      Pretest
+                                      </a>
+                                      
+                                  </div>
+                                  <div id="t-" class="collapse">
+                                      <div class="px-3 d-flex flex-column tasks align-items-center align-items-lg-start">
+                                      </div>
+                                  </div>
+                              </div>
+                              <div>
+                                  <div class="d-flex nav-menu-body">
+                                      <a href="procedure.html" class="p-2 ">
+                                      Procedure
+                                      </a>
+                                      
+                                  </div>
+                                  <div id="t-" class="collapse">
+                                      <div class="px-3 d-flex flex-column tasks align-items-center align-items-lg-start">
+                                      </div>
+                                  </div>
+                              </div>
+                              <div>
+                                  <div class="d-flex nav-menu-body">
+                                      <a href="simulation.html" class="p-2 ">
+                                      Simulation
+                                      </a>
+                                      
+                                  </div>
+                                  <div id="t-" class="collapse">
+                                      <div class="px-3 d-flex flex-column tasks align-items-center align-items-lg-start">
+                                      </div>
+                                  </div>
+                              </div>
+                              <div>
+                                  <div class="d-flex nav-menu-body">
+                                      <a href="posttest.html" class="p-2 ">
+                                      Posttest
+                                      </a>
+                                      
+                                  </div>
+                                  <div id="t-" class="collapse">
+                                      <div class="px-3 d-flex flex-column tasks align-items-center align-items-lg-start">
+                                      </div>
+                                  </div>
+                              </div>
+                              <div>
+                                  <div class="d-flex nav-menu-body">
+                                      <a href="references.html" class="p-2 ">
+                                      References
+                                      </a>
+                                      
+                                  </div>
+                                  <div id="t-" class="collapse">
+                                      <div class="px-3 d-flex flex-column tasks align-items-center align-items-lg-start">
+                                      </div>
+                                  </div>
+                              </div>
+                              <div>
+                                  <div class="d-flex nav-menu-body">
+                                      <a href="contributors.html" class="p-2 ">
+                                      Contributors
+                                      </a>
+                                      
+                                  </div>
+                                  <div id="t-" class="collapse">
+                                      <div class="px-3 d-flex flex-column tasks align-items-center align-items-lg-start">
+                                      </div>
+                                  </div>
+                              </div>
+                              <div>
+                                  <div class="d-flex nav-menu-body">
+                                      <a href="feedback.html" class="p-2 ">
+                                      Feedback
+                                      </a>
+                                      
+                                  </div>
+                                  <div id="t-" class="collapse">
+                                      <div class="px-3 d-flex flex-column tasks align-items-center align-items-lg-start">
+                                      </div>
+                                  </div>
+                              </div>
+                      </div>
+                  </div>
+              </div>
+          </div>
+          <div class="nav flex-column sidebar nav-menu flex-shrink-0 px-lg-4 align-items-center align-items-lg-start hidden d-none d-lg-flex" id="menu">
+                <div>
+                    <div class="d-flex nav-menu-body">
+                        <a href="index.html" class="p-2 ">
+                        Aim
+                        </a>
+                        
+                    </div>
+                    <div id="t-" class="collapse">
+                        <div class="px-3 d-flex flex-column tasks align-items-center align-items-lg-start">
+                        </div>
+                    </div>
+                </div>
+                <div>
+                    <div class="d-flex nav-menu-body">
+                        <a href="theory.html" class="p-2  current-item ">
+                        Theory
+                        </a>
+                        
+                    </div>
+                    <div id="t-" class="collapse">
+                        <div class="px-3 d-flex flex-column tasks align-items-center align-items-lg-start">
+                        </div>
+                    </div>
+                </div>
+                <div>
+                    <div class="d-flex nav-menu-body">
+                        <a href="pretest.html" class="p-2 ">
+                        Pretest
+                        </a>
+                        
+                    </div>
+                    <div id="t-" class="collapse">
+                        <div class="px-3 d-flex flex-column tasks align-items-center align-items-lg-start">
+                        </div>
+                    </div>
+                </div>
+                <div>
+                    <div class="d-flex nav-menu-body">
+                        <a href="procedure.html" class="p-2 ">
+                        Procedure
+                        </a>
+                        
+                    </div>
+                    <div id="t-" class="collapse">
+                        <div class="px-3 d-flex flex-column tasks align-items-center align-items-lg-start">
+                        </div>
+                    </div>
+                </div>
+                <div>
+                    <div class="d-flex nav-menu-body">
+                        <a href="simulation.html" class="p-2 ">
+                        Simulation
+                        </a>
+                        
+                    </div>
+                    <div id="t-" class="collapse">
+                        <div class="px-3 d-flex flex-column tasks align-items-center align-items-lg-start">
+                        </div>
+                    </div>
+                </div>
+                <div>
+                    <div class="d-flex nav-menu-body">
+                        <a href="posttest.html" class="p-2 ">
+                        Posttest
+                        </a>
+                        
+                    </div>
+                    <div id="t-" class="collapse">
+                        <div class="px-3 d-flex flex-column tasks align-items-center align-items-lg-start">
+                        </div>
+                    </div>
+                </div>
+                <div>
+                    <div class="d-flex nav-menu-body">
+                        <a href="references.html" class="p-2 ">
+                        References
+                        </a>
+                        
+                    </div>
+                    <div id="t-" class="collapse">
+                        <div class="px-3 d-flex flex-column tasks align-items-center align-items-lg-start">
+                        </div>
+                    </div>
+                </div>
+                <div>
+                    <div class="d-flex nav-menu-body">
+                        <a href="contributors.html" class="p-2 ">
+                        Contributors
+                        </a>
+                        
+                    </div>
+                    <div id="t-" class="collapse">
+                        <div class="px-3 d-flex flex-column tasks align-items-center align-items-lg-start">
+                        </div>
+                    </div>
+                </div>
+                <div>
+                    <div class="d-flex nav-menu-body">
+                        <a href="feedback.html" class="p-2 ">
+                        Feedback
+                        </a>
+                        
+                    </div>
+                    <div id="t-" class="collapse">
+                        <div class="px-3 d-flex flex-column tasks align-items-center align-items-lg-start">
+                        </div>
+                    </div>
+                </div>
+          </div>          <div class="vlabs-page-content px-5 pb-4 flex-grow-1 markdown-body">
+            <div class="text-center fix-spacing">
+              <h2 id="flight-control-system-pid-tuning-zieglernichols-auto-tuning--sensor-fusion">Flight Control System: PID Tuning, Ziegler–Nichols Auto-Tuning &amp; Sensor Fusion</h2>
+          
+            </div>
+              <h1 id="theory-flight-control--pid-tuning-zieglernichols--sensor-fusion">Theory: Flight Control — PID Tuning, Ziegler–Nichols &amp; Sensor Fusion</h1>
+          <p>A multirotor is <strong>open-loop unstable</strong>: with no active control a quadcopter cannot hold its attitude, because the smallest disturbance torque integrates unchecked into a tumble. Stable flight is therefore created entirely by the <strong>flight-control loop</strong> running on the autopilot — it reads the vehicle's attitude many hundreds of times per second, compares it with the pilot's command, and continuously trims the four motor thrusts to drive the error to zero. This experiment builds that loop from the ground up: the <strong>PID controller</strong> that generates the corrective torque, the <strong>Ziegler–Nichols</strong> procedure that gives a first set of gains automatically, and the <strong>complementary filter</strong> that fuses the gyroscope and accelerometer into the clean attitude estimate the controller depends on.</p>
+          <hr>
+          <h2 id="1-the-attitude-control-problem"><strong>1. The Attitude Control Problem</strong></h2>
+          <p>Consider rotation about a single axis — the <strong>roll</strong> axis. Newton's second law for rotation states that the net torque equals the moment of inertia times the angular acceleration:</p>
+          <p align="center"><i>τ</i> = <i>J</i> · <i>θ̈</i></p>
+          
+          <p>where <i>J</i> is the roll-axis moment of inertia [kg·m<sup>2</sup>] and <i>θ</i> is the roll angle [rad]. Rearranging, the angle is the <strong>double integral</strong> of the applied torque:</p>
+          <p align="center"><i>θ</i>(<i>s</i>) / <i>τ</i>(<i>s</i>) = 1 / (<i>J s</i><sup>2</sup>)</p>
+          
+          <p>This plant — a <strong>double integrator</strong> — is the root of the instability. It has two poles at the origin, so any constant disturbance torque produces an angle that grows without bound. The controller's job is to manufacture a restoring torque that pulls the two poles into the stable left-half plane.</p>
+          <p><img src="./images/pid_control_loop.png" alt="PID attitude control loop block diagram"></p>
+          <p>Real autopilots use a <strong>cascaded</strong> structure: an outer <strong>angle loop</strong> (commanding a desired angular rate from the attitude error) wrapped around an inner <strong>rate loop</strong> (commanding motor torque from the rate error). Section 2–4 analyse the angle loop's closed-loop response; Section 5–6 tune the inner rate loop with Ziegler–Nichols; Section 7 builds the attitude estimate both loops feed on.</p>
+          <hr>
+          <h2 id="2-the-pid-controller--the-second-order-closed-loop"><strong>2. The PID Controller &amp; the Second-Order Closed Loop</strong></h2>
+          <p>The Proportional–Integral–Derivative controller forms the corrective torque from three terms of the error <i>e</i> = <i>θ</i><sub>cmd</sub> − <i>θ</i>:</p>
+          <p align="center"><i>C</i>(<i>s</i>) = <i>K</i><sub>p</sub> + <i>K</i><sub>i</sub> / <i>s</i> + <i>K</i><sub>d</sub> <i>s</i></p>
+          
+          <ul>
+          <li><strong>Proportional</strong> (<i>K</i><sub>p</sub>): torque proportional to the present error — the main restoring spring.</li>
+          <li><strong>Integral</strong> (<i>K</i><sub>i</sub>): torque proportional to the accumulated past error — eliminates steady offsets.</li>
+          <li><strong>Derivative</strong> (<i>K</i><sub>d</sub>): torque proportional to the rate of change of error — electronic damping that tames overshoot.</li>
+          </ul>
+          <p>With proportional + derivative action on the inertia plant, the closed loop becomes the textbook <strong>second-order prototype</strong> <i>s</i><sup>2</sup> + 2<i>ζω</i><sub>n</sub><i>s</i> + <i>ω</i><sub>n</sub><sup>2</sup>, where the two design quantities map directly onto the gains:</p>
+          <p align="center"><i>ω</i><sub>n</sub> = √(<i>K</i><sub>p</sub> / <i>J</i>) &nbsp;&nbsp;&nbsp; <i>ζ</i> = <i>K</i><sub>d</sub> / (2√(<i>K</i><sub>p</sub> <i>J</i>))</p>
+          
+          <p><i>ω</i><sub>n</sub> is the <strong>natural frequency</strong> (how fast the loop responds) and <i>ζ</i> is the <strong>damping ratio</strong> (how oscillatory it is). Raising <i>K</i><sub>p</sub> speeds the loop but reduces damping; raising <i>K</i><sub>d</sub> adds damping.</p>
+          <h4 id="where-does-j-come-from--the-build-inherited-from-experiment-2">Where does <i>J</i> come from? — the build inherited from Experiment 2</h4>
+          <p>The moment of inertia is not a free parameter; it follows from the airframe you assembled. Modelling an X-quad as its four motors lumped at the arm radius <i>L</i>, each 45° from the roll axis (perpendicular distance <i>L</i>/√2):</p>
+          <p align="center"><i>J</i> = 4 · (<i>m</i>/4) · (<i>L</i>/√2)<sup>2</sup> = <i>m L</i><sup>2</sup> / 2</p>
+          
+          <blockquote>
+          <p><strong>Worked example — roll inertia of the 5″ reference airframe.</strong>
+          Taking the take-off mass <i>m</i> = 0.5 kg and arm length <i>L</i> = 110 mm = 0.110 m inherited from Experiment 2:</p>
+          <p align="center"><i>J</i> = (0.5 × 0.110<sup>2</sup>) / 2 = (0.5 × 0.0121) / 2 = <b>0.00303 kg·m<sup>2</sup></b> ≈ 0.003 kg·m<sup>2</sup></p>
+          Every worked example below uses this <i>J</i> = 0.003 kg·m<sup>2</sup>. A heavier or larger airframe raises <i>J</i> (the 10″ heavy-lift preset is ~16× larger), which slows the loop for the same gains.
+          </blockquote>
+          <blockquote>
+          <p><strong>Worked example — natural frequency and damping at the default gains.</strong>
+          With <i>K</i><sub>p</sub> = 0.6 N·m/rad, <i>K</i><sub>d</sub> = 0.04 N·m·s/rad and <i>J</i> = 0.003 kg·m<sup>2</sup>:</p>
+          <p align="center"><i>ω</i><sub>n</sub> = √(0.6 / 0.003) = √200 = <b>14.14 rad/s</b></p>
+          <p align="center"><i>ζ</i> = 0.04 / (2√(0.6 × 0.003)) = 0.04 / (2 × 0.04243) = <b>0.471</b></p>
+          A damping ratio of 0.47 is moderately underdamped — fast, with a modest overshoot we quantify next.
+          </blockquote>
+          <hr>
+          <h2 id="3-step-response-metrics"><strong>3. Step-Response Metrics</strong></h2>
+          <p>When the pilot commands a step change in attitude, the closed-loop response is judged by four numbers, each a closed-form function of <i>ω</i><sub>n</sub> and <i>ζ</i>:</p>
+          <table>
+          <thead>
+          <tr>
+          <th align="left">Metric</th>
+          <th align="left">Formula</th>
+          <th align="left">Meaning</th>
+          </tr>
+          </thead>
+          <tbody><tr>
+          <td align="left">Peak overshoot</td>
+          <td align="left"><i>M</i><sub>p</sub> = 100 · <i>e</i><sup>−πζ/√(1−ζ<sup>2</sup>)</sup> %</td>
+          <td align="left">how far past the target it swings</td>
+          </tr>
+          <tr>
+          <td align="left">Peak time</td>
+          <td align="left"><i>t</i><sub>p</sub> = π / (<i>ω</i><sub>n</sub>√(1−ζ<sup>2</sup>))</td>
+          <td align="left">when the first peak occurs</td>
+          </tr>
+          <tr>
+          <td align="left">Rise time</td>
+          <td align="left"><i>t</i><sub>r</sub> = (π − cos<sup>−1</sup><i>ζ</i>) / (<i>ω</i><sub>n</sub>√(1−ζ<sup>2</sup>))</td>
+          <td align="left">0→100% of the first rise</td>
+          </tr>
+          <tr>
+          <td align="left">Settling time (2%)</td>
+          <td align="left"><i>t</i><sub>s</sub> = 4 / (<i>ζω</i><sub>n</sub>)</td>
+          <td align="left">when it stays within ±2%</td>
+          </tr>
+          </tbody></table>
+          <blockquote>
+          <p><strong>Worked example — metrics at <i>K</i><sub>p</sub> = 0.6, <i>K</i><sub>d</sub> = 0.04.</strong>
+          Using <i>ω</i><sub>n</sub> = 14.14 rad/s and <i>ζ</i> = 0.471:</p>
+          <p align="center"><i>M</i><sub>p</sub> = 100 <i>e</i><sup>−π×0.471/√(1−0.471<sup>2</sup>)</sup> = 100 <i>e</i><sup>−1.680</sup> = <b>18.65 %</b></p>
+          <p align="center"><i>t</i><sub>p</sub> = π / (14.14 × 0.882) = <b>0.252 s</b> &nbsp;&nbsp; <i>t</i><sub>r</sub> = <b>0.165 s</b> &nbsp;&nbsp; <i>t</i><sub>s</sub> = 4 / (0.471 × 14.14) = <b>0.60 s</b></p>
+          </blockquote>
+          <p><img src="./images/step_response_metrics.png" alt="PID step response showing overshoot, rise and settling time"></p>
+          <h4 id="the-kp-overshoot-trade-off">The <i>K</i><sub>p</sub>-overshoot trade-off</h4>
+          <p>Holding <i>K</i><sub>d</sub> = 0.04 fixed and sweeping <i>K</i><sub>p</sub> reveals the central tuning tension — more proportional gain is faster but rings harder:</p>
+          <table>
+          <thead>
+          <tr>
+          <th align="center"><i>K</i><sub>p</sub></th>
+          <th align="center"><i>ω</i><sub>n</sub> (rad/s)</th>
+          <th align="center"><i>ζ</i></th>
+          <th align="center">Overshoot</th>
+          <th align="center">Settling <i>t</i><sub>s</sub></th>
+          </tr>
+          </thead>
+          <tbody><tr>
+          <td align="center">0.2</td>
+          <td align="center">8.16</td>
+          <td align="center">0.816</td>
+          <td align="center">1.18 %</td>
+          <td align="center">0.60 s</td>
+          </tr>
+          <tr>
+          <td align="center">0.4</td>
+          <td align="center">11.55</td>
+          <td align="center">0.577</td>
+          <td align="center">10.85 %</td>
+          <td align="center">0.60 s</td>
+          </tr>
+          <tr>
+          <td align="center">0.6</td>
+          <td align="center">14.14</td>
+          <td align="center">0.471</td>
+          <td align="center">18.65 %</td>
+          <td align="center">0.60 s</td>
+          </tr>
+          <tr>
+          <td align="center">0.8</td>
+          <td align="center">16.33</td>
+          <td align="center">0.408</td>
+          <td align="center">24.54 %</td>
+          <td align="center">0.60 s</td>
+          </tr>
+          <tr>
+          <td align="center">1.0</td>
+          <td align="center">18.26</td>
+          <td align="center">0.365</td>
+          <td align="center">29.16 %</td>
+          <td align="center">0.60 s</td>
+          </tr>
+          </tbody></table>
+          <p>Overshoot climbs past the <strong>25% comfort limit</strong> near <i>K</i><sub>p</sub> = 0.8. A subtle but important result: the <strong>settling time is constant at 0.60 s</strong> across the whole sweep, because the decay rate <i>ζω</i><sub>n</sub> = <i>K</i><sub>d</sub>/(2<i>J</i>) = 0.04/(2×0.003) = 6.67 s<sup>−1</sup> depends only on <i>K</i><sub>d</sub> and <i>J</i>, not on <i>K</i><sub>p</sub>. To settle faster you must raise the derivative gain, not the proportional gain.</p>
+          <hr>
+          <h2 id="4-steady-state-error--the-role-of-integral-action"><strong>4. Steady-State Error &amp; the Role of Integral Action</strong></h2>
+          <p>A perfectly trimmed quad still tilts under a <strong>constant disturbance torque</strong> — an off-centre payload, a shifted battery, or a steady crosswind. A horizontal centre-of-gravity offset <i>d</i> under gravity creates the couple:</p>
+          <p align="center"><i>τ</i><sub>d</sub> = <i>m</i> · <i>g</i> · <i>d</i></p>
+          
+          <p>With proportional control alone, the loop can only hold a counter-torque by accepting a permanent angle error — the <strong>steady-state error</strong>:</p>
+          <p align="center"><i>e</i><sub>ss</sub> = <i>τ</i><sub>d</sub> / <i>K</i><sub>p</sub></p>
+          
+          <blockquote>
+          <p><strong>Worked example — droop from the Experiment-2 CG offset.</strong>
+          The CG offset measured in Experiment 2 is <i>d</i> = 3.57 mm, so on the 0.5 kg airframe:</p>
+          <p align="center"><i>τ</i><sub>d</sub> = 0.5 × 9.807 × 0.00357 = <b>0.0175 N·m</b></p>
+          The resulting steady tilt shrinks as <i>K</i><sub>p</sub> rises:
+          
+          <table>
+          <thead>
+          <tr>
+          <th align="center"><i>K</i><sub>p</sub></th>
+          <th align="center"><i>e</i><sub>ss</sub> (rad)</th>
+          <th align="center"><i>e</i><sub>ss</sub> (deg)</th>
+          </tr>
+          </thead>
+          <tbody><tr>
+          <td align="center">0.2</td>
+          <td align="center">0.0875</td>
+          <td align="center">5.01°</td>
+          </tr>
+          <tr>
+          <td align="center">0.6</td>
+          <td align="center">0.0292</td>
+          <td align="center">1.67°</td>
+          </tr>
+          <tr>
+          <td align="center">1.0</td>
+          <td align="center">0.0175</td>
+          <td align="center">1.00°</td>
+          </tr>
+          </tbody></table>
+          <p>Higher <i>K</i><sub>p</sub> reduces the droop but, from Section 3, worsens overshoot — you cannot win on both with proportional gain alone.</p>
+          </blockquote>
+          <p>The escape is the <strong>integral term</strong>. Because <i>K</i><sub>i</sub>/<i>s</i> keeps accumulating as long as any error remains, it injects an ever-growing counter-torque until the error is driven to <strong>exactly zero</strong>. Adding even a small <i>K</i><sub>i</sub> nulls the steady-state tilt while <i>K</i><sub>p</sub> and <i>K</i><sub>d</sub> set the transient — the reason every real attitude loop is a full PID, not just PD.</p>
+          <hr>
+          <h2 id="5-zieglernichols-auto-tuning"><strong>5. Ziegler–Nichols Auto-Tuning</strong></h2>
+          <p>Choosing three gains by hand is tedious. The <strong>Ziegler–Nichols ultimate-cycle method</strong> finds a starting set from a single experiment: raise the proportional gain until the loop <strong>oscillates with constant amplitude</strong>; record that gain as the <strong>ultimate gain</strong> <i>K</i><sub>u</sub> and the oscillation period as the <strong>ultimate period</strong> <i>P</i><sub>u</sub>; then read the gains from a table.</p>
+          <h4 id="why-the-method-needs-the-real-plant-lags">Why the method needs the real plant lags</h4>
+          <p>A pure inertia plant 1/(<i>J s</i><sup>2</sup>) under proportional control has its poles sitting <strong>exactly on the imaginary axis at every gain</strong> — it oscillates at <em>all</em> <i>K</i><sub>p</sub>, so <i>K</i><sub>u</sub> is undefined. The ultimate-gain method only works because the real inner rate loop carries additional <strong>first-order lags</strong>: the rotational/mechanical lag <i>τ</i><sub>m</sub>, the motor + ESC actuator lag <i>τ</i><sub>a</sub>, and the gyro/filter lag <i>τ</i><sub>s</sub>. The rate-loop plant is therefore a Type-0 chain:</p>
+          <p align="center"><i>P</i>(<i>s</i>) = 1 / [(<i>τ</i><sub>m</sub><i>s</i> + 1)(<i>τ</i><sub>a</sub><i>s</i> + 1)(<i>τ</i><sub>s</sub><i>s</i> + 1)]</p>
+          
+          <p>Routh's criterion on this third-order loop gives closed-form crossing conditions:</p>
+          <p align="center"><i>ω</i><sub>u</sub> = √[ (<i>τ</i><sub>m</sub>+<i>τ</i><sub>a</sub>+<i>τ</i><sub>s</sub>) / (<i>τ</i><sub>m</sub><i>τ</i><sub>a</sub><i>τ</i><sub>s</sub>) ] &nbsp;&nbsp;&nbsp; <i>P</i><sub>u</sub> = 2π / <i>ω</i><sub>u</sub></p>
+          <p align="center"><i>K</i><sub>u</sub> = [ (<i>τ</i><sub>m</sub><i>τ</i><sub>a</sub> + <i>τ</i><sub>m</sub><i>τ</i><sub>s</sub> + <i>τ</i><sub>a</sub><i>τ</i><sub>s</sub>)(<i>τ</i><sub>m</sub>+<i>τ</i><sub>a</sub>+<i>τ</i><sub>s</sub>) / (<i>τ</i><sub>m</sub><i>τ</i><sub>a</sub><i>τ</i><sub>s</sub>) − 1 ] / <i>K</i></p>
+          
+          <blockquote>
+          <p><strong>Worked example — ultimate gain and period (5″ airframe).</strong>
+          With <i>τ</i><sub>m</sub> = 0.05 s, <i>τ</i><sub>a</sub> = 0.02 s, <i>τ</i><sub>s</sub> = 0.005 s and unit DC gain:</p>
+          <p align="center"><i>ω</i><sub>u</sub> = √(0.075 / 5×10<sup>−6</sup>) = √15000 = <b>122.5 rad/s</b> → <i>P</i><sub>u</sub> = 2π/122.5 = <b>0.0513 s</b></p>
+          <p align="center"><i>K</i><sub>u</sub> = (0.00135 × 0.075 / 5×10<sup>−6</sup>) − 1 = 20.25 − 1 = <b>19.25</b></p>
+          </blockquote>
+          <p>The <strong>classic Ziegler–Nichols PID table</strong> then prescribes:</p>
+          <p align="center"><i>K</i><sub>p</sub> = 0.6 <i>K</i><sub>u</sub> &nbsp;&nbsp; <i>T</i><sub>i</sub> = 0.5 <i>P</i><sub>u</sub> &nbsp;&nbsp; <i>T</i><sub>d</sub> = 0.125 <i>P</i><sub>u</sub></p>
+          
+          <p>with <i>K</i><sub>i</sub> = <i>K</i><sub>p</sub>/<i>T</i><sub>i</sub> and <i>K</i><sub>d</sub> = <i>K</i><sub>p</sub><i>T</i><sub>d</sub>.</p>
+          <blockquote>
+          <p><strong>Worked example — classic Z-N gains.</strong></p>
+          <p align="center"><i>K</i><sub>p</sub> = 0.6 × 19.25 = <b>11.55</b> &nbsp;&nbsp; <i>K</i><sub>i</sub> = 11.55 / (0.5×0.0513) = <b>450.3</b> &nbsp;&nbsp; <i>K</i><sub>d</sub> = 11.55 × (0.125×0.0513) = <b>0.0741</b></p>
+          </blockquote>
+          <hr>
+          <h2 id="6-refining-the-tune--classic-vs-robust"><strong>6. Refining the Tune — Classic vs Robust</strong></h2>
+          <p>Ziegler–Nichols is fast, but it is <strong>deliberately aggressive</strong>: the classic table targets a <em>quarter-amplitude decay</em>, which on this plant produces a large first overshoot.</p>
+          <blockquote>
+          <p><strong>Observed in the simulation — classic Z-N step response.</strong> Applying <i>K</i><sub>p</sub> = 11.55, <i>K</i><sub>i</sub> = 450.3, <i>K</i><sub>d</sub> = 0.074 to the rate loop gives roughly <strong>68% overshoot</strong> with zero steady-state error — fast, but far past the 25% comfort limit. (Note: a widely repeated claim that classic Z-N yields ~20% overshoot is incorrect for this kind of plant; the honest simulated value is reported here.)</p>
+          </blockquote>
+          <p>The practical workflow is to treat Z-N as a <em>starting point</em> and then <strong>detune for robustness</strong>. The classic table's overshoot comes mostly from its very high integral gain (<i>T</i><sub>i</sub> = 0.5<i>P</i><sub>u</sub>). The <strong>Tyreus–Luyben</strong> table raises <i>T</i><sub>i</sub> and lowers <i>K</i><sub>p</sub>:</p>
+          <p align="center"><i>K</i><sub>p</sub> = 0.45 <i>K</i><sub>u</sub> &nbsp;&nbsp; <i>T</i><sub>i</sub> = 2.2 <i>P</i><sub>u</sub> &nbsp;&nbsp; <i>T</i><sub>d</sub> = <i>P</i><sub>u</sub> / 6.3</p>
+          
+          <blockquote>
+          <p><strong>Worked example — Tyreus–Luyben gains and response.</strong></p>
+          <p align="center"><i>K</i><sub>p</sub> = 0.45 × 19.25 = <b>8.66</b> &nbsp;&nbsp; <i>K</i><sub>i</sub> = 8.66 / (2.2×0.0513) = <b>76.8</b> &nbsp;&nbsp; <i>K</i><sub>d</sub> = 8.66 × (0.0513/6.3) = <b>0.0705</b></p>
+          The integral gain drops from 450 to 77 — a much gentler integrator. The simulated step now overshoots about **15%** (under the 25% target) while keeping zero steady-state error. The cost is a slightly slower rise; the benefit is a calm, robust loop.
+          </blockquote>
+          <p><img src="./images/ziegler_nichols_tuning.png" alt="Ziegler–Nichols sustained oscillation and the classic vs Tyreus–Luyben step responses"></p>
+          <hr>
+          <h2 id="7-sensor-fusion--the-complementary-filter"><strong>7. Sensor Fusion — the Complementary Filter</strong></h2>
+          <p>Both control loops depend on a clean attitude measurement, but neither inertial sensor gives one alone:</p>
+          <ul>
+          <li>The <strong>gyroscope</strong> measures angular <em>rate</em>; integrating it gives a smooth, low-noise angle that <strong>drifts</strong> because the small constant bias accumulates without bound.</li>
+          <li>The <strong>accelerometer</strong> measures the gravity direction, giving an absolute tilt that <strong>does not drift</strong> but is <strong>buried in vibration noise</strong>.</li>
+          </ul>
+          <p>The <strong>complementary filter</strong> fuses them — a high-pass on the gyro path and a low-pass on the accel path that sum to unity:</p>
+          <p align="center"><i>θ</i><sub>est</sub> = <i>α</i> · (<i>θ</i><sub>est,prev</sub> + <i>ω</i><sub>gyro</sub> · Δ<i>t</i>) + (1 − <i>α</i>) · <i>θ</i><sub>accel</sub></p>
+          
+          <p>The single blending coefficient <i>α</i> sets the crossover <strong>time constant</strong>, and through it the two competing error sources:</p>
+          <p align="center"><i>τ</i><sub>f</sub> = <i>α</i> · Δ<i>t</i> / (1 − <i>α</i>)</p>
+          <p align="center">drift = bias · <i>τ</i><sub>f</sub> &nbsp;&nbsp;&nbsp; noise<sub>rms</sub> = <i>σ</i><sub>accel</sub> · √[(1 − <i>α</i>) / (1 + <i>α</i>)]</p>
+          
+          <p>A <strong>higher</strong> <i>α</i> trusts the gyro longer (more drift, less noise); a <strong>lower</strong> <i>α</i> trusts the accelerometer more (less drift, more noise). The best <i>α</i> minimises the <em>combined</em> error.</p>
+          <blockquote>
+          <p><strong>Worked example — choosing <i>α</i> for the reference IMU.</strong>
+          With a gyro bias of 0.6°/s, accelerometer angle noise <i>σ</i> = 1.8°, and the estimator at Δ<i>t</i> = 2.5 ms (400 Hz):</p>
+          <table>
+          <thead>
+          <tr>
+          <th align="center"><i>α</i></th>
+          <th align="center"><i>τ</i><sub>f</sub> (s)</th>
+          <th align="center">drift (°)</th>
+          <th align="center">noise (°)</th>
+          <th align="center">total (°)</th>
+          </tr>
+          </thead>
+          <tbody><tr>
+          <td align="center">0.90</td>
+          <td align="center">0.0225</td>
+          <td align="center">0.014</td>
+          <td align="center">0.413</td>
+          <td align="center">0.426</td>
+          </tr>
+          <tr>
+          <td align="center">0.95</td>
+          <td align="center">0.0475</td>
+          <td align="center">0.029</td>
+          <td align="center">0.288</td>
+          <td align="center">0.317</td>
+          </tr>
+          <tr>
+          <td align="center"><strong>0.98</strong></td>
+          <td align="center"><strong>0.1225</strong></td>
+          <td align="center"><strong>0.074</strong></td>
+          <td align="center"><strong>0.181</strong></td>
+          <td align="center"><strong>0.254</strong></td>
+          </tr>
+          <tr>
+          <td align="center">0.99</td>
+          <td align="center">0.2475</td>
+          <td align="center">0.149</td>
+          <td align="center">0.128</td>
+          <td align="center">0.276</td>
+          </tr>
+          </tbody></table>
+          <p>The total error is smallest at <strong><i>α</i> = 0.98</strong>. For contrast, <em>pure</em> gyro integration (<i>α</i> = 1) drifts by 0.6°/s × 30 s = <strong>18°</strong> after just half a minute — the unbounded error the accelerometer reference exists to stop.</p>
+          </blockquote>
+          <p><img src="./images/complementary_filter.png" alt="Complementary filter fusing drifting gyro and noisy accelerometer into a clean estimate"></p>
+          <hr>
+          <h2 id="modelling-assumptions--limitations"><strong>Modelling Assumptions &amp; Limitations</strong></h2>
+          <ol>
+          <li><strong>Lumped inertia is an upper bound.</strong> <i>J</i> = <i>m L</i><sup>2</sup>/2 assumes all mass sits at the motor positions. Real builds carry the battery and stack near the centre, so the true inertia is somewhat lower and the loop is a little faster than predicted.</li>
+          <li><strong>The prototype 2nd-order model is idealised.</strong> The metric formulas of Section 3 neglect the zero introduced by the PD term and the extra phase lag of the actuator, both of which add a little real-world overshoot beyond the table values.</li>
+          <li><strong>Classic Ziegler–Nichols is intentionally aggressive.</strong> It targets quarter-amplitude decay, not a gentle response — hence the ~68% overshoot. It is a <em>starting point</em> to be refined (Section 6), not a final tune.</li>
+          <li><strong>The complementary filter assumes a constant gyro bias.</strong> Real bias wanders slowly with temperature, so a fixed <i>α</i> is itself a compromise; production systems re-estimate the bias online (a Kalman filter generalises exactly this fusion).</li>
+          <li><strong>Single-axis analysis.</strong> Roll, pitch and yaw are treated independently here; a real airframe has small cross-axis coupling that a full controller accounts for.</li>
+          </ol>
+          
+          </div>
+          <div class="bug-report-mobile">
+              <bug-report id="bug-report" title="[BUG REPORT] FLIGHT CONTROL SYSTEM: PID TUNING, ZIEGLER–NICHOLS AUTO-TUNING &amp; SENSOR FUSION" page-type="text" context-info="{&quot;organisation&quot;:&quot;Virtual Labs&quot;,&quot;developer_institute&quot;:&quot;DEI&quot;,&quot;expname&quot;:&quot;FLIGHT CONTROL SYSTEM: PID TUNING, ZIEGLER–NICHOLS AUTO-TUNING &amp; SENSOR FUSION&quot;,&quot;labname&quot;:&quot;Virtual Lab&quot;,&quot;phase&quot;:&quot;Testing&quot;}" checkbox-json="{&quot;text&quot;:[&quot;Insufficient Content&quot;],&quot;video&quot;:[&quot;Insufficient Content&quot;],&quot;assesment&quot;:[&quot;Incorrect Options&quot;,&quot;Incorrect Answer&quot;,&quot;Incorrect Question&quot;],&quot;assessment&quot;:[&quot;Incorrect Options&quot;,&quot;Incorrect Answer&quot;,&quot;Incorrect Question&quot;],&quot;simulation&quot;:[&quot;Simulation Not Working&quot;,&quot;Incorrect Results/Observations&quot;,&quot;Insufficient/Incorrect Instructions&quot;],&quot;DEFAULT&quot;:[&quot;Page Not Loading&quot;,&quot;Content Not Visible&quot;,&quot;Incorrect Content&quot;]}" position="override" button_style="
+                          position: fixed; 
+                          bottom: 20px;
+                          right: 20px;
+                          z-index: 1;
+                          font-size: 0;
+                          padding: 25px;
+                          border-radius: 50%;
+                          border: none;
+                          background-color: #0fc0ff;
+                          background-image: url(data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAC0AAAAtCAYAAAA6GuKaAAAAAXNSR0IArs4c6QAABiFJREFUaEPFmVuMFEUUhv/TM7uwoBGVyG22u7ZnYGG5REETo8RA1BhFIka8ABFf0PCgDxhFEpCLqAlE1OiTiSj4gFGjD0QBETQaEqPRICALSHdPV+8YQQJBA+wuO1PHdMNcWGame2ZWqMfuc/nq1KlT1acJAzhShjFVAUsYdL8G3HjRdA7gHwna5uahLR91dnaeb9QlNWrA1+/o6GjuPnv2DQ30LICKNhk4qLF63PK8g434rejATJhjKa6m9WazOzOZzKlKTmYAcc8QnxEwJwqIAk5STpvpZJwD1eTHjR43PKflhtkZ2+ovVxbaTJiTSVM/gzCYGIebu4fc1nmi80w5J0nDWA7Qq1GACzLMR3pV7pZMJtNdTs/UzelE6msAQ0BYb7vuS6VyZaGTungGhPfygkRYZ7nusv4OEonEDc2xuEfA0JqgATBhieO6b/fXE0IM1pgPECgVvGP+x/bksFDo1JhUguPZI8FMAz0+zzFtSjqd9p8VRlJvew7E79QKHNgEDjrSndRfNyXEGmasLK4KttmeOysU2hdIGm0vA/xKUZh32VLeW6psCrGMmO+uB5qIeEh398P7jx8/m9cP9pGm9vtpmQ9WjHDzUSkPRYJOpVKDuK9vP0Dj8goMfsSR8ot6IKPoJI22XUBpEHitLWUx6heNVC15pmHMItCXBYeKPUZsLlFWVYNQsVg2nU7v82XaW1tHZ4lGhUEztOlEKOQ4A/b5XHZyuc0aWqdNIbYSY3aY00veM/9te3KE/ywlxGpmrKpJP8h5ftCR8qtyeqHQY3XdVNAO5vMskvMGoRWrT9Ke90QlX6HQF6N16Y4OI28Ampn/jatcxx+ZzJ8NQScSiZZBWvzJwAhhJoCKUQhkaoVmnAZoJcC9WowOH02nf6gWl0iRLpQk3ZwOym0n0DVVg10rNAAF7Ig1xedYltUbtpCRoZO6Po1J+z7S6VcHdLCIClusLnfBgED7NVv1ZX8lYGKYwbrSo8Qogxc4Um5pOD1Mo20DgZ+PBFxPTpcYJuBUljDRdd1jdW/EcYnEmKwWSxNR05WADnwo2mB3pV+oGzopxDowlkYGbjDSF9ILpwd1D2mtdB2uuhEv3D+yfwG4/opCB5WVnrZk+v1yfqtCJ3X9TpC2pybggYj0BYcf29KdXwe0WArCuqsCzSxtT4qq0GareStIXXo3JjxGwNSrAh0crMFFq3jYEJ9wpPygkB6mYZwg0PCaAcsp1Hm4RPFtS5eK0LpxvqayVs3DlYIO7r0K8xUhlufRGKNrupLmFQcImsEZBhWaOxq4y5ZyRvXqIcSnYDwaZdkukRkgaGqK32RZ1on+/qt/buliFRFWXxXokonXBJ3S22Yz8darAc2sdjqed1/NddpvnMQUHwPRdTWBD0R6EBbbrltoGJX6D71PJ3V9E0h76kpCMzirNTWNLpfPPkcodNDXi6m9QLGqhE6gwUgzaKMj04sq+QmF9hVrjnYj0IwejmvtjuN4DUEbhjEqztgLoqCXEToagQavsKV8rZqPSJH2DaSEmMGMXZHSpE5oZnzneK7fL8w1DJ1sTU6CltvEwPj/88OWwRYx77Y9b3HD0KYuvqUL/Y5oo85I542TooesrnTF8yE0PUwh5hGj6tfxZTNpEBqKvUE9QyfW9bnV3t5+bV9P7yECxuTBFGOvRn5v5eJgTLzsUhUFmuGCcLJoBiNL/ZT7bVFYiWrrnTSM9QC9WBSmzy2ZnluqI4QYGQcWM/O8Qi+7EjSjB4xtTNqHjuf4HVHO20q1tiZZi/k/j1r8Z8zcRxyfanfZv/dnrJgeYw1jQo6xr+SOfY5j2oRq9VMIIWLA7QSMslz3raDGG8ZMJhoPpR1QmvrFdd2eSoFKGm0rAF5bfM97bCnvKp2c/64idFLXd4C0woWFwMstKV+PthPrk/L/R/aeOfcbCBOKq8uLLCk3llos/0tON+8hUt+U5O1Rao5PjtIcrA+3qOWvDEC78wFlIO1I1wyFTuptC0G8uWSZHrCl3N4oUFT9NiE2a4yFQW6DLUfKsaHQU0aMGHq2pWULM98Bpncdzy35yxXVdf1yftXK9vS8CUVjtBjWHHXdn0qt/Qf/x1JblU8EiAAAAABJRU5ErkJggg==);
+                          background-repeat: no-repeat;
+                          background-position: center;
+                          background-size: 30px;
+                          filter: invert(1);">
+              </bug-report>
+          </div>        </div>
+      </div>
+      <footer class="text-light pt-2 vlabs-footer d-flex flex-column">
+        <div class="row px-5 mx-0">
+          <div class="col d-flex flex-column">
+            <span class="font-weight-bold vlabs-footer-sect-name pb-2 mb-3">Community Links</span>
+            <a href="https://www.sakshat.ac.in/" class="text-light">Sakshat Portal</a>
+            <a href="http://outreach.vlabs.ac.in/" class="text-light">Outreach Portal</a>
+            <a href="https://vlab.co.in/faq" class="text-light">FAQ: Virtual Labs</a>
+          </div>
+          <div class="col d-flex flex-column">
+            <span class="font-weight-bold vlabs-footer-sect-name pb-2 mb-3">Contact Us</span>
+            <span> Phone: General Information: 011-26582050 </span>
+            <span> Email: support@vlabs.ac.in </span>
+          </div>
+          <div class="col d-flex flex-column">
+            <span class="font-weight-bold vlabs-footer-sect-name pb-2 mb-3">Follow Us</span>
+            <div class="social-links">
+      	<a class="p-2 mt-1 mr-2 d-inline-flex justify-content-center align-items-center" style="background: #55acee;" href="https://twitter.com/TheVirtualLabs">
+      	  <i class="fab fa-twitter"></i>
+      	</a>
+      	<a class="p-2 mt-1 mr-2 d-inline-flex justify-content-center align-items-center" style="background: #3b5998;" href="https://www.facebook.com/Virtual-Labs-IIT-Delhi-301510159983871/">
+      	  <i class="fab fa-facebook"></i>
+      	</a>
+      	<a class="p-2 mt-1 mr-2 d-inline-flex justify-content-center align-items-center" style="background: #e52d27;" href="https://www.youtube.com/watch?v=asxRaOgk6a0">
+      	  <i class="fab fa-youtube"></i>
+      	</a>
+      	<a class="p-2 mt-1 mr-2 d-inline-flex justify-content-center align-items-center" style="background: #2867B2;" href="https://in.linkedin.com/in/virtual-labs-008ba9136">
+      	  <i class="fab fa-linkedin"></i>
+      	</a>
+            </div>
+          </div>
+        </div>
+        <div class="m-0 py-2 text-center" style="font-family: &quot;Open Sans&quot;, sans-serif; background: #212121;">
+          <a class="text-primary font-weight-bold" href="https://www.gnu.org/licenses/agpl-3.0.en.html"> AGPL 3.0 </a>
+          &nbsp;&amp;&nbsp;
+          <a class="text-primary font-weight-bold" href="https://creativecommons.org/licenses/by-nc-sa/4.0/"> Creative Commons (CC BY-NC-SA 4.0) </a>
+        </div>
+      </footer>
+    <script src="./assets/js/toggleSidebar.js"></script>
+    <script src="./assets/js/event-handler.js"></script>
+
+
+    <script>
+      if ('serviceWorker' in navigator) {
+        window.addEventListener('load', () => {
+            navigator.serviceWorker.register("sw.js");
+        });
+      }
+    </script>
+  
+
+<script type="module" src="https://virtual-labs.github.io/svc-bug-report/client/src/bug-report.js"></script><script type="module" src="plugins\svc-rating\index.js"></script><script type="module" src="plugins\svc-rating\config.js"></script><script type="module" src="https://apis.google.com/js/api.js"></script></body></html>

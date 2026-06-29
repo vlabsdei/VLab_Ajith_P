@@ -1,0 +1,240 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>ESC Power Electronics Lab — Module 1 · Breakout &amp; Commission</title>
+  <link rel="stylesheet" href="css/main.css">
+</head>
+<body data-start="calibration">
+  <main class="workspace">
+    <!-- Column 1 — Configuration (inputs change per stage) -->
+    <aside class="config-panel">
+      <div class="panel-title">
+        <span>Bench Setup</span>
+        <p class="panel-note" id="stageBlurb">Stage 1 — pick an ESC from the breakout gallery, inspect the board, then store the throttle endpoints and arm at idle.</p>
+      </div>
+      <div class="config-sections">
+        <!-- ESC breakout: shown on every stage -->
+        <div class="config-group">
+          <div class="config-group-title">ESC Breakout</div>
+          <div class="esc-tiles" id="escTiles" role="listbox" aria-label="ESC platform"></div>
+          <select id="escSelect" class="config-select" hidden></select>
+          <div class="spec-card" id="teardownSpec" aria-label="ESC teardown specification"></div>
+          <label class="switch"><input id="explodeToggle" type="checkbox"><span>Teardown / exploded view</span></label>
+        </div>
+
+        <!-- Component navigator: only on the explorer (Stage 1) -->
+        <div class="config-group" data-stages="calibration">
+          <div class="config-group-title">Components</div>
+          <p class="panel-note" style="margin:0 0 4px">Click a part here or a callout in the 3D view to read what it does.</p>
+          <div class="component-list" id="componentList" role="listbox" aria-label="ESC components"></div>
+        </div>
+
+        <!-- Drivetrain: only when speed matters (Stage 2) -->
+        <div class="config-group" data-stages="mapping">
+          <div class="config-group-title">Drivetrain</div>
+          <label class="field-label" for="motorSelect">Motor load (from Exp 1)</label>
+          <select id="motorSelect" class="config-select"></select>
+          <label class="field-label" for="batterySelect">Battery pack</label>
+          <select id="batterySelect" class="config-select"></select>
+          <div class="slider-row"><label for="socSlider">State of charge</label><output id="socOut">85%</output></div>
+          <input id="socSlider" class="alt-slider" type="range" min="0" max="100" step="1" value="85">
+        </div>
+
+        <!-- Throttle command: live experiment (Stage 2) -->
+        <div class="config-group" data-stages="mapping">
+          <div class="config-group-title">Throttle Command</div>
+          <div class="slider-row"><label for="pulseSlider">Pulse width</label><output id="pulseOut">1000 µs</output></div>
+          <input id="pulseSlider" class="alt-slider" type="range" min="900" max="2100" step="1" value="1000">
+          <div class="alt-ticks"><span>900</span><span>1500</span><span>2100 µs</span></div>
+        </div>
+
+        <!-- Endpoint condition: live experiment (Stage 2) -->
+        <div class="config-group" data-stages="mapping">
+          <div class="config-group-title">Endpoint Condition</div>
+          <label class="field-label" for="faultSelect">Calibration fault</label>
+          <select id="faultSelect" class="config-select">
+            <option value="none">Calibrated 1000-2000 µs</option>
+            <option value="inverted">Inverted endpoints</option>
+            <option value="highmin">Minimum endpoint too high</option>
+            <option value="jitter">Noisy receiver jitter</option>
+          </select>
+        </div>
+
+        <!-- Controls required by the data model / persistence but not used on this page's stages -->
+        <div hidden aria-hidden="true">
+          <select id="protocolSelect"></select>
+          <input id="currentSlider" type="range" min="2" max="80" step="0.1" value="7.2"><output id="currentOut"></output>
+          <input id="ambientSlider" type="range" min="0" max="45" step="1" value="25"><output id="ambientOut"></output>
+          <label><input id="hotModelToggle" type="checkbox" checked></label>
+          <label><input id="heatsinkToggle" type="checkbox"></label>
+          <button id="hoverPreset" type="button"></button>
+          <button id="fullPreset" type="button"></button>
+        </div>
+      </div>
+
+      <div class="panel-section" data-stages="calibration">
+        <div class="config-group-title">About This View</div>
+        <p class="panel-note">This is the <strong>anatomy</strong> of a real electronic speed controller. Spin and zoom the exploded board, then click any component to see what it is, what it does, and how its rating drives the calibration, timing and thermal stages that follow.</p>
+      </div>
+
+      <div class="panel-section" data-stages="mapping">
+        <div class="config-group-title">Design Brief</div>
+        <p class="panel-note"><strong>Goal:</strong> hand Module 2 a calibrated, safe throttle channel. <strong>Predict first:</strong> at a neutral 1500 µs pulse, what throttle % should the motor see — and will it spin at 1025 µs? Calibrate, arm at idle, then sweep to check your prediction.</p>
+      </div>
+    </aside>
+
+    <!-- Column 2 — Viewport, controls & derivations -->
+    <section class="middle-panel">
+      <div class="viewport-container">
+        <nav class="viewport-tabs" role="tablist" aria-label="Stages">
+          <button class="vp-tab active" data-mode="calibration" type="button">1 · Component Explorer</button>
+          <button class="vp-tab" data-mode="mapping" type="button">2 · Calibrate &amp; Commission</button>
+        </nav>
+
+        <div class="canvas-wrapper">
+          <canvas id="benchCanvas" width="1180" height="620" aria-label="ESC power-stage bench with MOSFET junction heatmap"></canvas>
+          <div class="stand-hud-overlay">
+            <div class="stand-hud-header">[ ESC BENCH MONITOR ]</div>
+            <div class="stand-hud-row"><span class="stand-hud-lbl">ESC STATE</span><span class="stand-hud-val" id="hudState">DISARMED</span></div>
+            <div class="stand-hud-row"><span class="stand-hud-lbl">THROTTLE</span><span class="stand-hud-val" id="hudThrottle">0.0%</span></div>
+            <div class="stand-hud-row"><span class="stand-hud-lbl">ROTOR RPM</span><span class="stand-hud-val" id="hudRpm">0</span></div>
+            <div class="stand-hud-row"><span class="stand-hud-lbl">BUS VOLTAGE</span><span class="stand-hud-val" id="hudVolts">16.6 V</span></div>
+            <div class="stand-hud-row"><span class="stand-hud-lbl">HOTSPOT</span><span class="stand-hud-val" id="hudTemp">25.0 °C</span></div>
+          </div>
+        </div>
+
+        <div class="sim-controls">
+          <button id="resetViewBtn" class="btn-sim-ghost" type="button" data-stages="calibration">Reset view</button>
+          <button id="explodeBtn" class="btn-sim-ghost" type="button" data-stages="calibration">Collapse / expand</button>
+          <button id="calibrateBtn" class="btn-sim" type="button" data-stages="mapping">Store endpoints</button>
+          <button id="armBtn" class="btn-sim-ghost" type="button" data-stages="mapping">Arm ESC</button>
+          <button id="sweepBtn" class="btn-sim" type="button" data-stages="mapping">Run 0-100% sweep</button>
+          <button id="recordBtn" class="btn-sim-ghost" type="button" data-stages="mapping">Record point</button>
+          <span class="sim-controls-note" id="simNote">Props off. Pick an ESC → store endpoints → arm at idle.</span>
+        </div>
+      </div>
+
+      <div class="run-sheet" id="stepGuide" data-stages="mapping" aria-live="polite"></div>
+
+      <div class="commentary-panel">
+        <div class="commentary-icon">
+          <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="16" x2="12" y2="12"></line><line x1="12" y1="8" x2="12.01" y2="8"></line></svg>
+        </div>
+        <div class="commentary-content">
+          <h4 class="commentary-title">Instructor</h4>
+          <p class="commentary-text" id="labMessage">Store endpoints, arm at idle, then sweep the pulse signal.</p>
+        </div>
+      </div>
+
+      <div class="calculations-panel" data-stages="mapping">
+        <div class="calc-panel-header"><h3>Theoretical Derivations</h3></div>
+        <div class="calc-flow">
+          <div class="calc-step" data-stages="mapping">
+            <div class="step-header"><span class="step-num">A</span><h4>Pack Voltage &amp; Loaded RPM</h4></div>
+            <p class="step-desc">Bus voltage from cell count &amp; charge; loaded speed from genuine back-EMF.</p>
+            <div class="math-block">RPM = kv·(V − I·R)</div>
+            <div class="math-eval" id="eqRpm">—</div>
+          </div>
+          <div class="calc-step" data-stages="calibration mapping">
+            <div class="step-header"><span class="step-num">B</span><h4>Throttle Mapping</h4></div>
+            <p class="step-desc">Linear map of pulse width across the calibrated 1000-2000 µs band, after the dead-band.</p>
+            <div class="math-block">θ = (t − t_min) / (t_max − t_min) × 100</div>
+            <div class="math-eval" id="eqMap">—</div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Column 3 — Results (cards change per stage) -->
+    <aside class="right-panel">
+      <!-- Stage 1 explorer: component datasheet -->
+      <div class="results-section" data-stages="calibration">
+        <div class="results-header"><h2>Component Datasheet</h2><span class="tag" id="dsCount"></span></div>
+        <div class="datasheet" id="componentDatasheet"></div>
+        <a class="primary-link" href="index1.html" id="toModule2Explore" style="margin-top:4px" hidden>Continue to Module 2 · Characterize &amp; Size →</a>
+      </div>
+
+      <div class="results-section" data-stages="mapping">
+        <div class="results-header"><h2>Live Measurements</h2></div>
+        <div class="summary-cards">
+          <div class="summary-card" data-stages="calibration mapping"><span class="card-title">Pulse Width</span><div class="card-val" id="metricPulse">1000 µs</div><span class="card-unit">receiver command</span></div>
+          <div class="summary-card" data-stages="calibration mapping"><span class="card-title">Eff. Throttle</span><div class="card-val" id="metricThrottle">0.0%</div><span class="card-unit">after dead-band</span></div>
+          <div class="summary-card" data-stages="mapping"><span class="card-title">Bus Voltage</span><div class="card-val" id="metricVolts">16.6 V</div><span class="card-unit">pack terminal</span></div>
+          <div class="summary-card" data-stages="mapping"><span class="card-title">Rotor Speed</span><div class="card-val" id="metricRpm">0</div><span class="card-unit">loaded RPM</span></div>
+        </div>
+      </div>
+
+      <div class="results-section" data-stages="mapping">
+        <div class="chart-container">
+          <div class="chart-header">
+            <h3 id="chartTitle">PWM Oscilloscope</h3>
+            <p class="chart-desc" id="chartDesc">Receiver pulse train into the ESC input capture.</p>
+          </div>
+          <div class="chart-legend" id="chartLegend">
+            <span class="lg-item"><span class="lg-swatch lg-ideal"></span>Expected (ideal)</span>
+            <span class="lg-item"><span class="lg-swatch lg-obtained"></span>Obtained (your points)</span>
+            <span class="lg-item"><span class="lg-swatch lg-live"></span>Live pulse</span>
+          </div>
+          <div class="chart-canvas-wrapper"><canvas id="scopeCanvas" width="820" height="260"></canvas></div>
+          <p class="chart-status" id="chartStatus">Record 5 points at different pulse widths to build the obtained curve.</p>
+        </div>
+      </div>
+
+      <div class="results-section" id="calibResults" hidden>
+        <div class="results-header"><h2>Calibration Result</h2><span class="tag" id="calibResultTag"></span></div>
+        <div class="dual-chart">
+          <figure class="dual-chart-item">
+            <figcaption>Expected — ideal 1000–2000 µs map</figcaption>
+            <div class="chart-canvas-wrapper"><canvas id="expectedCanvas" width="760" height="360"></canvas></div>
+          </figure>
+          <figure class="dual-chart-item">
+            <figcaption>Calibrated — your real ESC</figcaption>
+            <div class="chart-canvas-wrapper"><canvas id="calibratedCanvas" width="760" height="360"></canvas></div>
+          </figure>
+        </div>
+        <p class="chart-status" id="calibResultStatus"></p>
+      </div>
+
+      <div class="results-section" data-stages="mapping">
+        <div class="results-header"><h2>Calibration Progress</h2></div>
+        <div class="checklist-container" id="calProgress"></div>
+      </div>
+
+      <div class="results-section" data-stages="mapping">
+        <div class="results-header"><h2>Throttle Mapping Table</h2></div>
+        <table class="budget-table">
+          <thead><tr><th>Pulse (µs)</th><th>Raw %</th><th>Eff %</th></tr></thead>
+          <tbody id="mapTableBody">
+            <tr class="data-empty"><td colspan="3">Sweep the pulse to populate the map.</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <div class="results-section" data-stages="mapping">
+        <div class="results-header"><h2>Recorded Readings</h2><span class="tag" id="dataCount">0 logged</span></div>
+        <table class="budget-table" id="dataTable">
+          <thead><tr id="dataHead"><th>Current</th><th>R(T)</th><th>P (W)</th><th>T_eq</th><th>Verdict</th></tr></thead>
+          <tbody id="dataTableBody">
+            <tr class="data-empty"><td colspan="5">No points yet — run the sweep, then click "Record point" at a few pulse widths.</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <div class="results-section" data-stages="mapping">
+        <div class="results-header"><h2>Experiment Sign-off</h2></div>
+        <div class="checklist-container" id="checklist"></div>
+        <div class="panel-actions" style="padding:0;border:none;">
+          <a class="primary-link" href="index1.html" id="toModule2Map" hidden>Continue to Module 2 · Characterize &amp; Size →</a>
+        </div>
+      </div>
+    </aside>
+  </main>
+
+  <script src="https://cdn.jsdelivr.net/npm/three@0.147.0/build/three.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/three@0.147.0/examples/js/controls/OrbitControls.js"></script>
+  <script src="js/esc_board_model.js"></script>
+  <script src="js/main.js"></script>
+<script src="..\assets\js\iframeResize.js"></script></body>
+</html>

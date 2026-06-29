@@ -1,0 +1,11 @@
+
+c:\Users\ajith\OneDrive\Desktop\virtuallab\VLab_Ajith_P\exp-frame-structural-integrity-dei\experiment\simulation\js\main.js
+  2494:13  warning  'appliedStress' is assigned a value but never used  no-unused-vars
+  4149:11  warning  'self' is assigned a value but never used           no-unused-vars
+  4177:9   warning  'failed' is assigned a value but never used         no-unused-vars
+  4379:51  warning  'b' is defined but never used                       no-unused-vars
+  4379:54  warning  'h' is defined but never used                       no-unused-vars
+  4379:57  warning  't' is defined but never used                       no-unused-vars
+
+✖ 6 problems (0 errors, 6 warnings)
+
