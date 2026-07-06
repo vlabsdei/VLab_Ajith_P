@@ -1,6 +1,0 @@
-{
-  "name": "exp5-flight-control-video",
-  "private": true,
-  "type": "commonjs",
-  "description": "Render harness for the Experiment 5 flight-control 3D explainer video."
-}

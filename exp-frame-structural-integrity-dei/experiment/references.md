@@ -1,4 +1,4 @@
-### References & Literature:
+# Academic References
 
 1. **J. M. Gere and S. P. Timoshenko**, *Mechanics of Materials*, 9th ed. Boston, MA: Cengage Learning, 2017. 
    *(Provides the fundamental derivations for cantilever beam bending moments, area moment of inertia, and flexural stress profiles).*

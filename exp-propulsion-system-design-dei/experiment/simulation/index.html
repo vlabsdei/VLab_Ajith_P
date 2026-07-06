@@ -22,9 +22,15 @@
   <link rel="stylesheet" href="css/main.css">
 </head>
 <body>
-  <main class="work_zone" id="workspace">
+  <div data-vl-gate></div>
+  <!-- Mobile input-drawer toggle (CSS-only bottom sheet; inert on desktop) -->
+  <input type="checkbox" id="mInputsToggle" hidden>
+  <label for="mInputsToggle" class="m-inputs-fab">&#9881;&#65039; Inputs</label>
+  <label for="mInputsToggle" class="m-inputs-backdrop"></label>
+  <main class="workspace" id="workspace">
 
-    <aside class="cfg_aside" id="configPanel">
+    <aside class="config-panel" id="configPanel">
+        <div class="m-sheet-head"><span>Inputs &amp; Controls</span><label for="mInputsToggle">&#10005; Done</label></div>
         <div class="pane_lbl" id="configPanelTitle" style="cursor: pointer; display: flex; align-items: center; justify-content: space-between;">
           <div>
             <span>Actuator Array Components</span>
@@ -88,7 +94,7 @@
       </div>
     </aside>
 
-    <section class="mid_col">
+    <section class="middle-panel">
       <div class="viewport-container">
         <div class="viewport-tabs" role="tablist">
           <button class="vp-tab active" id="tab_build" role="tab" aria-selected="true" data-tab="1">
@@ -193,20 +199,6 @@
         <span class="sim-controls-note" id="simControlsNote">Vehicle flight physics is solved using rigid-body dynamic equations</span>
       </div>
 
-      <div class="commentary-panel" id="liveCommentaryPanel" style="display:none;">
-        <div class="commentary-icon">
-          <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-            <circle cx="12" cy="12" r="10"></circle>
-            <line x1="12" y1="16" x2="12" y2="12"></line>
-            <line x1="12" y1="8" x2="12.01" y2="8"></line>
-          </svg>
-        </div>
-        <div class="commentary-content">
-          <h4 class="commentary-title">AeroSim Instructor</h4>
-          <p class="commentary-text" id="liveCommentaryText">Configure components to prepare vehicle...</p>
-        </div>
-      </div>
-
       <div class="deriv_box" id="calculationsPanel">
         <div class="calc-panel-header">
           <h3>Calculated Vehicle Equations</h3>
@@ -246,6 +238,8 @@
         </div>
         <div class="checklist-container" id="checklistContainer"></div>
         <div class="overlap-warning-card" id="overlapWarningCard" style="display:none"></div>
+        <div id="vlOverrideHostFrame" style="display:none"></div>
+        <div id="vlOverrideHostBattery" style="display:none"></div>
       </div>
 
       <div class="res_section" id="resultsSection" style="display:none">
@@ -321,10 +315,53 @@
 
   </main>
 
+  <!-- Cross-experiment warnings live BELOW the experiment, full-width — never
+       stacked on top of it. Self-hides until a real validation/staleness issue
+       about an already-conducted experiment fires. -->
+  <div id="vlBannerHost" style="width:100%;box-sizing:border-box;padding:12px 18px 20px;"></div>
+
+  <!-- Floating Instructor — a buddy agent, not a page tab. Fixed to the
+       viewport so it stays visible across every tab of this experiment. -->
+  <div class="vl-instructor-fab" id="vlInstructorFab">
+    <div class="vl-instructor-bubble" id="vlInstructorBubble" hidden>
+      <div class="vl-instructor-head">
+        <strong>AeroSim Instructor</strong>
+        <div class="vl-instructor-head-btns">
+          <button type="button" id="instructorSettingsToggle" title="Sound settings">&#9881;&#65039;</button>
+          <button type="button" id="instructorTtsToggle" title="Read guidance aloud" style="display:none;">&#128264;</button>
+          <button type="button" id="vlInstructorMinimize" title="Minimize">&#8211;</button>
+        </div>
+      </div>
+      <div class="vl-instructor-settings" id="vlInstructorSettings" hidden>
+        <label class="vl-instructor-vol-row">
+          <span>Effects</span>
+          <input type="range" id="vlSfxVolume" min="0" max="1" step="0.05">
+        </label>
+        <label class="vl-instructor-vol-row">
+          <span>Narrator</span>
+          <input type="range" id="vlInstructorVolume" min="0" max="1" step="0.05">
+        </label>
+      </div>
+      <div id="instructorVideoSlot" class="vl-instructor-video"></div>
+      <div class="vl-instructor-body">
+        <p id="liveCommentaryText">Configure components to prepare vehicle...</p>
+      </div>
+    </div>
+    <button type="button" class="vl-instructor-avatar" id="vlInstructorAvatar" title="Instructor">
+      <span class="vl-instructor-dot" id="vlInstructorDot" hidden></span>
+      <svg xmlns="http://www.w3.org/2000/svg" width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M12 3 2 8l10 5 10-5-10-5Z"></path>
+        <path d="M6 10.5V16c0 1.1 2.7 3 6 3s6-1.9 6-3v-5.5"></path>
+      </svg>
+    </button>
+  </div>
+
   <script src="https://cdn.jsdelivr.net/npm/three@0.147.0/build/three.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/three@0.147.0/examples/js/controls/OrbitControls.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
 
+  <!-- Single consolidated bundle: shared runtime prelude (constants, catalog, store,
+       validation, ui, lab kit) + experiment code. One JS file per coordinator rule. -->
   <script src="js/main.js"></script>
 
 </body>

@@ -1,2 +1,0 @@
-### Aim of the experiment
-To comprehensively evaluate the drone's aerodynamic performance by profiling propeller blade airfoils, calculating the frame's parasitic drag, and defining the propulsive efficiency curve across varying forward airspeeds.

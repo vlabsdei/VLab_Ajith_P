@@ -7,13 +7,20 @@
   <link rel="stylesheet" href="css/main.css">
 </head>
 <body data-start="calibration">
+  <div data-vl-gate></div>
+  <!-- Mobile input-drawer toggle (CSS-only bottom sheet; inert on desktop) -->
+  <input type="checkbox" id="mInputsToggle" hidden>
+  <label for="mInputsToggle" class="m-inputs-fab">&#9881;&#65039; Inputs</label>
+  <label for="mInputsToggle" class="m-inputs-backdrop"></label>
   <main class="workspace">
     <!-- Column 1 — Configuration (inputs change per stage) -->
     <aside class="config-panel">
+      <div class="m-sheet-head"><span>Inputs &amp; Controls</span><label for="mInputsToggle">&#10005; Done</label></div>
       <div class="panel-title">
         <span>Bench Setup</span>
         <p class="panel-note" id="stageBlurb">Stage 1 — pick an ESC from the breakout gallery, inspect the board, then store the throttle endpoints and arm at idle.</p>
       </div>
+      <div id="upstreamBadge" class="upstream-badge"></div>
       <div class="config-sections">
         <!-- ESC breakout: shown on every stage -->
         <div class="config-group">
@@ -22,6 +29,15 @@
           <select id="escSelect" class="config-select" hidden></select>
           <div class="spec-card" id="teardownSpec" aria-label="ESC teardown specification"></div>
           <label class="switch"><input id="explodeToggle" type="checkbox"><span>Teardown / exploded view</span></label>
+        </div>
+
+        <!-- Teardown controls: genuine manipulation of the exploded model (Stage 1) -->
+        <div class="config-group" data-stages="calibration">
+          <div class="config-group-title">Teardown Controls</div>
+          <div class="slider-row"><label for="explodeSlider">Exploded spread</label><output id="explodeOut">100%</output></div>
+          <input id="explodeSlider" class="alt-slider" type="range" min="0" max="100" step="1" value="100">
+          <label class="switch"><input id="spinViewToggle" type="checkbox"><span>Auto-rotate turntable</span></label>
+          <p class="panel-note" style="margin:4px 0 0">Drag the spread to pull the board apart layer by layer, or let it turn hands-free while you read each callout.</p>
         </div>
 
         <!-- Component navigator: only on the explorer (Stage 1) -->
@@ -50,16 +66,10 @@
           <div class="alt-ticks"><span>900</span><span>1500</span><span>2100 µs</span></div>
         </div>
 
-        <!-- Endpoint condition: live experiment (Stage 2) -->
+        <!-- Fault injection: diagnose a real commissioning fault, then fix it with the controls (Stage 2) -->
         <div class="config-group" data-stages="mapping">
-          <div class="config-group-title">Endpoint Condition</div>
-          <label class="field-label" for="faultSelect">Calibration fault</label>
-          <select id="faultSelect" class="config-select">
-            <option value="none">Calibrated 1000-2000 µs</option>
-            <option value="inverted">Inverted endpoints</option>
-            <option value="highmin">Minimum endpoint too high</option>
-            <option value="jitter">Noisy receiver jitter</option>
-          </select>
+          <div class="config-group-title">Fault Injection</div>
+          <div id="scenarioHost"></div>
         </div>
 
         <!-- Controls required by the data model / persistence but not used on this page's stages -->
@@ -69,6 +79,15 @@
           <input id="ambientSlider" type="range" min="0" max="45" step="1" value="25"><output id="ambientOut"></output>
           <label><input id="hotModelToggle" type="checkbox" checked></label>
           <label><input id="heatsinkToggle" type="checkbox"></label>
+          <label><input id="capToggle" type="checkbox" checked></label>
+          <select id="faultSelect">
+            <option value="none">none</option>
+            <option value="inverted">inverted</option>
+            <option value="highmin">highmin</option>
+            <option value="jitter">jitter</option>
+            <option value="desync">desync</option>
+            <option value="ripple">ripple</option>
+          </select>
           <button id="hoverPreset" type="button"></button>
           <button id="fullPreset" type="button"></button>
         </div>
@@ -77,11 +96,17 @@
       <div class="panel-section" data-stages="calibration">
         <div class="config-group-title">About This View</div>
         <p class="panel-note">This is the <strong>anatomy</strong> of a real electronic speed controller. Spin and zoom the exploded board, then click any component to see what it is, what it does, and how its rating drives the calibration, timing and thermal stages that follow.</p>
+        <div class="panel-actions" style="padding:0;border:none;margin-top:10px">
+          <a class="primary-link" href="index1.html" id="toModule2Explore" hidden>Continue to Module 2 · Characterize &amp; Size →</a>
+        </div>
       </div>
 
       <div class="panel-section" data-stages="mapping">
         <div class="config-group-title">Design Brief</div>
         <p class="panel-note"><strong>Goal:</strong> hand Module 2 a calibrated, safe throttle channel. <strong>Predict first:</strong> at a neutral 1500 µs pulse, what throttle % should the motor see — and will it spin at 1025 µs? Calibrate, arm at idle, then sweep to check your prediction.</p>
+        <div class="panel-actions" style="padding:0;border:none;margin-top:10px">
+          <a class="primary-link" href="index1.html" id="toModule2Map" hidden>Continue to Module 2 · Characterize &amp; Size →</a>
+        </div>
       </div>
     </aside>
 
@@ -110,21 +135,8 @@
           <button id="explodeBtn" class="btn-sim-ghost" type="button" data-stages="calibration">Collapse / expand</button>
           <button id="calibrateBtn" class="btn-sim" type="button" data-stages="mapping">Store endpoints</button>
           <button id="armBtn" class="btn-sim-ghost" type="button" data-stages="mapping">Arm ESC</button>
-          <button id="sweepBtn" class="btn-sim" type="button" data-stages="mapping">Run 0-100% sweep</button>
-          <button id="recordBtn" class="btn-sim-ghost" type="button" data-stages="mapping">Record point</button>
+          <button id="sweepBtn" class="btn-sim" type="button" data-stages="mapping">Run simulation</button>
           <span class="sim-controls-note" id="simNote">Props off. Pick an ESC → store endpoints → arm at idle.</span>
-        </div>
-      </div>
-
-      <div class="run-sheet" id="stepGuide" data-stages="mapping" aria-live="polite"></div>
-
-      <div class="commentary-panel">
-        <div class="commentary-icon">
-          <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="16" x2="12" y2="12"></line><line x1="12" y1="8" x2="12.01" y2="8"></line></svg>
-        </div>
-        <div class="commentary-content">
-          <h4 class="commentary-title">Instructor</h4>
-          <p class="commentary-text" id="labMessage">Store endpoints, arm at idle, then sweep the pulse signal.</p>
         </div>
       </div>
 
@@ -153,7 +165,6 @@
       <div class="results-section" data-stages="calibration">
         <div class="results-header"><h2>Component Datasheet</h2><span class="tag" id="dsCount"></span></div>
         <div class="datasheet" id="componentDatasheet"></div>
-        <a class="primary-link" href="index1.html" id="toModule2Explore" style="margin-top:4px" hidden>Continue to Module 2 · Characterize &amp; Size →</a>
       </div>
 
       <div class="results-section" data-stages="mapping">
@@ -174,27 +185,12 @@
           </div>
           <div class="chart-legend" id="chartLegend">
             <span class="lg-item"><span class="lg-swatch lg-ideal"></span>Expected (ideal)</span>
-            <span class="lg-item"><span class="lg-swatch lg-obtained"></span>Obtained (your points)</span>
+            <span class="lg-item"><span class="lg-swatch lg-obtained"></span>Obtained (real ESC)</span>
             <span class="lg-item"><span class="lg-swatch lg-live"></span>Live pulse</span>
           </div>
           <div class="chart-canvas-wrapper"><canvas id="scopeCanvas" width="820" height="260"></canvas></div>
-          <p class="chart-status" id="chartStatus">Record 5 points at different pulse widths to build the obtained curve.</p>
+          <p class="chart-status" id="chartStatus">The solid curve is your real ESC map (dead-band + stored endpoints); the dashed line is the ideal you assumed.</p>
         </div>
-      </div>
-
-      <div class="results-section" id="calibResults" hidden>
-        <div class="results-header"><h2>Calibration Result</h2><span class="tag" id="calibResultTag"></span></div>
-        <div class="dual-chart">
-          <figure class="dual-chart-item">
-            <figcaption>Expected — ideal 1000–2000 µs map</figcaption>
-            <div class="chart-canvas-wrapper"><canvas id="expectedCanvas" width="760" height="360"></canvas></div>
-          </figure>
-          <figure class="dual-chart-item">
-            <figcaption>Calibrated — your real ESC</figcaption>
-            <div class="chart-canvas-wrapper"><canvas id="calibratedCanvas" width="760" height="360"></canvas></div>
-          </figure>
-        </div>
-        <p class="chart-status" id="calibResultStatus"></p>
       </div>
 
       <div class="results-section" data-stages="mapping">
@@ -212,29 +208,61 @@
         </table>
       </div>
 
-      <div class="results-section" data-stages="mapping">
-        <div class="results-header"><h2>Recorded Readings</h2><span class="tag" id="dataCount">0 logged</span></div>
-        <table class="budget-table" id="dataTable">
-          <thead><tr id="dataHead"><th>Current</th><th>R(T)</th><th>P (W)</th><th>T_eq</th><th>Verdict</th></tr></thead>
-          <tbody id="dataTableBody">
-            <tr class="data-empty"><td colspan="5">No points yet — run the sweep, then click "Record point" at a few pulse widths.</td></tr>
-          </tbody>
-        </table>
-      </div>
-
-      <div class="results-section" data-stages="mapping">
+      <div class="results-section" data-stages="calibration mapping">
         <div class="results-header"><h2>Experiment Sign-off</h2></div>
+        <div id="verdictHost"></div>
         <div class="checklist-container" id="checklist"></div>
-        <div class="panel-actions" style="padding:0;border:none;">
-          <a class="primary-link" href="index1.html" id="toModule2Map" hidden>Continue to Module 2 · Characterize &amp; Size →</a>
-        </div>
       </div>
     </aside>
   </main>
 
+  <!-- Cross-experiment warnings live BELOW the experiment, full-width — never
+       stacked on top of the bench. Self-hides (.vl-banner:empty{display:none})
+       until a real validation/staleness issue about an already-conducted
+       experiment fires. -->
+  <div id="vlBannerHost" style="width:100%;box-sizing:border-box;padding:12px 18px 20px;"></div>
+
+  <!-- Floating Instructor — a buddy agent, not a page tab. Fixed to the
+       viewport so it stays visible across every tab of this experiment. -->
+  <div class="vl-instructor-fab" id="vlInstructorFab">
+    <div class="vl-instructor-bubble" id="vlInstructorBubble" hidden>
+      <div class="vl-instructor-head">
+        <strong>Power Bench Instructor</strong>
+        <div class="vl-instructor-head-btns">
+          <button type="button" id="instructorSettingsToggle" title="Sound settings">&#9881;&#65039;</button>
+          <button type="button" id="instructorTtsToggle" title="Read guidance aloud" style="display:none;">&#128264;</button>
+          <button type="button" id="vlInstructorMinimize" title="Minimize">&#8211;</button>
+        </div>
+      </div>
+      <div class="vl-instructor-settings" id="vlInstructorSettings" hidden>
+        <label class="vl-instructor-vol-row">
+          <span>Effects</span>
+          <input type="range" id="vlSfxVolume" min="0" max="1" step="0.05">
+        </label>
+        <label class="vl-instructor-vol-row">
+          <span>Narrator</span>
+          <input type="range" id="vlInstructorVolume" min="0" max="1" step="0.05">
+        </label>
+      </div>
+      <div id="instructorVideoSlot" class="vl-instructor-video"></div>
+      <div class="vl-instructor-body">
+        <p id="liveCommentaryText">Pick an ESC and raise the pulse width from 1000 microseconds to find its arm point.</p>
+      </div>
+    </div>
+    <button type="button" class="vl-instructor-avatar" id="vlInstructorAvatar" title="Instructor">
+      <span class="vl-instructor-dot" id="vlInstructorDot" hidden></span>
+      <svg xmlns="http://www.w3.org/2000/svg" width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M12 3 2 8l10 5 10-5-10-5Z"></path>
+        <path d="M6 10.5V16c0 1.1 2.7 3 6 3s6-1.9 6-3v-5.5"></path>
+      </svg>
+    </button>
+  </div>
+
   <script src="https://cdn.jsdelivr.net/npm/three@0.147.0/build/three.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/three@0.147.0/examples/js/controls/OrbitControls.js"></script>
-  <script src="js/esc_board_model.js"></script>
+  <!-- Single consolidated bundle: shared runtime prelude (constants, catalog, store,
+       validation, ui, lab kit) + 3D hardware models + experiment code. One JS file
+       per coordinator rule (redesign/README.md §2). -->
   <script src="js/main.js"></script>
 </body>
 </html>

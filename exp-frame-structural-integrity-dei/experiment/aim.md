@@ -1,4 +1,4 @@
-### Aim:
+### Aim of the experiment
 To design a structurally sound drone frame by balancing the system’s center of gravity (CG) and performing static stress analysis on the structural arms (cantilever beams) to ensure they can withstand thrust and motor weight loads without yielding.
 
 ### Learning Objectives:

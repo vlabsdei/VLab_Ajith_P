@@ -3,25 +3,48 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Flight Control Lab — Module 1 · PID Tuning &amp; Ziegler–Nichols</title>
+  <title>Flight Control Lab — PID · Ziegler–Nichols · Sensor Fusion · Full System</title>
+  <link rel="icon" href="data:,">
   <link rel="stylesheet" href="css/main.css">
 </head>
 <body data-start="pidstep">
+  <div data-vl-gate></div>
+  <!-- Mobile input-drawer toggle (CSS-only bottom sheet; inert on desktop) -->
+  <input type="checkbox" id="mInputsToggle" hidden>
+  <label for="mInputsToggle" class="m-inputs-fab">&#9881;&#65039; Inputs</label>
+  <label for="mInputsToggle" class="m-inputs-backdrop"></label>
   <main class="workspace">
     <!-- Column 1 — Configuration -->
     <aside class="config-panel">
+      <div class="m-sheet-head"><span>Inputs &amp; Controls</span><label for="mInputsToggle">&#10005; Done</label></div>
       <div class="panel-title">
-        <span>Loop Setup</span>
-        <p class="panel-note">Pick the airframe (sets the roll inertia J), set the PID gains, then auto-tune the inner rate loop with Ziegler–Nichols.</p>
+        <span>Flight Control Bench</span>
+        <p class="panel-note">Four stages of one flight controller: tune the PID by hand, let Ziegler–Nichols tune it autonomously, fuse the sensors into an attitude estimate, then combine all three and hunt the best system.</p>
       </div>
       <div class="config-sections">
+        <div class="config-group">
+          <div class="config-group-title">Fault Injection</div>
+          <div id="scenarioHost"></div>
+        </div>
+
+        <!-- Shared: commanded attitude (all tabs) -->
+        <div class="config-group">
+          <div class="config-group-title">Target Attitude</div>
+          <div class="slider-row"><label for="rollSlider">Commanded roll &theta;<sub>cmd</sub></label><output id="rollOut">20&deg;</output></div>
+          <input id="rollSlider" class="alt-slider" type="range" min="-45" max="45" step="1" value="20">
+          <div class="alt-ticks"><span>-45&deg;</span><span>level</span><span>+45&deg;</span></div>
+        </div>
+
+        <!-- Shared: airframe / inertia (all tabs) -->
         <div class="config-group">
           <div class="config-group-title">Airframe &amp; Inertia</div>
           <label class="field-label" for="airframeSelect">Airframe (sets J)</label>
           <select id="airframeSelect" class="config-select"></select>
+          <p class="panel-note" id="airframeSource" style="margin-top:6px;"></p>
         </div>
 
-        <div class="config-group">
+        <!-- Tab 1 only: manual PID gains -->
+        <div class="config-group cfg-pidstep">
           <div class="config-group-title">PID Gains</div>
           <div class="slider-row"><label for="kpSlider">Proportional K<sub>p</sub></label><output id="kpOut">0.60</output></div>
           <input id="kpSlider" class="alt-slider" type="range" min="0" max="2" step="0.05" value="0.6">
@@ -31,7 +54,8 @@
           <input id="kdSlider" class="alt-slider" type="range" min="0" max="0.12" step="0.002" value="0.04">
         </div>
 
-        <div class="config-group">
+        <!-- Tab 2 only: Ziegler–Nichols auto-tune -->
+        <div class="config-group cfg-ziegler">
           <div class="config-group-title">Ziegler–Nichols Auto-Tune</div>
           <label class="field-label" for="tuningSelect">Tuning method</label>
           <select id="tuningSelect" class="config-select">
@@ -44,7 +68,50 @@
           <div class="alt-ticks"><span>0</span><span>find K_u</span><span>30</span></div>
         </div>
 
-        <div class="config-group">
+        <!-- Tab 3 + Tab 4: sensor / estimator -->
+        <div class="config-group cfg-fusion cfg-combined">
+          <div class="config-group-title">IMU &amp; Estimator</div>
+          <label class="field-label" for="imuSelect">IMU model</label>
+          <select id="imuSelect" class="config-select"></select>
+          <div class="slider-row"><label for="alphaSlider">Blend coefficient &alpha;</label><output id="alphaOut">0.980</output></div>
+          <input id="alphaSlider" class="alt-slider" type="range" min="0.8" max="1.0" step="0.005" value="0.98">
+          <div class="alt-ticks"><span>trust accel</span><span>&alpha;*</span><span>trust gyro</span></div>
+        </div>
+
+        <!-- Tab 3 only: flight profile -->
+        <div class="config-group cfg-fusion">
+          <div class="config-group-title">Flight Profile</div>
+          <label class="switch"><input id="noiseToggle" type="checkbox" checked><span>Accelerometer noise active</span></label>
+        </div>
+
+        <!-- Tab 2 + Tab 4: air resistance + wind (real plant physics) -->
+        <div class="config-group cfg-ziegler cfg-combined">
+          <div class="config-group-title">Air Resistance &amp; Wind</div>
+          <div class="slider-row"><label for="airSlider">Air resistance</label><output id="airOut">30%</output></div>
+          <input id="airSlider" class="alt-slider" type="range" min="0" max="100" step="5" value="30">
+          <div class="alt-ticks"><span>vacuum</span><span>drag</span><span>dense</span></div>
+          <div class="slider-row"><label for="windSlider">Wind-gust torque</label><output id="windOut">0.000 N&middot;m</output></div>
+          <input id="windSlider" class="alt-slider" type="range" min="0" max="0.05" step="0.002" value="0">
+        </div>
+
+        <!-- Tab 4 only: controller × estimator picker -->
+        <div class="config-group cfg-combined">
+          <div class="config-group-title">Controller</div>
+          <div class="seg-select" id="controllerSeg" role="group" aria-label="Controller">
+            <button class="seg-btn active" data-controller="manual" type="button">Manual PID</button>
+            <button class="seg-btn" data-controller="classic" type="button">ZN-Classic</button>
+            <button class="seg-btn" data-controller="tyreus" type="button">ZN-Tyreus</button>
+          </div>
+          <div class="config-group-title" style="margin-top:12px;">Estimator</div>
+          <div class="seg-select" id="estimatorSeg" role="group" aria-label="Estimator">
+            <button class="seg-btn active" data-estimator="comp" type="button">Complementary &alpha;</button>
+            <button class="seg-btn" data-estimator="gyro" type="button">Gyro-only</button>
+            <button class="seg-btn" data-estimator="accel" type="button">Accel-only</button>
+          </div>
+        </div>
+
+        <!-- Tab 1 only: disturbance -->
+        <div class="config-group cfg-pidstep">
           <div class="config-group-title">Disturbance</div>
           <label class="switch"><input id="disturbanceToggle" type="checkbox"><span>Apply CG-offset torque (from Exp 2)</span></label>
         </div>
@@ -52,7 +119,7 @@
 
       <div class="panel-section">
         <div class="config-group-title">Objective</div>
-        <p class="panel-note">Map the PID gains onto overshoot and settling time for the chosen inertia, find the ultimate gain by sweeping the rate loop, and apply the Ziegler–Nichols table for a robust tune that holds overshoot within the 25% target.</p>
+        <p class="panel-note" id="objectiveNote">Map the PID gains onto overshoot and settling time for the inherited inertia, find the ultimate gain, fuse the IMU into a clean attitude estimate, then combine every method to find the flight control system that flies the tightest.</p>
       </div>
     </aside>
 
@@ -60,8 +127,10 @@
     <section class="middle-panel">
       <div class="viewport-container">
         <nav class="viewport-tabs" role="tablist" aria-label="Stages">
-          <button class="vp-tab active" data-mode="pidstep" type="button">1. PID Step Response</button>
-          <button class="vp-tab" data-mode="ziegler" type="button">2. Ziegler–Nichols</button>
+          <button class="vp-tab active" data-mode="pidstep" type="button">1 · PID Tuning</button>
+          <button class="vp-tab" data-mode="ziegler" type="button">2 · Ziegler–Nichols</button>
+          <button class="vp-tab" data-mode="fusion" type="button">3 · Sensor Fusion</button>
+          <button class="vp-tab" data-mode="combined" type="button">4 · Full System</button>
         </nav>
 
         <div class="canvas-wrapper">
@@ -72,19 +141,15 @@
 
         <div class="sim-controls">
           <button id="stepBtn" class="btn-sim" type="button">Apply Step</button>
-          <button id="autotuneBtn" class="btn-sim-ghost" type="button">Auto-tune (Z-N)</button>
+          <button id="autotuneBtn" class="btn-sim-ghost cfg-ziegler" type="button">Auto-tune (Z-N)</button>
           <button id="resetBtn" class="btn-sim-ghost" type="button">Reset</button>
-          <span class="sim-controls-note">Apply a step and read the overshoot and settling time from the live response.</span>
-        </div>
-      </div>
-
-      <div class="commentary-panel">
-        <div class="commentary-icon">
-          <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="16" x2="12" y2="12"></line><line x1="12" y1="8" x2="12.01" y2="8"></line></svg>
-        </div>
-        <div class="commentary-content">
-          <h4 class="commentary-title">Instructor</h4>
-          <p class="commentary-text" id="labMessage">Set the PID gains and apply a step to study the attitude response.</p>
+          <div class="blade-select" role="group" aria-label="Propeller blade count">
+            <span class="blade-select-label">Blades</span>
+            <button class="blade-btn active" data-blades="2" type="button">2</button>
+            <button class="blade-btn" data-blades="3" type="button">3</button>
+            <button class="blade-btn" data-blades="4" type="button">4</button>
+          </div>
+          <span class="sim-controls-note" id="simControlsNote">Apply a step and read the overshoot and settling time from the live response.</span>
         </div>
       </div>
 
@@ -116,7 +181,7 @@
     <!-- Column 3 — Results -->
     <aside class="right-panel">
       <div class="results-section">
-        <div class="results-header"><h2>Response Summary</h2></div>
+        <div class="results-header"><h2 id="summaryHeader">Response Summary</h2></div>
         <div class="summary-cards">
           <div class="summary-card"><span class="card-title" id="cardT1">Overshoot Mp</span><div class="card-val" id="cardV1">—</div></div>
           <div class="summary-card"><span class="card-title" id="cardT2">Settling t_s</span><div class="card-val" id="cardV2">—</div></div>
@@ -135,29 +200,100 @@
         </div>
       </div>
 
+      <!-- Tab 4 only: live leaderboard of all controller × estimator combos -->
+      <div class="results-section cfg-combined" id="leaderboardSection">
+        <div class="results-header"><h2>Flight-System Leaderboard</h2></div>
+        <p class="panel-note">Every controller × estimator combination flown against the current target, air resistance and IMU. The winner is your best flight control system.</p>
+        <div class="leaderboard" id="leaderboard"></div>
+      </div>
+
+      <!-- Tab 1 only: PID term contributions -->
+      <div class="results-section cfg-pidstep" id="pidTermsSection">
+        <div class="results-header"><h2>PID Term Contributions</h2></div>
+        <div class="pid-terms" id="pidTerms"></div>
+        <p class="panel-note" id="pidTermsNote">Live share of the corrective torque (N&middot;m) from each gain as the drone flies the step: P sets the speed, D damps the ring, I climbs to erase any steady offset.</p>
+      </div>
+
       <div class="results-section">
         <div class="results-header"><h2>Computed Quantities</h2></div>
         <div id="metricList"></div>
       </div>
 
       <div class="results-section">
-        <div class="results-header"><h2>Loop Analysis</h2></div>
+        <div class="results-header"><h2 id="analysisHeader">Loop Analysis</h2></div>
         <div class="probe-list" id="probeList"></div>
       </div>
 
       <div class="results-section">
-        <div class="results-header"><h2>Tuning Checklist</h2></div>
+        <div class="results-header"><h2>Objectives</h2></div>
         <div class="checklist-container" id="checklist"></div>
-        <div class="panel-actions" style="padding:0;border:none;">
-          <a id="btnNextModule" class="primary-link is-locked" href="index1.html" aria-disabled="true">Complete the objectives to continue →</a>
-          <p class="panel-note" id="nextHint" style="margin-top:8px;">Keep overshoot within the 25% target, switch on the disturbance and add integral gain to null the steady-state error, then apply a Ziegler–Nichols auto-tune to unlock Module 2.</p>
+        <div id="verdictHost" style="margin-top:10px;"></div>
+      </div>
+
+      <!-- Unlock Card (shown automatically on full experiment completion) -->
+      <div class="results-section" id="nextModuleContainer" style="display:none;">
+        <div style="font-size:0.72rem;font-weight:700;color:var(--success,#16a34a);text-transform:uppercase;letter-spacing:0.05em;margin-bottom:4px;text-align:center;">Flight Control Experiment Completed</div>
+        <h3 style="font-size:1.1rem;margin-bottom:12px;font-weight:700;text-align:center;">Component Unlocked</h3>
+        <div class="unlock-canvas-wrapper" style="height:180px;width:100%;background:var(--surface-2,#0f172a);border:1px solid var(--border,#334155);border-radius:var(--radius,8px);overflow:hidden;position:relative;margin-bottom:4px;">
+          <canvas id="unlockCanvas" style="width:100%;height:100%;display:block;"></canvas>
+          <div style="position:absolute;bottom:8px;right:8px;font-size:0.65rem;color:var(--text-secondary,#94a3b8);font-family:var(--font-mono,monospace);pointer-events:none;background:rgba(255,255,255,0.8);padding:2px 6px;border-radius:4px;">Drag to Rotate 3D Model</div>
         </div>
       </div>
     </aside>
   </main>
 
+  <!-- Cross-experiment warnings live BELOW the experiment, full-width — never
+       stacked on top of it. Self-hides until a real validation/staleness issue
+       about an already-conducted experiment fires. -->
+  <div id="vlBannerHost" style="width:100%;box-sizing:border-box;padding:12px 18px 20px;"></div>
+
+  <!-- Floating Instructor — a buddy agent, not a page tab. Fixed to the
+       viewport so it stays visible across every tab of this experiment. -->
+  <div class="vl-instructor-fab" id="vlInstructorFab">
+    <div class="vl-instructor-bubble" id="vlInstructorBubble" hidden>
+      <div class="vl-instructor-head">
+        <strong>Control Systems Instructor</strong>
+        <div class="vl-instructor-head-btns">
+          <button type="button" id="instructorSettingsToggle" title="Sound settings">&#9881;&#65039;</button>
+          <button type="button" id="instructorTtsToggle" title="Read guidance aloud" style="display:none;">&#128264;</button>
+          <button type="button" id="vlInstructorMinimize" title="Minimize">&#8211;</button>
+        </div>
+      </div>
+      <div class="vl-instructor-settings" id="vlInstructorSettings" hidden>
+        <label class="vl-instructor-vol-row">
+          <span>Effects</span>
+          <input type="range" id="vlSfxVolume" min="0" max="1" step="0.05">
+        </label>
+        <label class="vl-instructor-vol-row">
+          <span>Narrator</span>
+          <input type="range" id="vlInstructorVolume" min="0" max="1" step="0.05">
+        </label>
+      </div>
+      <div id="instructorVideoSlot" class="vl-instructor-video"></div>
+      <div class="vl-instructor-body">
+        <p id="liveCommentaryText">Your plant is the real airframe from the structures experiment — its inertia sets how hard this tune will be. Push the proportional gain and watch the trade-off appear.</p>
+      </div>
+    </div>
+    <button type="button" class="vl-instructor-avatar" id="vlInstructorAvatar" title="Instructor">
+      <span class="vl-instructor-dot" id="vlInstructorDot" hidden></span>
+      <svg xmlns="http://www.w3.org/2000/svg" width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M12 3 2 8l10 5 10-5-10-5Z"></path>
+        <path d="M6 10.5V16c0 1.1 2.7 3 6 3s6-1.9 6-3v-5.5"></path>
+      </svg>
+    </button>
+  </div>
+
   <script src="https://cdn.jsdelivr.net/npm/three@0.147.0/build/three.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/three@0.147.0/examples/js/controls/OrbitControls.js"></script>
+  <!-- GLTFLoader (+ DRACO) for the unlock-reward 3D model (asset/models/*.glb) -->
+  <script src="https://cdn.jsdelivr.net/npm/three@0.147.0/examples/js/loaders/GLTFLoader.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/three@0.147.0/examples/js/loaders/DRACOLoader.js"></script>
+  <script>
+    if (window.THREE) { window.GLTFLoader = THREE.GLTFLoader; window.DRACOLoader = THREE.DRACOLoader; }
+  </script>
+
+  <!-- Single consolidated bundle: shared runtime prelude (constants, catalog, store,
+       validation, ui, lab kit, shared drone model) + experiment code. One JS file per coordinator rule. -->
   <script src="js/main.js"></script>
 </body>
 </html>

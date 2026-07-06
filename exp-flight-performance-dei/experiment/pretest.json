@@ -1,0 +1,175 @@
+{
+  "version": 2.0,
+  "questions": [
+    {
+      "question": "Q1. What does the thrust-to-weight ratio (TWR) of a multirotor tell you?",
+      "answers": {
+        "a": "How long the battery lasts",
+        "b": "How many times its own weight the craft can push in thrust",
+        "c": "The maximum forward speed",
+        "d": "The radio control range"
+      },
+      "explanations": {
+        "a": "Incorrect — endurance depends on efficiency and battery capacity, not TWR directly.",
+        "b": "Correct — TWR = total thrust / weight; it is the dimensionless measure of how much lifting/accelerating authority the craft has.",
+        "c": "Incorrect — top speed depends on aerodynamics and tilt, not the static TWR.",
+        "d": "Incorrect — range is a radio property, unrelated to TWR."
+      },
+      "correctAnswer": "b",
+      "difficulty": "beginner"
+    },
+    {
+      "question": "Q2. What is the minimum thrust-to-weight ratio needed for a drone to leave the ground?",
+      "answers": {
+        "a": "Greater than 0.5",
+        "b": "Exactly 1.0 is plenty for good control",
+        "c": "Greater than 1.0 (and ideally >= 2.0 for control)",
+        "d": "Greater than 10"
+      },
+      "explanations": {
+        "a": "Incorrect — below 1.0 the thrust cannot even equal the weight.",
+        "b": "Incorrect — at exactly 1.0 the craft hovers only at full throttle with zero margin; it cannot manoeuvre.",
+        "c": "Correct — TWR must exceed 1 to lift off, and around 2 or more is needed for controllable flight with manoeuvre headroom.",
+        "d": "Incorrect — TWR > 10 is extreme racing territory, far beyond the minimum."
+      },
+      "correctAnswer": "c",
+      "difficulty": "beginner"
+    },
+    {
+      "question": "Q3. Why is hovering at roughly 50% throttle considered ideal?",
+      "answers": {
+        "a": "It uses the least battery",
+        "b": "It leaves symmetric authority to climb and to descend",
+        "c": "It is the only throttle the motors can sustain",
+        "d": "It maximises the radio link"
+      },
+      "explanations": {
+        "a": "Incorrect — minimum power draw is not at 50% throttle.",
+        "b": "Correct — a mid-range hover keeps roughly equal thrust reserve above (to climb / correct) and below (to descend), giving balanced control authority.",
+        "c": "Incorrect — motors run across the whole range.",
+        "d": "Incorrect — throttle does not set the radio link."
+      },
+      "correctAnswer": "b",
+      "difficulty": "beginner"
+    },
+    {
+      "question": "Q4. What is the 'control margin' of a hovering multirotor?",
+      "answers": {
+        "a": "The throttle reserve available above the hover point for manoeuvres",
+        "b": "The distance to the nearest obstacle",
+        "c": "The gap between motor and ESC ratings",
+        "d": "The tolerance on the propeller diameter"
+      },
+      "explanations": {
+        "a": "Correct — control margin is the unused throttle above hover, the thrust reserve the stabilisation loop and pilot draw on to climb and reject disturbances.",
+        "b": "Incorrect — that is a navigation clearance, not control margin.",
+        "c": "Incorrect — that is a component-rating headroom.",
+        "d": "Incorrect — that is a manufacturing tolerance."
+      },
+      "correctAnswer": "a",
+      "difficulty": "beginner"
+    },
+    {
+      "question": "Q5. How does a propeller's thrust vary with its rotational speed (RPM)?",
+      "answers": {
+        "a": "Thrust is independent of RPM",
+        "b": "Thrust is proportional to RPM",
+        "c": "Thrust is proportional to RPM squared",
+        "d": "Thrust is proportional to the square root of RPM"
+      },
+      "explanations": {
+        "a": "Incorrect — faster props clearly make more thrust.",
+        "b": "Incorrect — the relationship is steeper than linear.",
+        "c": "Correct — propeller thrust scales with the square of RPM (T proportional to RPM^2), which is why the thrust-vs-throttle curve is quadratic.",
+        "d": "Incorrect — it grows faster than linearly, not slower."
+      },
+      "correctAnswer": "c",
+      "difficulty": "intermediate"
+    },
+    {
+      "question": "Q6. What happens to the thrust-to-weight ratio as you add payload to a drone?",
+      "answers": {
+        "a": "It rises",
+        "b": "It falls, because total weight increases while max thrust is fixed",
+        "c": "It stays the same",
+        "d": "It becomes infinite"
+      },
+      "explanations": {
+        "a": "Incorrect — adding weight cannot increase TWR.",
+        "b": "Correct — TWR = thrust / weight; payload raises the weight while the motors' maximum thrust is unchanged, so TWR drops.",
+        "c": "Incorrect — TWR is mass-dependent.",
+        "d": "Incorrect — it decreases toward 1, not infinity."
+      },
+      "correctAnswer": "b",
+      "difficulty": "beginner"
+    },
+    {
+      "question": "Q7. In rotor theory, what does the 'figure of merit' (FoM) represent?",
+      "answers": {
+        "a": "The ratio of ideal hover power to the actual power a real rotor needs",
+        "b": "The maximum RPM of the motor",
+        "c": "The number of propeller blades",
+        "d": "The battery's discharge rating"
+      },
+      "explanations": {
+        "a": "Correct — FoM (typically ~0.7) measures how close a real rotor comes to the ideal momentum-theory hover power; real losses make it less than 1.",
+        "b": "Incorrect — that is an RPM limit.",
+        "c": "Incorrect — blade count is a geometry choice.",
+        "d": "Incorrect — that is a battery C-rating."
+      },
+      "correctAnswer": "a",
+      "difficulty": "intermediate"
+    },
+    {
+      "question": "Q8. For a fixed weight, how does a larger propeller disk area affect hover efficiency?",
+      "answers": {
+        "a": "It makes hovering less efficient",
+        "b": "It makes hovering more efficient (more lift per watt)",
+        "c": "It has no effect on efficiency",
+        "d": "It only matters at full throttle"
+      },
+      "explanations": {
+        "a": "Incorrect — small disks must accelerate air harder, wasting power.",
+        "b": "Correct — a larger disk moves more air at a lower velocity for the same thrust, so the induced hover power drops and efficiency (g/W) rises.",
+        "c": "Incorrect — disk area is central to induced power.",
+        "d": "Incorrect — the benefit is strongest at hover."
+      },
+      "correctAnswer": "b",
+      "difficulty": "intermediate"
+    },
+    {
+      "question": "Q9. In momentum theory, how does the ideal hover power scale with thrust?",
+      "answers": {
+        "a": "Linearly with thrust (P proportional to T)",
+        "b": "With thrust to the 1.5 power (P proportional to T^1.5)",
+        "c": "With the square of thrust (P proportional to T^2)",
+        "d": "Power is independent of thrust"
+      },
+      "explanations": {
+        "a": "Incorrect — power rises faster than linearly with thrust.",
+        "b": "Correct — momentum theory gives P = T^1.5 / sqrt(2 rho A), so power grows with thrust to the three-halves power; doubling weight more than doubles hover power.",
+        "c": "Incorrect — the exponent is 1.5, not 2.",
+        "d": "Incorrect — heavier craft clearly need more power."
+      },
+      "correctAnswer": "b",
+      "difficulty": "advanced"
+    },
+    {
+      "question": "Q10. Hover efficiency is commonly expressed in which units?",
+      "answers": {
+        "a": "Watts per gram (W/g)",
+        "b": "Grams of lift per watt (g/W)",
+        "c": "Metres per second (m/s)",
+        "d": "Amps per volt (A/V)"
+      },
+      "explanations": {
+        "a": "Incorrect — that is the inverse; lower is not better in an intuitive sense.",
+        "b": "Correct — efficiency is the lift produced per unit of electrical power, grams per watt; higher means longer endurance.",
+        "c": "Incorrect — that is a speed.",
+        "d": "Incorrect — that is a conductance-like ratio, unrelated to lift efficiency."
+      },
+      "correctAnswer": "b",
+      "difficulty": "beginner"
+    }
+  ]
+}

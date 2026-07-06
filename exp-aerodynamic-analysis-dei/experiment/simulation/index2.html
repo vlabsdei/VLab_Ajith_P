@@ -25,11 +25,15 @@
 </head>
 <body>
 
+  <!-- Anchor for VLABUi.autoGate()'s prerequisite-gate banner — kept OUTSIDE
+       the flex row below so it never steals space from the 3-column layout. -->
+  <div data-vl-gate></div>
+
   <!-- Workspace Columns -->
-  <main class="work_zone">
+  <main class="workspace">
 
     <!-- Column 1: Config Panel (Left) -->
-    <aside class="cfg_aside" id="configPanel">
+    <aside class="config-panel" id="configPanel">
       <div class="pane_lbl" id="configPanelTitle" style="cursor: pointer; display: flex; align-items: center; justify-content: space-between;">
         <div>
           <span>Frame Drag &amp; Efficiency Configuration</span>
@@ -81,6 +85,17 @@
             <span class="deriv-val mono" id="densityValue">1.2250 kg/m³</span>
           </div>
 
+          <!-- Rotor-wash reality toggle (override C2 second reality check, §3.2) -->
+          <div class="config-group-title" style="margin-top: 12px;">FLIGHT REALITY</div>
+          <label class="slider-row" style="align-items:center; gap:8px; cursor:pointer;" for="washToggle">
+            <input type="checkbox" id="washToggle" style="width:16px; height:16px; margin:0;">
+            <span class="slider-label" style="flex:1;">Rotor-wash drag (real forward flight)</span>
+          </label>
+          <div class="deriv-row" style="margin-bottom: 8px;">
+            <span class="deriv-label">Wash extra (k)</span>
+            <span class="deriv-val mono" id="washKVal">off</span>
+          </div>
+
           <!-- Live Drag Derivation Panel -->
           <div class="derivation-box" id="frameDerivBox" style="margin-top: 12px;">
             <div class="config-group-title">DRAG DERIVATION</div>
@@ -93,12 +108,29 @@
               <span class="deriv-val mono" id="drgEvalCdA">—</span>
             </div>
             <div class="deriv-row">
-              <span class="deriv-label">Drag D</span>
+              <span class="deriv-label">Clean Drag D</span>
               <span class="deriv-val mono" id="drgEvalD">—</span>
+            </div>
+            <div class="deriv-row">
+              <span class="deriv-label">Effective Drag D_eff</span>
+              <span class="deriv-val mono" id="drgEvalDEff">—</span>
             </div>
             <div class="deriv-row">
               <span class="deriv-label">Reynolds Re</span>
               <span class="deriv-val mono" id="drgEvalRe">—</span>
+            </div>
+          </div>
+
+          <!-- V² Regression readout (§3.2 — F_D vs V² is linear; objective: R² > 0.999) -->
+          <div class="derivation-box" id="regressionBox" style="margin-top: 12px;">
+            <div class="config-group-title">F_D vs V² REGRESSION</div>
+            <div class="deriv-row">
+              <span class="deriv-label">Slope (½ρCdA)</span>
+              <span class="deriv-val mono" id="regSlopeVal">—</span>
+            </div>
+            <div class="deriv-row">
+              <span class="deriv-label">R²</span>
+              <span class="deriv-val mono" id="regR2Val">—</span>
             </div>
           </div>
 
@@ -128,13 +160,8 @@
             </div>
           </div>
 
-          <!-- RPM Slider -->
+          <!-- Analysis conditions (RPM becomes a derived value in step 2) -->
           <div class="config-group-title" style="margin-top: 12px;">ANALYSIS CONDITIONS</div>
-          <div class="slider-row">
-            <label class="slider-label" for="rpmSlider">RPM</label>
-            <input type="range" id="rpmSlider" class="alt-slider" min="1000" max="15000" step="100" value="5000">
-            <span class="alt-value" id="rpmVal">5000</span>
-          </div>
 
           <!-- Read-only inherited density readout -->
           <div class="deriv-row" style="margin-bottom: 8px;">
@@ -180,7 +207,7 @@
     </aside>
 
     <!-- Column 2: Viewport & Charts (Centre) -->
-    <section class="mid_col" id="workspace">
+    <section class="middle-panel" id="workspace">
 
       <!-- Tab Bar -->
       <div class="viewport-tabs" role="tablist">
@@ -221,13 +248,41 @@
         </div>
       </div>
 
+      <!-- Flight simulation controls (Tab 2 only; revealed by JS on tab switch) —
+           sits BELOW the 3D viewport, not overlaid on top of it. -->
+      <div class="flight-panel-below hidden" id="flightControls">
+        <div class="flight-row">
+          <button class="btn_run" id="btnStartSim" style="width:auto;">Start Simulation</button>
+          <span class="throttle-readout mono" id="throttleReadout">0.0 m/s</span>
+        </div>
+        <div class="joystick disabled" id="flightJoystick" aria-label="Forward throttle joystick">
+          <div class="joy-arrow">▲</div>
+          <div class="joystick-base" id="joystickBase">
+            <div class="joystick-knob" id="joystickKnob"></div>
+          </div>
+          <div class="joy-hint">push forward to fly</div>
+        </div>
+      </div>
+
       <!-- Error Banner -->
       <div class="error-banner hidden" id="errorBanner">
         <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="8" x2="12" y2="12"></line><line x1="12" y1="16" x2="12.01" y2="16"></line></svg>
         <span>Failed to load database. Please refresh the page.</span>
       </div>
 
-      <!-- Drag vs Speed Chart Section (Tab 1) -->
+
+      <!-- Tab 2 HERO chart — η vs J, directly under the viewport -->
+      <div class="chart-section hidden" id="etaHeroSection">
+        <div class="chart-header">
+          <h3>Propulsive Efficiency η vs Advance Ratio J</h3>
+          <p class="chart-desc">η-vs-J curve from the sweep — star marks the peak efficiency point</p>
+        </div>
+        <div class="chart-wrap">
+          <canvas id="etaJChart"></canvas>
+        </div>
+      </div>
+
+      <!-- Drag vs Speed Chart Section (Tab 1) — sits below the viewport/flight controls -->
       <div class="chart-section" id="dragSpeedSection">
         <div class="chart-header">
           <h3>Parasite Drag vs Forward Speed</h3>
@@ -236,15 +291,6 @@
         <div class="chart-wrap">
           <canvas id="dragSpeedChart"></canvas>
         </div>
-      </div>
-
-      <!-- Airflow Over Frame — animated 2D diagram (Tab 1) -->
-      <div class="chart-section" id="frameFlowSection">
-        <div class="chart-header">
-          <h3>Airflow Over Frame</h3>
-          <p class="chart-desc">Streamlines deflecting around the airframe; drag grows with ½ρV²·Cd·A</p>
-        </div>
-        <canvas id="frameFlowDiagram" class="aoa-canvas" width="288" height="172"></canvas>
       </div>
 
       <!-- Secondary Chart Section (Tab 2, hidden by default) -->
@@ -290,22 +336,10 @@
             <span class="checklist-val" id="chkAdvRatioVal">Pending</span>
           </div>
         </div>
+        <div id="scenarioHost" style="margin-top:10px;"></div>
+        <div id="verdictHost" style="margin-top:10px;"></div>
       </div>
 
-      <!-- Instructor Commentary Panel -->
-      <div class="commentary-panel" id="liveCommentaryPanel">
-        <div class="commentary-icon">
-          <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-            <circle cx="12" cy="12" r="10"></circle>
-            <line x1="12" y1="16" x2="12" y2="12"></line>
-            <line x1="12" y1="8" x2="12.01" y2="8"></line>
-          </svg>
-        </div>
-        <div class="commentary-content">
-          <h4 class="commentary-title">Instructor</h4>
-          <p class="commentary-text" id="liveCommentaryText">Increase forward speed and watch drag grow with the square of velocity. Frame shape (Cd) and frontal area both matter.</p>
-        </div>
-      </div>
 
       <!-- Frame Drag Result Cards (Tab 1) -->
       <div class="res_section" id="frameDragCards" style="border-bottom: 1px solid var(--border);">
@@ -332,20 +366,19 @@
         </div>
       </div><!-- /#frameDragCards -->
 
+      <!-- Airflow Over Frame — animated 2D diagram (Tab 1) — moved here as a right-column item -->
+      <div class="chart-section" id="frameFlowSection">
+        <div class="chart-header">
+          <h3>Airflow Over Frame</h3>
+          <p class="chart-desc">Streamlines deflecting around the airframe; drag grows with ½ρV²·Cd·A</p>
+        </div>
+        <canvas id="frameFlowDiagram" class="aoa-canvas" width="288" height="172"></canvas>
+      </div>
+
       <!-- Advance-Ratio Charts Section (Tab 2, hidden by default) -->
       <div class="res_section hidden" id="advChartsSection" style="border-bottom: 1px solid var(--border);">
 
         <div class="chart-section" style="border-top: none; padding-top: 0;">
-          <div class="chart-header">
-            <h3>Propulsive Efficiency η vs Advance Ratio J</h3>
-            <p class="chart-desc">η-vs-J curve from the sweep — star marks the peak efficiency point</p>
-          </div>
-          <div class="chart-wrap">
-            <canvas id="etaJChart"></canvas>
-          </div>
-        </div>
-
-        <div class="chart-section">
           <div class="chart-header">
             <h3>Thrust &amp; Power vs Forward Speed</h3>
             <p class="chart-desc">Single-rotor thrust T(V) and shaft power P(V); vertical marker at V_trim</p>
@@ -412,13 +445,54 @@
 
       <!-- Action Buttons -->
       <div class="panel-actions">
-        <button class="btn_run" id="btnRunSweep" disabled>Run Sweep</button>
         <button class="btn_prm" id="btnFinish" disabled>Finish Experiment</button>
+        <span class="finish-hint" id="finishHint">Complete both Frame Drag and Advance Ratio to finish.</span>
       </div>
 
     </section><!-- /.right-panel -->
 
   </main>
+
+  <!-- Cross-experiment warnings live BELOW the experiment, full-width — never
+       stacked on top of it. Self-hides until a real validation/staleness issue
+       about an already-conducted experiment fires. -->
+  <div id="vlBannerHost" style="width:100%;box-sizing:border-box;padding:12px 18px 20px;"></div>
+
+  <!-- Floating Instructor — a buddy agent, not a page tab. Fixed to the
+       viewport so it stays visible across every tab of this experiment. -->
+  <div class="vl-instructor-fab" id="vlInstructorFab">
+    <div class="vl-instructor-bubble" id="vlInstructorBubble" hidden>
+      <div class="vl-instructor-head">
+        <strong>Aero Instructor</strong>
+        <div class="vl-instructor-head-btns">
+          <button type="button" id="instructorSettingsToggle" title="Sound settings">&#9881;&#65039;</button>
+          <button type="button" id="instructorTtsToggle" title="Read guidance aloud" style="display:none;">&#128264;</button>
+          <button type="button" id="vlInstructorMinimize" title="Minimize">&#8211;</button>
+        </div>
+      </div>
+      <div class="vl-instructor-settings" id="vlInstructorSettings" hidden>
+        <label class="vl-instructor-vol-row">
+          <span>Effects</span>
+          <input type="range" id="vlSfxVolume" min="0" max="1" step="0.05">
+        </label>
+        <label class="vl-instructor-vol-row">
+          <span>Narrator</span>
+          <input type="range" id="vlInstructorVolume" min="0" max="1" step="0.05">
+        </label>
+      </div>
+      <div id="instructorVideoSlot" class="vl-instructor-video"></div>
+      <div class="vl-instructor-body">
+        <p id="liveCommentaryText">Increase forward speed and watch drag grow with the square of velocity. Frame shape (Cd) and frontal area both matter.</p>
+      </div>
+    </div>
+    <button type="button" class="vl-instructor-avatar" id="vlInstructorAvatar" title="Instructor">
+      <span class="vl-instructor-dot" id="vlInstructorDot" hidden></span>
+      <svg xmlns="http://www.w3.org/2000/svg" width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M12 3 2 8l10 5 10-5-10-5Z"></path>
+        <path d="M6 10.5V16c0 1.1 2.7 3 6 3s6-1.9 6-3v-5.5"></path>
+      </svg>
+    </button>
+  </div>
 
   <!-- External Library Dependencies -->
   <script src="https://cdn.jsdelivr.net/npm/three@0.147.0/build/three.min.js"></script>
@@ -426,7 +500,7 @@
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-annotation@3.0.1/dist/chartjs-plugin-annotation.min.js"></script>
 
-  <!-- Virtual Lab Scripts -->
+  <!-- Virtual Lab Scripts — bundled single file (shared prelude + module code) -->
   <script src="js/main.js"></script>
 
 </body>

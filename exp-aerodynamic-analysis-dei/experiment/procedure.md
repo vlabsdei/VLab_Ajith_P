@@ -1,166 +1,110 @@
 # Lab Procedure: Aerodynamic Analysis
 
-This document outlines the step-by-step workflow required to complete **Experiment 3: Aerodynamic Analysis — Propeller Blade Airfoil, Drag & Advance Ratio**. The experiment consists of three sub-calculations that together characterise the complete aerodynamic state of the drone.
+This document outlines the step-by-step workflow required to complete **Experiment 3: Aerodynamic Analysis — Propeller Blade Airfoil, Drag & Advance Ratio**. The experiment is split across **two module pages**, each with two tabs:
+
+| Page | Tab 1 | Tab 2 |
+|------|-------|-------|
+| **Module 1 — Blade Airfoil Wind Tunnel** | Propeller Designer (blade geometry) | Airfoil Analysis (Cl–α, drag polar, BEMT) |
+| **Module 2 — Wind Tunnel & Cruise Efficiency** | Frame Drag | Advance Ratio & Efficiency |
+
+A floating **Aero Instructor** (bottom-right avatar) narrates the first entry to each tab, calls out faults/observations as they happen, and confirms task completion — click it to expand/collapse, and use the 🔊 icon to mute.
 
 ---
 
 ## Experiment Overview
 
-The three sub-calculations in this experiment are:
+| Sub-Calculation | Focus Area | Where |
+|-----------------|------------|-------|
+| Sub-Calc A | Lift Coefficient vs Angle of Attack | Module 1, Tab 2 |
+| Sub-Calc B | Frame Aerodynamic Drag | Module 2, Tab 1 |
+| Sub-Calc C | Advance Ratio & Propulsive Efficiency | Module 2, Tab 2 |
 
-| Sub-Calculation | Focus Area | Student Task |
-|-----------------|------------|--------------|
-| Sub-Calc A | Lift Coefficient vs Angle of Attack | Plot $C_l$ vs $\alpha$ for NACA airfoils |
-| Sub-Calc B | Frame Aerodynamic Drag | Measure $F_D$ at varying wind speeds |
-| Sub-Calc C | Advance Ratio & Propulsive Efficiency | Compute $J$ and $\eta_{prop}$ for cruise optimization |
+If Experiment 1 (Propulsion) has not yet been finalized, a banner reading **"Complete the previous step first"** appears — you can still explore this experiment with default parameters (N=2, Ø10in, NACA 0012), but your results will use placeholders instead of your real drone's inherited propeller.
 
 ---
 
-## Stage 1: Airfoil Profiling (Sub-Calc A)
+## Stage 1: Propeller Design (Module 1, Tab 1)
 
 ### Objective
-Plot the Lift Coefficient ($C_l$) against the Angle of Attack ($\alpha$) for distinct NACA airfoil profiles to determine stall characteristics.
+Design a physical propeller blade (diameter, twist, chord, blade count, material) before analysing its airfoil section.
 
 ### Step-by-Step Procedure
 
-1. **Launch the Simulator**: Open the virtual lab page in your browser. Navigate to **Module 1: Airfoil Profiling**.
-
-2. **Select Airfoil Profile**: In the left-hand configuration panel, choose a NACA airfoil profile from the dropdown:
-   * **NACA 0012**: Symmetric airfoil (0% camber)
-   * **NACA 2412**: 2% camber at 40% chord
-   * **NACA 4412**: 4% camber at 40% chord
-
-3. **Sweep Angle of Attack**: Use the **Angle of Attack ($\alpha$)** slider to sweep through angles from $-5°$ to $20°$:
-   * Observe the 2D airfoil cross-section rotating in the 3D viewport
-   * Watch the pressure distribution visualization on the upper and lower surfaces
-
-4. **Record Lift Coefficient**: For each angle setting, record the displayed Lift Coefficient ($C_l$) value in the data table:
-   * Note the linear region where $C_l$ increases proportionally with $\alpha$
-   * Identify the stall angle where $C_l$ reaches maximum and then drops
-
-5. **Plot $C_l$ vs $\alpha$ Curve**: The right panel displays the real-time plot of Lift Coefficient vs Angle of Attack:
-   * Observe the slope (should be approximately $2\pi$ per radian in the linear region)
-   * Note the zero-lift angle ($\alpha_0$) where the curve crosses the x-axis
-
-6. **Compare Airfoils**: Repeat steps 2-5 for all three NACA profiles and record:
-   * **$C_{l\_max}$**: Maximum lift coefficient
-   * **Stall angle**: Angle of attack at which stall occurs
-
-7. **Key Observations**:
-   * NACA 4412 (heavily cambered) achieves $C_{l\_max} \approx 1.6$
-   * NACA 0012 (symmetric) achieves $C_{l\_max} \approx 1.2$
-   * Cambered airfoils stall at lower angles of attack
+1. **Open Module 1** (`index.html`) — the **Propeller Designer** tab is active by default.
+2. **Set blade count**: click the 2/3/4-blade buttons.
+3. **Adjust geometry sliders**: Diameter, Root/Tip Pitch, Root/Tip Chord — the 3D propeller model updates live, and the pitch-twist and chord-distribution charts on the right redraw as you move each slider.
+4. **Pick a blade material** from the material tiles (Glass Nylon / Carbon Nylon / Carbon Fibre) — this sets blade mass, shown in the Geometry Results cards.
+5. **Click Run Simulation** to spin the propeller and confirm a valid, manufacturable geometry (tapered chord, washout twist) — the **Module Checklist**'s "Propeller Design" item ticks once this and a valid geometry are both true.
 
 ![Airfoil Profiling Interface](./images/airfoil_profiles.png)
 
 ---
 
-## Stage 2: Drag Measurement (Sub-Calc B)
+## Stage 2: Airfoil Profiling (Module 1, Tab 2 — Sub-Calc A)
 
 ### Objective
-Measure the aerodynamic drag force ($F_D$) acting on the bluff body of the drone frame across varying wind speeds.
+Plot the Lift Coefficient (<i>C<sub>l</sub></i>) against the Angle of Attack (<i>&alpha;</i>) for the three NACA airfoil profiles and record stall characteristics.
 
 ### Step-by-Step Procedure
 
-1. **Navigate to Module 2**: Click on **Module 2: Drag Measurement** tab.
+1. **Switch to the Airfoil Analysis tab.** The Aero Instructor introduces the module on first entry.
+2. **Select a NACA airfoil profile** from the airfoil tiles: **NACA 0012** (symmetric), **NACA 2412** (2% camber), or **NACA 4412** (4% camber). Each tile shows its zero-lift angle and stall angle.
+3. **Sweep the Angle of Attack (AoA) slider** from &minus;5° to 20°:
+   * The live AoA diagram shows the airfoil section tilting, with lift/drag vectors and airflow streamlines that visibly **detach past the stall angle**.
+   * The Cl–α chart plots **two lines** for the selected profile: the realistic working-model curve (solid) and the thin-airfoil-theory reference `2π(α−α₀)` (dashed) — watch them diverge once you pass stall.
+4. **Watch for the stall marker** ("STALL" flag + reading Cl/Cd/L/D) once AoA exceeds the profile's stall angle — the Instructor calls this out the first time it happens.
+5. **Vary the RPM slider** at least once (drives the BEMT results table and Figure-of-Merit reading).
+6. **Repeat for all three airfoils** — the checklist's "Cl_max & stall angle recorded for all 3 airfoils" objective ticks once you've induced stall at least once on each profile; it also ticks "Observed: 4412 Cl_max > 0012 Cl_max" automatically (a real, seeded comparison — not hardcoded).
+7. **Optional — Fault scenario:** select **"Over-cambered blade"** from the Fault Scenario dropdown to force NACA 4412 and see the higher-Cl_max/earlier-stall trade-off immediately.
 
-2. **Review Setup**: The 3D viewport shows the drone frame positioned in a virtual wind tunnel:
-   * The frame is an X-configuration quadcopter body
-   * Frontal area ($A_{frontal}$) is displayed in the status panel
-   * Drag coefficient ($C_d = 1.05$) is pre-configured for X-frame bluff body
-
-3. **Set Wind Speed**: Use the **Wind Speed ($V$)** slider to vary the airspeed from $0$ to $15$ m/s in 5 steps matching the DB `wind_speed_steps`:
-   * Step 1: $V = 0$ m/s
-   * Step 2: $V = 3.75$ m/s
-   * Step 3: $V = 7.5$ m/s
-   * Step 4: $V = 11.25$ m/s
-   * Step 5: $V = 15$ m/s
-
-4. **Record Drag Force**: For each wind speed, observe and record:
-   * **Drag Force ($F_D$)**: Displayed on the virtual force gauge
-   * **Velocity Squared ($V^2$)**: Calculated and displayed in the data table
-
-5. **Analyze the Relationship**: The right panel shows two plots:
-   * **$F_D$ vs $V$**: Shows quadratic (parabolic) relationship
-   * **$F_D$ vs $V^2$**: Shows linear relationship
-
-6. **Verify Linear Regression**: Check the regression statistics:
-   * The $F_D$ vs $V^2$ plot should yield $R^2 > 0.999$
-   * Slope should equal $0.5 \cdot \rho \cdot C_d \cdot A_{frontal}$
-
-7. **Key Observations**:
-   * Drag force scales quadratically with velocity
-   * Doubling speed quadruples drag force
-   * Power required to overcome drag scales with $V^3$
-
-![Drag Measurement Setup](./images/drag_setup.png)
-
----
-
-## Stage 3: Cruise Dynamics (Sub-Calc C)
-
-### Objective
-Compute the Advance Ratio ($J$) to understand how the propeller behaves when moving through incoming air rather than stationary air.
-
-### Step-by-Step Procedure
-
-1. **Navigate to Module 3**: Click on **Module 3: Cruise Dynamics** tab.
-
-2. **Review Propeller Parameters**: The left panel displays:
-   * Propeller diameter ($D$): e.g., 5 inches (0.127 m)
-   * Propeller pitch: e.g., 4.5 inches
-   * Rotational speed ($n$): Configurable in RPS
-
-3. **Set Forward Airspeed**: Input 5 different forward airspeed values matching the DB `forward_speed_steps`:
-   * $V$ = 2 m/s, 5 m/s, 8 m/s, 12 m/s, 15 m/s
-   * These represent realistic cruise speeds the drone might achieve at different throttle settings.
-
-4. **Calculate Advance Ratio**: For each forward speed, the system computes:
-   $$J = \frac{V}{n \cdot D}$$
-
-5. **Observe Propeller Behavior**: The 3D viewport shows:
-   * Propeller rotating at the set RPM
-   * Incoming airflow visualization
-   * Effective angle of attack changes
-
-6. **Record Results**: Fill in the data table with:
-   * Forward airspeed ($V$)
-   * Advance Ratio ($J$)
-   * Effective angle of attack
+### Key Observations
+* NACA 4412 (heavily cambered) achieves a higher <i>C<sub>l,max</sub></i> (&asymp; 1.6 nominal, seeded ±4% per build) than the symmetric NACA 0012 (&asymp; 1.2), but stalls at a lower angle.
+* The realistic curve tracks the dashed thin-airfoil line near <i>&alpha;<sub>0</sub></i> but bends over to peak exactly at the stall angle, then decays — the thin-airfoil line keeps climbing because it has no concept of separation.
 
 ![Advance Ratio Diagram](./images/advance_ratio_diagram.png)
 
 ---
 
-## Stage 4: Efficiency Optimization (Sub-Calc C)
+## Stage 3: Frame Drag (Module 2, Tab 1 — Sub-Calc B)
 
 ### Objective
-Calculate propulsive efficiency ($\eta_{prop}$) across the tested forward speeds and identify the peak efficiency operating point.
+Measure the aerodynamic drag force (<i>F<sub>D</sub></i>) on the drone frame across forward speeds, and confirm it varies with the **square** of velocity, not velocity itself.
 
 ### Step-by-Step Procedure
 
-1. **Continue in Module 3**: Stay in the Cruise Dynamics module.
+1. **Open Module 2** (`index2.html`) — the **Frame Drag** tab is active by default; the Aero Instructor introduces the wind tunnel.
+2. **Pick a frame** from the Frame Preset tiles — this sets frontal area (<i>A<sub>frontal</sub></i>) and reference length directly from the catalog (never hand-typed). If the frame is too small for the inherited propeller, the pick is rejected with an on-screen explanation and the tile reverts.
+3. **Adjust Frontal Area, Drag Coefficient, Forward Speed and Altitude** sliders — the drag-derivation panel, force gauge, and animated 2D flow diagram update live.
+4. **Toggle "Rotor-wash drag (real forward flight)"** under Flight Reality: with it off you see the clean-tunnel drag; with it on, an extra 15–30% (seeded per frame, shown as "Wash extra (k)") is added, and both the clean **and** effective drag values are shown side by side.
+5. **Check the F_D vs V² Regression readout**: slope (should equal 0.5·ρ·Cd·A) and R² (target > 0.999) — confirming that plotting drag against **V²**, not V, gives the straight line.
+6. **Optional — Fault scenario:** select **"High-altitude test (3000 m)"** to see thinner air lower both drag and available thrust simultaneously.
 
-2. **Run Efficiency Sweep**: Click the **Run Efficiency Sweep** button:
-   * The simulator calculates thrust, torque, and efficiency at each forward speed
-   * Watch the efficiency curve build in real-time
+### Key Observations
+* Drag force scales quadratically with velocity — doubling speed quadruples drag.
+* The rotor-wash toggle demonstrates an important caveat directly: clean-body drag underestimates real flight drag.
 
-3. **Analyze Efficiency Curve**: The right panel displays the **Propulsive Efficiency vs Advance Ratio** plot:
-   * At $J = 0$ (hover): $\eta_{prop} = 0$
-   * Efficiency rises with increasing $J$
-   * Peak efficiency occurs at optimal $J$
-   * Efficiency drops beyond peak due to blade stall
+![Drag Measurement Setup](./images/drag_setup.png)
 
-4. **Identify Peak Efficiency**: Locate the maximum efficiency point:
-   * For a standard 5045 propeller, peak $\eta_{prop}$ occurs at $J \approx 0.55$
-   * Record the corresponding forward airspeed
+---
 
-5. **Review Power Flow**: Examine the **Sankey diagram** showing the power flow: input shaft power ($P_{in} = 2\pi \cdot n \cdot Q$) is split into useful thrust power ($P_{out} = T \cdot V$) representing forward propulsion, and aerodynamic losses (profile drag, induced drag, tip losses). Efficiency is $\eta_{prop} = P_{out} / P_{in}$.
+## Stage 4: Advance Ratio & Cruise Efficiency (Module 2, Tab 2 — Sub-Calc C)
 
-6. **Key Observations**:
-   * Propulsive efficiency is zero at hover (no forward motion)
-   * Peak efficiency defines optimal cruise speed
-   * Flying faster or slower than optimal reduces efficiency
+### Objective
+Compute the Advance Ratio (<i>J</i>) and propulsive efficiency (<i>&eta;<sub>prop</sub></i>) across forward speeds, using the actual inherited propeller (not a fixed catalog value), and find the trim (cruise) speed.
+
+### Step-by-Step Procedure
+
+1. **Switch to the Advance Ratio & Efficiency tab.** The forward-speed sweep runs **automatically** across the full range (0 → V<sub>max</sub>) — there is no manual speed slider here.
+2. **Review the Forward-Flight Derivation panel**: n (RPS), Advance Ratio J, Efficiency η, Shaft Power P, Trim speed, and forward-flight pitch angle θ, all computed from the actual BEMT solve of your inherited propeller.
+3. **Use the joystick / Start Simulation** to fly the drone forward and watch the 3D model pitch nose-down as it accelerates, matching the derivation panel's θ.
+4. **Read the Thrust & Power vs Forward Speed chart**: thrust falls and shaft power varies smoothly with speed (a genuinely smooth BEMT sweep — no manual data entry).
+5. **Read the η–J chart**: the peak-efficiency point is marked with a star; the checklist's "Peak η_prop identified" objective ticks once that peak lands within J = 0.45–0.70.
+6. **Locate the trim speed**: where available thrust (4×T) crosses frame drag on the Thrust-vs-Drag chart — the checklist's "Trim speed found" objective ticks here.
+7. **Review the verdict panel** below the checklist: PASS when the cruise envelope closes (trim found, peak η ≥ 45%, effective drag finite); WARN if trim only holds with rotor-wash off; FAIL (naming Experiment 1 as the section to revisit) if available thrust never crosses drag at all.
+
+### Key Observations
+* Propulsive efficiency is zero at hover (no forward motion) and climbs to one clean peak before falling as the advancing blade approaches stall.
+* Flying faster or slower than the peak-efficiency speed wastes power.
 
 ![Propulsive Efficiency Curve](./images/efficiency_curve.png)
 
@@ -170,17 +114,17 @@ Calculate propulsive efficiency ($\eta_{prop}$) across the tested forward speeds
 
 | Parameter | Expected Value |
 |-----------|----------------|
-| NACA 4412 $C_{l\_max}$ | $\approx 1.6$ |
-| NACA 0012 $C_{l\_max}$ | $\approx 1.2$ |
-| $F_D$ vs $V^2$ regression | $R^2 > 0.999$ |
-| Peak $\eta_{prop}$ advance ratio | $J = 0.55$ (5045 propeller) |
+| NACA 4412 <i>C<sub>l,max</sub></i> | &approx; 1.6 (seeded ±4%) |
+| NACA 0012 <i>C<sub>l,max</sub></i> | &approx; 1.2 (seeded ±4%) |
+| <i>F<sub>D</sub></i> vs <i>V</i><sup>2</sup> regression | <i>R</i><sup>2</sup> &gt; 0.999 |
+| Peak <i>&eta;<sub>prop</sub></i> advance ratio | <i>J</i> &asymp; 0.45–0.70 (propeller-dependent) |
+| Rotor-wash extra drag | 15–30% (seeded per frame) |
 
 ---
 
 ## Component Unlocked
 
-Upon successful aerodynamic validation:
+Upon completing both modules (Module Checklist fully ticked on each page, "Finish Experiment" enabled):
 
-1. **Propeller Blade Profile**: The 3D model visually updates to reflect the selected NACA section.
-
-2. **Drag Value Storage**: The calculated aerodynamic drag value ($F_D$) at 15 m/s (Step 5 of Sub-Calc B) is permanently stored as `vlabExp3_dragForce` in browser local storage and will be pulled directly into **Experiment 7** (mission range calculation) as the required cruise drag input.
+1. **Propeller Blade Profile**: the 3D model reflects the selected NACA section.
+2. **Store values for the downstream experiments**: `frame_drag_N` (clean), `frame_drag_eff_N` (wash-corrected), `eta_prop_peak`, `J_best`, `Vtrim_mps`, `optimal_speed_ms`, `airfoilId`, `cl_max_measured`, and `stall_angle_deg` are written to the shared cross-experiment store, where the flight-performance experiment (Experiment 6) reads them for its final mission budget. If Experiment 1 is later re-finalized with a different propeller, this experiment is flagged stale and the on-page banner names Experiment 1 as the section to revisit.

@@ -1,2 +1,0 @@
-### Aim of the experiment
-To design and tune the attitude-control loop of a quadcopter: model the roll axis as a second-order system, relate the PID gains to the closed-loop natural frequency and damping, quantify the step-response metrics (overshoot, rise, settling) and the steady-state error against a disturbance torque, derive a first set of gains automatically with the Ziegler–Nichols ultimate-cycle method (and refine them for robustness), and fuse the gyroscope and accelerometer into a drift-free, low-noise attitude estimate with a complementary filter.

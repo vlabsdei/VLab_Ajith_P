@@ -299,122 +299,22 @@
   ],
 
   "batteries": [
-    {
-      "id": "3s_1500",
-      "label": "3S LiPo — 1500 mAh",
-      "cells": 3,
-      "voltage_nominal_v": 11.1,
-      "capacity_mah": 1500,
-      "mass_g": 102.0
-    },
-    {
-      "id": "3s_2200",
-      "label": "3S LiPo — 2200 mAh",
-      "cells": 3,
-      "voltage_nominal_v": 11.1,
-      "capacity_mah": 2200,
-      "mass_g": 155.0
-    },
-    {
-      "id": "4s_2200",
-      "label": "4S LiPo — 2200 mAh",
-      "cells": 4,
-      "voltage_nominal_v": 14.8,
-      "capacity_mah": 2200,
-      "mass_g": 162.0
-    },
-    {
-      "id": "4s_3300",
-      "label": "4S LiPo — 3300 mAh",
-      "cells": 4,
-      "voltage_nominal_v": 14.8,
-      "capacity_mah": 3300,
-      "mass_g": 275.0
-    },
-    {
-      "id": "6s_4000",
-      "label": "6S LiPo — 4000 mAh",
-      "cells": 6,
-      "voltage_nominal_v": 22.2,
-      "capacity_mah": 4000,
-      "mass_g": 508.0
-    },
-    {
-      "id": "6s_5000",
-      "label": "6S LiPo — 5000 mAh",
-      "cells": 6,
-      "voltage_nominal_v": 22.2,
-      "capacity_mah": 5000,
-      "mass_g": 620.0
-    },
-    {
-      "id": "6s_8000",
-      "label": "6S LiPo — 8000 mAh",
-      "cells": 6,
-      "voltage_nominal_v": 22.2,
-      "capacity_mah": 8000,
-      "mass_g": 920.0
-    },
-    {
-      "id": "8s_16000",
-      "label": "8S LiPo — 16000 mAh",
-      "cells": 8,
-      "voltage_nominal_v": 29.6,
-      "capacity_mah": 16000,
-      "mass_g": 1850.0
-    }
+    { "id": "3s_1500", "label": "3S LiPo — 1500 mAh", "cells": 3, "voltage_nominal_v": 11.1, "capacity_mah": 1500, "mass_g": 134.0, "c_rating": 75, "cell_ir_mohm": 4.5 },
+    { "id": "3s_2200", "label": "3S LiPo — 2200 mAh", "cells": 3, "voltage_nominal_v": 11.1, "capacity_mah": 2200, "mass_g": 188.0, "c_rating": 45, "cell_ir_mohm": 5.5 },
+    { "id": "4s_1500", "label": "4S LiPo — 1500 mAh", "cells": 4, "voltage_nominal_v": 14.8, "capacity_mah": 1500, "mass_g": 178.0, "c_rating": 95, "cell_ir_mohm": 4.0 },
+    { "id": "4s_3300", "label": "4S LiPo — 3300 mAh", "cells": 4, "voltage_nominal_v": 14.8, "capacity_mah": 3300, "mass_g": 320.0, "c_rating": 35, "cell_ir_mohm": 6.5 },
+    { "id": "6s_4000", "label": "6S LiPo — 4000 mAh", "cells": 6, "voltage_nominal_v": 22.2, "capacity_mah": 4000, "mass_g": 508.0, "c_rating": 30, "cell_ir_mohm": 7.0 },
+    { "id": "6s_5000", "label": "6S LiPo — 5000 mAh", "cells": 6, "voltage_nominal_v": 22.2, "capacity_mah": 5000, "mass_g": 620.0, "c_rating": 30, "cell_ir_mohm": 6.0 },
+    { "id": "6s_8000", "label": "6S LiPo — 8000 mAh", "cells": 6, "voltage_nominal_v": 22.2, "capacity_mah": 8000, "mass_g": 920.0, "c_rating": 25, "cell_ir_mohm": 5.5 },
+    { "id": "8s_16000", "label": "8S LiPo — 16000 mAh", "cells": 8, "voltage_nominal_v": 29.6, "capacity_mah": 16000, "mass_g": 1850.0, "c_rating": 20, "cell_ir_mohm": 5.0 }
   ],
 
   "escs": [
-    {
-      "id": "esc_20a_blheli32",
-      "label": "20A Individual ESCs (x4)",
-      "current_a": 20,
-      "mass_g_each": 8.1,
-      "quantity": 4
-    },
-    {
-      "id": "esc_30a_blheli32",
-      "label": "30A Individual ESCs (x4)",
-      "current_a": 30,
-      "mass_g_each": 9.5,
-      "quantity": 4
-    },
-    {
-      "id": "esc_40a_blheli32",
-      "label": "40A Individual ESCs (x4)",
-      "current_a": 40,
-      "mass_g_each": 11.2,
-      "quantity": 4
-    },
-    {
-      "id": "esc_4in1_20a",
-      "label": "4-in-1 20A ESC Stack",
-      "current_a": 20,
-      "mass_g_each": 12.0,
-      "quantity": 1
-    },
-    {
-      "id": "esc_4in1_30a",
-      "label": "4-in-1 30A ESC Stack",
-      "current_a": 30,
-      "mass_g_each": 15.0,
-      "quantity": 1
-    },
-    {
-      "id": "esc_4in1_45a",
-      "label": "4-in-1 45A ESC Stack",
-      "current_a": 45,
-      "mass_g_each": 22.4,
-      "quantity": 1
-    },
-    {
-      "id": "esc_4in1_60a",
-      "label": "4-in-1 60A ESC Stack",
-      "current_a": 60,
-      "mass_g_each": 25.5,
-      "quantity": 1
-    }
+    { "id": "esc_20a", "label": "20A BLHeli_S (x4)", "current_a": 20, "burst_current_a": 25, "rds_on_ohm": 0.0035, "mass_g_each": 8.1, "quantity": 4, "firmware": "BLHeli_S", "mosfet_count": 6, "r_th_c_per_w": 22, "supported_protocols": ["pwm_50", "pwm_400", "pwm_500", "oneshot125", "dshot300"] },
+    { "id": "esc_30a", "label": "30A BLHeli_32 (x4)", "current_a": 30, "burst_current_a": 40, "rds_on_ohm": 0.0030, "mass_g_each": 9.5, "quantity": 4, "firmware": "BLHeli_32", "mosfet_count": 6, "r_th_c_per_w": 18, "supported_protocols": ["pwm_50", "pwm_400", "pwm_500", "oneshot125", "dshot300", "dshot600"] },
+    { "id": "esc_40a", "label": "40A BLHeli_32 (x4)", "current_a": 40, "burst_current_a": 55, "rds_on_ohm": 0.0022, "mass_g_each": 11.2, "quantity": 4, "firmware": "BLHeli_32", "mosfet_count": 6, "r_th_c_per_w": 15, "supported_protocols": ["pwm_50", "pwm_400", "pwm_500", "oneshot125", "dshot300", "dshot600"] },
+    { "id": "esc_4in1_45a", "label": "4-in-1 45A Stack", "current_a": 45, "burst_current_a": 60, "rds_on_ohm": 0.0020, "mass_g_each": 22.4, "quantity": 1, "firmware": "BLHeli_32", "mosfet_count": 24, "r_th_c_per_w": 12, "supported_protocols": ["pwm_400", "pwm_500", "oneshot125", "dshot300", "dshot600"] },
+    { "id": "esc_4in1_60a", "label": "4-in-1 60A Stack", "current_a": 60, "burst_current_a": 80, "rds_on_ohm": 0.0016, "mass_g_each": 25.5, "quantity": 1, "firmware": "BLHeli_32", "mosfet_count": 24, "r_th_c_per_w": 10, "supported_protocols": ["pwm_400", "pwm_500", "oneshot125", "dshot300", "dshot600"] }
   ],
 
   "flight_controllers": [

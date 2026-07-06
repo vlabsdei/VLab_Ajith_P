@@ -1,1 +1,0 @@
-## Aerodynamic Analysis: Propeller Blade Airfoil, Drag & Advance Ratio

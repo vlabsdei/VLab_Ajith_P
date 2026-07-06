@@ -1,0 +1,175 @@
+{
+  "version": 2.0,
+  "questions": [
+    {
+      "question": "Q1. A quad has four motors rated 620 g thrust each and an all-up mass of 500 g. What is its thrust-to-weight ratio?",
+      "answers": {
+        "a": "1.24",
+        "b": "2.48",
+        "c": "4.96",
+        "d": "12.4"
+      },
+      "explanations": {
+        "a": "Incorrect — that uses one motor (620/500), not all four.",
+        "b": "Incorrect — that is two motors' worth.",
+        "c": "Correct — TWR = (4 &times; 620) / 500 = 2480 / 500 = 4.96.",
+        "d": "Incorrect — recheck the division: 2480/500 = 4.96, not 12.4."
+      },
+      "correctAnswer": "c",
+      "difficulty": "intermediate"
+    },
+    {
+      "question": "Q2. Into which class does a thrust-to-weight ratio of 4.96 fall?",
+      "answers": {
+        "a": "Underpowered",
+        "b": "Stable / cinematic",
+        "c": "Freestyle",
+        "d": "Cannot lift off"
+      },
+      "explanations": {
+        "a": "Incorrect — underpowered is roughly 1.0–1.5.",
+        "b": "Incorrect — cinematic is roughly 1.5–2.0.",
+        "c": "Correct — 3.0–5.0 is the agile freestyle band, where 4.96 sits.",
+        "d": "Incorrect — that is TWR < 1."
+      },
+      "correctAnswer": "c",
+      "difficulty": "beginner"
+    },
+    {
+      "question": "Q3. Using the quadratic thrust curve, what hover throttle does a TWR of 4.96 require?",
+      "answers": {
+        "a": "About 20%",
+        "b": "About 44.9%",
+        "c": "About 50%",
+        "d": "About 80%"
+      },
+      "explanations": {
+        "a": "Incorrect — that would need a much higher TWR.",
+        "b": "Correct — hover throttle = &radic;(1/TWR) = &radic;(1/4.96) = 0.449, i.e. 44.9%.",
+        "c": "Incorrect — 50% would correspond to TWR = 4.0.",
+        "d": "Incorrect — 80% would mean a low TWR near 1.6."
+      },
+      "correctAnswer": "b",
+      "difficulty": "intermediate"
+    },
+    {
+      "question": "Q4. With a hover throttle of 44.9%, what is the control margin?",
+      "answers": {
+        "a": "44.9%",
+        "b": "50%",
+        "c": "55.1%",
+        "d": "100%"
+      },
+      "explanations": {
+        "a": "Incorrect — that is the hover throttle itself, not the reserve above it.",
+        "b": "Incorrect — that ignores the exact hover point.",
+        "c": "Correct — control margin = (1 &minus; 0.449) &times; 100 = 55.1%, the throttle reserve above hover.",
+        "d": "Incorrect — full range minus the hover throttle is 55.1%, not 100%."
+      },
+      "correctAnswer": "c",
+      "difficulty": "intermediate"
+    },
+    {
+      "question": "Q5. For a 500 g quadcopter, how much thrust must each of the four motors produce to hover?",
+      "answers": {
+        "a": "500 g",
+        "b": "250 g",
+        "c": "125 g",
+        "d": "62.5 g"
+      },
+      "explanations": {
+        "a": "Incorrect — that is the whole weight on one motor.",
+        "b": "Incorrect — that splits the weight over two motors.",
+        "c": "Correct — each of the four motors carries one quarter of the weight: 500 / 4 = 125 g.",
+        "d": "Incorrect — that would be one eighth of the weight."
+      },
+      "correctAnswer": "c",
+      "difficulty": "beginner"
+    },
+    {
+      "question": "Q6. With 620 g/motor and a 500 g empty mass, what is the maximum payload that keeps TWR at or above 2.0?",
+      "answers": {
+        "a": "240 g",
+        "b": "500 g",
+        "c": "740 g",
+        "d": "1240 g"
+      },
+      "explanations": {
+        "a": "Incorrect — that understates the lift available.",
+        "b": "Incorrect — that is the empty mass, not the payload.",
+        "c": "Correct — m_max = (4 &times; 620)/2.0 = 1240 g; payload = 1240 &minus; 500 = 740 g.",
+        "d": "Incorrect — 1240 g is the max all-up mass; subtract the 500 g empty mass to get the payload."
+      },
+      "correctAnswer": "c",
+      "difficulty": "advanced"
+    },
+    {
+      "question": "Q7. As payload is loaded onto the craft, what happens to the hover throttle and control margin?",
+      "answers": {
+        "a": "Hover throttle falls, margin grows",
+        "b": "Hover throttle rises, margin shrinks",
+        "c": "Both stay constant",
+        "d": "Hover throttle rises, margin grows"
+      },
+      "explanations": {
+        "a": "Incorrect — that is the effect of removing weight, not adding it.",
+        "b": "Correct — added payload lowers TWR, so hover throttle = &radic;(1/TWR) rises and the (1 &minus; hover) margin shrinks.",
+        "c": "Incorrect — they both depend on the changing TWR.",
+        "d": "Incorrect — if hover throttle rises, the margin above it must shrink, not grow."
+      },
+      "correctAnswer": "b",
+      "difficulty": "intermediate"
+    },
+    {
+      "question": "Q8. Four 5&Prime; (0.127 m diameter) propellers give what total actuator-disk area A = N&middot;&pi;(D/2)<sup>2</sup>?",
+      "answers": {
+        "a": "0.0127 m<sup>2</sup>",
+        "b": "0.0507 m<sup>2</sup>",
+        "c": "0.127 m<sup>2</sup>",
+        "d": "0.203 m<sup>2</sup>"
+      },
+      "explanations": {
+        "a": "Incorrect — that omits the factor of 4 motors and uses the wrong radius.",
+        "b": "Correct — A = 4 &times; &pi; &times; (0.0635)<sup>2</sup> = 4 &times; 0.01267 = 0.0507 m<sup>2</sup>.",
+        "c": "Incorrect — that is roughly the diameter, not the area.",
+        "d": "Incorrect — that overestimates; recompute with radius 0.0635 m."
+      },
+      "correctAnswer": "b",
+      "difficulty": "advanced"
+    },
+    {
+      "question": "Q9. Using momentum theory (FoM = 0.7), the reference 500 g build hovers on about 44 W. What is its hover efficiency?",
+      "answers": {
+        "a": "About 4 g/W",
+        "b": "About 11.4 g/W",
+        "c": "About 44 g/W",
+        "d": "About 0.09 g/W"
+      },
+      "explanations": {
+        "a": "Incorrect — recompute mass/power.",
+        "b": "Correct — efficiency = total mass / hover power = 500 g / 44 W = 11.36 g/W.",
+        "c": "Incorrect — that is the power figure, not the efficiency.",
+        "d": "Incorrect — that is W/g inverted; efficiency is g/W = 11.4."
+      },
+      "correctAnswer": "b",
+      "difficulty": "intermediate"
+    },
+    {
+      "question": "Q10. Which two changes most improve a multirotor's hover efficiency (g/W)?",
+      "answers": {
+        "a": "Smaller propellers and more payload",
+        "b": "Larger propeller disk and lower all-up mass",
+        "c": "Higher KV motors and a heavier frame",
+        "d": "Higher refresh rate and a smaller battery"
+      },
+      "explanations": {
+        "a": "Incorrect — both reduce efficiency.",
+        "b": "Correct — a bigger disk lowers induced power for the same thrust, and a lighter craft needs less thrust (and power scales as thrust^1.5), so both raise g/W.",
+        "c": "Incorrect — a heavier frame lowers efficiency; KV alone does not set hover efficiency.",
+        "d": "Incorrect — those affect control latency and endurance, not hover g/W directly."
+      },
+      "correctAnswer": "b",
+      "difficulty": "advanced"
+    }
+  ]
+}
