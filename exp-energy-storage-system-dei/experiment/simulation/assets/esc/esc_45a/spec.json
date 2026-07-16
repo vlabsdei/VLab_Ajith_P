@@ -1,0 +1,24 @@
+{
+  "name": "Generic 45 A (single)",
+  "mass_g": 8,
+  "qty": 4,
+  "size_mm": [
+    28,
+    15,
+    6
+  ],
+  "model": "esc_single.glb",
+  "specs": {
+    "Current": "45 A",
+    "Firmware": "BLHeli_S",
+    "Config": "4 \u00d7 single",
+    "Note": "shared model"
+  },
+  "physics": {
+    "current_a": 45,
+    "burst_current_a": 60,
+    "rds_on_ohm": 0.0022,
+    "r_th_c_per_w": 16,
+    "max_cells": 6
+  }
+}

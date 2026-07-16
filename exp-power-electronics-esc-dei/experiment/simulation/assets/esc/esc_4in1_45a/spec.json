@@ -1,0 +1,29 @@
+{
+  "name": "4-in-1 45 A Stack",
+  "mass_g": 22.4,
+  "qty": 1,
+  "size_mm": [46, 46, 6],
+  "model": null,
+  "specs": {
+    "Continuous": "45 A/ch",
+    "Burst": "60 A/ch",
+    "Firmware": "BLHeli_32",
+    "MOSFETs": "24 (4 × 6)",
+    "Rds(on)": "2.0 mΩ",
+    "Config": "4-in-1 (stacks under FC)"
+  },
+  "physics": {
+    "form_factor": "4in1",
+    "current_a": 45,
+    "burst_current_a": 60,
+    "rds_on_ohm": 0.0020,
+    "r_th_c_per_w": 12,
+    "r_th_heatsink_c_per_w": 7,
+    "mosfet_count": 24,
+    "f_carrier_hz": 48000,
+    "sw_time_s": 1.0e-7,
+    "cap_esr_ohm": 0.012,
+    "board_mm": [46, 46, 6],
+    "max_cells": 6
+  }
+}

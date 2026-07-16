@@ -12,6 +12,10 @@
   </video>
 </p>
 
+<p>The block diagram below fixes the vocabulary used throughout this document: the flight controller's PWM pulse enters the ESC's MCU/gate-driver, which decodes it and switches six power MOSFETs arranged as three half-bridges — the <strong>3-phase MOSFET bridge</strong> — to commutate the BLDC motor. Every section that follows is really just working out what happens at one node of this diagram: the signal path (Sections 1&ndash;4) explains what the MCU decodes on the way in, and the power path (Sections 5&ndash;6) explains what the MOSFET bridge dissipates on the way out.</p>
+
+<p><img src="./images/esc_block_diagram.png" alt="ESC Signal and Power Block Diagram: Flight Controller to ESC to BLDC Motor"></p>
+
 <hr>
 
 <h2>1. The Servo-PWM Throttle Signal (Sub-Calc A)</h2>
@@ -70,7 +74,7 @@
 <p>The raw <i>linear</i> mapping of Section 1 still applies above the dead-band; the dead-band is a separate safety gate that forces the lowest 5% of the commanded range to a guaranteed zero-spin idle.</p>
 
 <blockquote>
-<p><strong>As-manufactured variance.</strong> The 50 &micro;s figure above is the textbook nominal. A real ESC's arm point scatters unit-to-unit with firmware and component tolerance — the simulator seeds each ESC's dead-band deterministically in the &asymp;35&ndash;65 &micro;s range (&plusmn;30% of nominal) from its part ID, so the exact edge you find by stepping the pulse is a property of <i>that</i> physical board, not a constant you can look up. An <strong>uncalibrated</strong> unit (endpoints never stored) shifts the whole arm window a further +80 &micro;s up the stick — precisely the "why a technician always re-verifies dead-band after a firmware flash" lesson.</p>
+<p><strong>As-manufactured variance.</strong> The 50 &micro;s figure above is the textbook nominal. A real ESC's arm point scatters unit-to-unit with firmware and component tolerance — the simulator seeds each ESC's dead-band deterministically in the &asymp;35&ndash;65 &micro;s range (&plusmn;30% of nominal) from its part ID, so the exact edge you find by stepping the pulse is a property of <i>that</i> physical board, not a constant you can look up. An <strong>uncalibrated</strong> unit — endpoints never stored — isn't a subtly-shifted dead-band at all: the simulator refuses to arm it outright, the same fail-closed behaviour a real flight controller's pre-arm check enforces until a throttle calibration is on record. That is precisely why a technician re-runs the endpoint teach-in after every firmware flash, rather than trusting the previous calibration to have survived.</p>
 </blockquote>
 
 <h3>Worked Example — Dead-Band Verification</h3>
@@ -239,17 +243,21 @@
 
 <h2>7. Building the Real Circuit — Free-Form Wiring &amp; Hardware Faults</h2>
 
-<p>Every calculation above assumes the ESC is already correctly wired to its battery and motor. Before any of that arithmetic matters, a technician has to build the physical circuit — and a real ESC has <strong>no forgiveness</strong> for getting it wrong. Module 1's commissioning bench models this literally: the battery and ESC arrive with bare terminal pads, and the student drags wires between them in the 3D view exactly as they would in a workshop, with the same consequences.</p>
+<p>Every calculation above assumes the ESC is already correctly wired to its power source and motor. Before any of that arithmetic matters, a technician has to build the physical circuit — and a real ESC has <strong>no forgiveness</strong> for getting it wrong. Module 1's commissioning bench models this literally: the ESC is powered from a stiff <strong>bench DC supply</strong> (set voltage + current limit, with live V/A readback), and the student wires the bare terminal pads between the supply, ESC and motor in the 3D view exactly as they would in a workshop, with the same consequences.</p>
+
+<blockquote>
+<p><strong>Why a bench supply, not a battery.</strong> A lab uses a current-limited DC supply for first power-up precisely because it is safer than a LiPo. In <strong>constant-voltage</strong> (CV) mode the bus holds the set voltage; if the load ever demands more than the current limit the supply folds back into <strong>constant-current</strong> (CC) mode, sagging the voltage to hold the current. A LiPo, by contrast, is a near-ideal source that will happily dump hundreds of amps into a fault. This is the whole reason the reverse-polarity lesson below has <em>two</em> outcomes: with the current limit set high the ESC is destroyed instantly, but with a sensibly low limit the supply catches the fault in CC and the board survives — the reason experienced builders current-limit the bench <em>before</em> they ever connect a new ESC.</p>
+</blockquote>
 
 <h3>Power wiring: two wires, two failure modes</h3>
 
-<p>The ESC's power input has a positive and a negative pad; the battery has a positive and a negative terminal. There is exactly one correct pairing:</p>
+<p>The ESC's power input has a positive and a negative pad; the supply has a positive and a negative terminal. There is exactly one correct pairing:</p>
 
-<p align="center">battery(+) &harr; ESC-input(+) &nbsp;&nbsp;and&nbsp;&nbsp; battery(&minus;) &harr; ESC-input(&minus;)</p>
+<p align="center">supply(+) &harr; ESC-input(+) &nbsp;&nbsp;and&nbsp;&nbsp; supply(&minus;) &harr; ESC-input(&minus;)</p>
 
 <ul>
-<li><strong>Reversed polarity</strong> (either wire crossed) drives current backward through the MOSFET bridge's body diodes with no series impedance to limit it. Hobby ESCs carry <strong>no reverse-voltage protection</strong> — this is not a fault the firmware catches, it is silicon damage in the first instant of contact. The board is destroyed: MOSFETs scorch, a smoke puff fires once, and no amount of re-wiring recovers it — only selecting a replacement ESC clears the fault.</li>
-<li><strong>A direct short</strong> (bridging the battery's own two terminals, or the ESC input's own two pads) is electrically identical in consequence: unlimited current with nothing to oppose it, and the same instant destruction.</li>
+<li><strong>Reversed polarity</strong> (either wire crossed) drives current backward through the MOSFET bridge's body diodes. Hobby ESCs carry <strong>no reverse-voltage protection</strong> — this is not a fault the firmware catches, it is silicon damage in the first instant of contact. With the supply's current limit set high, the board is destroyed: MOSFETs scorch, a smoke puff fires once, and only selecting a replacement ESC clears the fault. With the current limit set low, the supply folds into CC and clamps the fault current — the ESC survives, and the display shows the tell-tale CC state.</li>
+<li><strong>A direct short</strong> (bridging the supply's own two terminals, or the ESC input's own two pads) is electrically identical: the supply drives its full available current into the short, tripping into CC (or destroying the board if the limit is high).</li>
 </ul>
 
 <h3>Phase wiring: three wires, a permutation problem</h3>

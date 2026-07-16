@@ -1,0 +1,19 @@
+{
+  "name": "Matek F405-CTR",
+  "mass_g": 8,
+  "qty": 1,
+  "size_mm": [
+    36,
+    36,
+    8
+  ],
+  "model": "matek_f405.glb",
+  "specs": {
+    "MCU": "STM32F405",
+    "Mount": "30.5\u00d730.5",
+    "OSD": "Integrated"
+  },
+  "physics": {
+    "processor": "STM32F405"
+  }
+}

@@ -1,0 +1,21 @@
+{
+  "name": "16\" Bi-blade  (5.4 pitch)",
+  "mass_g": 32.0,
+  "qty": 4,
+  "size_mm": [
+    406.4,
+    24.4,
+    406.4
+  ],
+  "model": "16inch_bi.glb",
+  "specs": {
+    "Diameter": "16 in",
+    "Pitch": "5.4 in",
+    "Blades": "2"
+  },
+  "physics": {
+    "diameter_in": 16.0,
+    "pitch_in": 5.4,
+    "blades": 2
+  }
+}

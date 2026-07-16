@@ -1,0 +1,544 @@
+{
+  "format": "daruka.mounts",
+  "formatVersion": "1.0",
+  "generator": "rebuild_mounts.py (geometric authoring)",
+  "coordinateSystem": "three.js (right-handed, Y-up)",
+  "units": "centimeters",
+  "frame": "fpv_chasis_6_350gms",
+  "mountCount": 13,
+  "mounts": [
+    {
+      "name": "Battery",
+      "mountType": "battery",
+      "componentCategory": "power",
+      "maximumDimensions": [
+        140.0,
+        45.0,
+        38.0
+      ],
+      "maximumWeight": 650.0,
+      "compatibleMountPattern": "strap / tray",
+      "voltage": 22.2,
+      "current": 120.0,
+      "coolingRequirement": "airflow",
+      "position": [
+        -0.22430038,
+        2.64371109,
+        0.04025364
+      ],
+      "quaternion": [
+        0.0,
+        0.0,
+        0.0,
+        1.0
+      ],
+      "scale": [
+        1.0,
+        1.0,
+        1.0
+      ],
+      "orientation": [
+        0.0,
+        1.0,
+        0.0
+      ],
+      "confidence": 0.95,
+      "evidence": [
+        "rebuild_mounts.py geometric authoring"
+      ],
+      "armIndex": -1
+    },
+    {
+      "name": "ESC_FL",
+      "mountType": "esc",
+      "componentCategory": "propulsion",
+      "maximumDimensions": [
+        30.0,
+        15.0,
+        8.0
+      ],
+      "maximumWeight": 12.0,
+      "compatibleMountPattern": "zip-tie / heatshrink / 20x20",
+      "voltage": 25.2,
+      "current": 55.0,
+      "coolingRequirement": "airflow",
+      "position": [
+        4.62593508,
+        0.34263867,
+        6.02979565
+      ],
+      "quaternion": [
+        0.0,
+        0.33380685,
+        0.0,
+        0.94264149
+      ],
+      "scale": [
+        1.0,
+        1.0,
+        1.0
+      ],
+      "orientation": [
+        0.0,
+        1.0,
+        0.0
+      ],
+      "confidence": 0.95,
+      "evidence": [
+        "rebuild_mounts.py geometric authoring"
+      ],
+      "armIndex": -1
+    },
+    {
+      "name": "ESC_FR",
+      "mountType": "esc",
+      "componentCategory": "propulsion",
+      "maximumDimensions": [
+        30.0,
+        15.0,
+        8.0
+      ],
+      "maximumWeight": 12.0,
+      "compatibleMountPattern": "zip-tie / heatshrink / 20x20",
+      "voltage": 25.2,
+      "current": 55.0,
+      "coolingRequirement": "airflow",
+      "position": [
+        -5.12661886,
+        0.34263682,
+        5.98724127
+      ],
+      "quaternion": [
+        0.0,
+        -0.33791673,
+        0.0,
+        0.94117601
+      ],
+      "scale": [
+        1.0,
+        1.0,
+        1.0
+      ],
+      "orientation": [
+        0.0,
+        1.0,
+        0.0
+      ],
+      "confidence": 0.95,
+      "evidence": [
+        "rebuild_mounts.py geometric authoring"
+      ],
+      "armIndex": -1
+    },
+    {
+      "name": "ESC_RL",
+      "mountType": "esc",
+      "componentCategory": "propulsion",
+      "maximumDimensions": [
+        30.0,
+        15.0,
+        8.0
+      ],
+      "maximumWeight": 12.0,
+      "compatibleMountPattern": "zip-tie / heatshrink / 20x20",
+      "voltage": 25.2,
+      "current": 55.0,
+      "coolingRequirement": "airflow",
+      "position": [
+        4.67772245,
+        0.34263849,
+        -5.90637493
+      ],
+      "quaternion": [
+        0.0,
+        0.94117601,
+        0.0,
+        0.33791673
+      ],
+      "scale": [
+        1.0,
+        1.0,
+        1.0
+      ],
+      "orientation": [
+        0.0,
+        1.0,
+        0.0
+      ],
+      "confidence": 0.95,
+      "evidence": [
+        "rebuild_mounts.py geometric authoring"
+      ],
+      "armIndex": -1
+    },
+    {
+      "name": "ESC_RR",
+      "mountType": "esc",
+      "componentCategory": "propulsion",
+      "maximumDimensions": [
+        30.0,
+        15.0,
+        8.0
+      ],
+      "maximumWeight": 12.0,
+      "compatibleMountPattern": "zip-tie / heatshrink / 20x20",
+      "voltage": 25.2,
+      "current": 55.0,
+      "coolingRequirement": "airflow",
+      "position": [
+        -5.07453585,
+        0.34264153,
+        -5.94928837
+      ],
+      "quaternion": [
+        0.0,
+        -0.94264149,
+        0.0,
+        0.33380685
+      ],
+      "scale": [
+        1.0,
+        1.0,
+        1.0
+      ],
+      "orientation": [
+        0.0,
+        1.0,
+        0.0
+      ],
+      "confidence": 0.95,
+      "evidence": [
+        "rebuild_mounts.py geometric authoring"
+      ],
+      "armIndex": -1
+    },
+    {
+      "name": "FlightController",
+      "mountType": "flight_controller",
+      "componentCategory": "avionics",
+      "maximumDimensions": [
+        40.0,
+        40.0,
+        14.0
+      ],
+      "maximumWeight": 15.0,
+      "compatibleMountPattern": "30.5x30.5 M3",
+      "voltage": 5.0,
+      "current": 2.0,
+      "coolingRequirement": "none",
+      "position": [
+        -0.22430038,
+        3.03846526,
+        2.81476784
+      ],
+      "quaternion": [
+        0.0,
+        0.0,
+        0.0,
+        1.0
+      ],
+      "scale": [
+        1.0,
+        1.0,
+        1.0
+      ],
+      "orientation": [
+        0.0,
+        1.0,
+        0.0
+      ],
+      "confidence": 0.95,
+      "evidence": [
+        "rebuild_mounts.py geometric authoring"
+      ],
+      "armIndex": -1
+    },
+    {
+      "name": "GPS",
+      "mountType": "gps",
+      "componentCategory": "avionics",
+      "maximumDimensions": [
+        35.0,
+        35.0,
+        12.0
+      ],
+      "maximumWeight": 25.0,
+      "compatibleMountPattern": "adhesive / M2",
+      "voltage": 5.0,
+      "current": 0.2,
+      "coolingRequirement": "none",
+      "position": [
+        -0.22430038,
+        3.03847098,
+        -2.27184153
+      ],
+      "quaternion": [
+        0.0,
+        0.0,
+        0.0,
+        1.0
+      ],
+      "scale": [
+        1.0,
+        1.0,
+        1.0
+      ],
+      "orientation": [
+        0.0,
+        1.0,
+        0.0
+      ],
+      "confidence": 0.95,
+      "evidence": [
+        "rebuild_mounts.py geometric authoring"
+      ],
+      "armIndex": -1
+    },
+    {
+      "name": "Motor_FL",
+      "mountType": "motor",
+      "componentCategory": "propulsion",
+      "maximumDimensions": [
+        32.0,
+        32.0,
+        42.0
+      ],
+      "maximumWeight": 95.0,
+      "compatibleMountPattern": "M3 16x16 / 19x19",
+      "voltage": 25.2,
+      "current": 45.0,
+      "coolingRequirement": "airflow",
+      "position": [
+        9.47617054,
+        0.34263706,
+        12.01933765
+      ],
+      "quaternion": [
+        0.0,
+        0.33380685,
+        0.0,
+        0.94264149
+      ],
+      "scale": [
+        1.0,
+        1.0,
+        1.0
+      ],
+      "orientation": [
+        0.0,
+        1.0,
+        0.0
+      ],
+      "confidence": 0.95,
+      "evidence": [
+        "rebuild_mounts.py geometric authoring"
+      ],
+      "armIndex": -1
+    },
+    {
+      "name": "Motor_FR",
+      "mountType": "motor",
+      "componentCategory": "propulsion",
+      "maximumDimensions": [
+        32.0,
+        32.0,
+        42.0
+      ],
+      "maximumWeight": 95.0,
+      "compatibleMountPattern": "M3 16x16 / 19x19",
+      "voltage": 25.2,
+      "current": 45.0,
+      "coolingRequirement": "airflow",
+      "position": [
+        -10.02893734,
+        0.73677856,
+        11.9342289
+      ],
+      "quaternion": [
+        0.0,
+        -0.33791673,
+        0.0,
+        0.94117601
+      ],
+      "scale": [
+        1.0,
+        1.0,
+        1.0
+      ],
+      "orientation": [
+        0.0,
+        1.0,
+        0.0
+      ],
+      "confidence": 0.95,
+      "evidence": [
+        "rebuild_mounts.py geometric authoring"
+      ],
+      "armIndex": -1
+    },
+    {
+      "name": "Motor_RL",
+      "mountType": "motor",
+      "componentCategory": "propulsion",
+      "maximumDimensions": [
+        32.0,
+        32.0,
+        42.0
+      ],
+      "maximumWeight": 95.0,
+      "compatibleMountPattern": "M3 16x16 / 19x19",
+      "voltage": 25.2,
+      "current": 45.0,
+      "coolingRequirement": "airflow",
+      "position": [
+        9.57974529,
+        0.34263933,
+        -11.8530035
+      ],
+      "quaternion": [
+        0.0,
+        0.94117601,
+        0.0,
+        0.33791673
+      ],
+      "scale": [
+        1.0,
+        1.0,
+        1.0
+      ],
+      "orientation": [
+        0.0,
+        1.0,
+        0.0
+      ],
+      "confidence": 0.95,
+      "evidence": [
+        "rebuild_mounts.py geometric authoring"
+      ],
+      "armIndex": -1
+    },
+    {
+      "name": "Motor_RR",
+      "mountType": "motor",
+      "componentCategory": "propulsion",
+      "maximumDimensions": [
+        32.0,
+        32.0,
+        42.0
+      ],
+      "maximumWeight": 95.0,
+      "compatibleMountPattern": "M3 16x16 / 19x19",
+      "voltage": 25.2,
+      "current": 45.0,
+      "coolingRequirement": "airflow",
+      "position": [
+        -9.92477131,
+        0.73678297,
+        -11.93883038
+      ],
+      "quaternion": [
+        0.0,
+        -0.94264149,
+        0.0,
+        0.33380685
+      ],
+      "scale": [
+        1.0,
+        1.0,
+        1.0
+      ],
+      "orientation": [
+        0.0,
+        1.0,
+        0.0
+      ],
+      "confidence": 0.95,
+      "evidence": [
+        "rebuild_mounts.py geometric authoring"
+      ],
+      "armIndex": -1
+    },
+    {
+      "name": "Payload",
+      "mountType": "payload",
+      "componentCategory": "payload",
+      "maximumDimensions": [
+        120.0,
+        120.0,
+        80.0
+      ],
+      "maximumWeight": 800.0,
+      "compatibleMountPattern": "rail / M3 grid",
+      "voltage": 12.0,
+      "current": 5.0,
+      "coolingRequirement": "airflow",
+      "position": [
+        -0.22430038,
+        -0.77437365,
+        0.04025364
+      ],
+      "quaternion": [
+        0.0,
+        0.0,
+        0.0,
+        1.0
+      ],
+      "scale": [
+        1.0,
+        1.0,
+        1.0
+      ],
+      "orientation": [
+        0.0,
+        1.0,
+        0.0
+      ],
+      "confidence": 0.95,
+      "evidence": [
+        "rebuild_mounts.py geometric authoring"
+      ],
+      "armIndex": -1
+    },
+    {
+      "name": "Receiver",
+      "mountType": "receiver",
+      "componentCategory": "avionics",
+      "maximumDimensions": [
+        22.0,
+        14.0,
+        6.0
+      ],
+      "maximumWeight": 5.0,
+      "compatibleMountPattern": "adhesive / heatshrink",
+      "voltage": 5.0,
+      "current": 0.1,
+      "coolingRequirement": "none",
+      "position": [
+        -0.22430038,
+        2.64371109,
+        0.04025364
+      ],
+      "quaternion": [
+        0.0,
+        0.0,
+        0.0,
+        1.0
+      ],
+      "scale": [
+        1.0,
+        1.0,
+        1.0
+      ],
+      "orientation": [
+        0.0,
+        1.0,
+        0.0
+      ],
+      "confidence": 0.95,
+      "evidence": [
+        "rebuild_mounts.py geometric authoring"
+      ],
+      "armIndex": -1
+    }
+  ]
+}

@@ -1,0 +1,29 @@
+{
+  "name": "4-in-1 60 A Stack",
+  "mass_g": 25.5,
+  "qty": 1,
+  "size_mm": [50, 50, 7],
+  "model": null,
+  "specs": {
+    "Continuous": "60 A/ch",
+    "Burst": "80 A/ch",
+    "Firmware": "BLHeli_32",
+    "MOSFETs": "24 (4 × 6)",
+    "Rds(on)": "1.6 mΩ",
+    "Config": "4-in-1 (heavy-lift)"
+  },
+  "physics": {
+    "form_factor": "4in1",
+    "current_a": 60,
+    "burst_current_a": 80,
+    "rds_on_ohm": 0.0016,
+    "r_th_c_per_w": 10,
+    "r_th_heatsink_c_per_w": 6,
+    "mosfet_count": 24,
+    "f_carrier_hz": 48000,
+    "sw_time_s": 1.0e-7,
+    "cap_esr_ohm": 0.010,
+    "board_mm": [50, 50, 7],
+    "max_cells": 6
+  }
+}

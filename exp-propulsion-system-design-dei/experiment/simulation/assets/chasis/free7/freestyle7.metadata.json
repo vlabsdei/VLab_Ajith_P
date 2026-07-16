@@ -1,0 +1,314 @@
+{
+  "format": "daruka.metadata",
+  "formatVersion": "1.0",
+  "generator": "DARUKA Drone Authoring Toolkit v1.0.0",
+  "generatorVersion": "1.0.0",
+  "exported": "2026-07-10T03:43:56",
+  "frame": "freestyle7",
+  "coordinateSystem": "three.js (right-handed, Y-up)",
+  "units": "meters",
+  "confidenceThreshold": 0.8999999761581421,
+  "frameAnalysis": {
+    "center": [
+      3.162068605888635e-05,
+      -0.009400478564202785,
+      -0.0001926031691255048
+    ],
+    "dimensions": [
+      0.3205951750278473,
+      0.18036383390426636,
+      0.3205951154232025
+    ],
+    "hubRadius": 0.010969354568388918,
+    "maxRadius": 0.21938709136777834,
+    "vertexCount": 512026,
+    "confidence": 0.96975,
+    "principalAxes": [
+      [
+        -0.011445197276771069,
+        0.003493303433060646,
+        -0.9999284148216248
+      ],
+      [
+        0.9999257326126099,
+        -0.0041464040987193584,
+        -0.01145965326577425
+      ],
+      [
+        0.004186139442026615,
+        0.9999852776527405,
+        0.0034455875866115093
+      ]
+    ],
+    "symmetryPlanes": [
+      {
+        "normal": [
+          6.123234262925839e-17,
+          0.0,
+          -1.0
+        ],
+        "score": 0.9991666666666666
+      },
+      {
+        "normal": [
+          1.0,
+          0.0,
+          -0.0
+        ],
+        "score": 0.9975
+      },
+      {
+        "normal": [
+          -0.7071067690849304,
+          0.0,
+          -0.7071067690849304
+        ],
+        "score": 0.9658333333333333
+      },
+      {
+        "normal": [
+          0.7071067690849304,
+          0.0,
+          -0.7071067690849304
+        ],
+        "score": 0.9583333333333334
+      }
+    ]
+  },
+  "armCount": 4,
+  "arms": [
+    {
+      "index": 0,
+      "root": [
+        0.007791848387569189,
+        -0.007274426519870758,
+        -0.007945384830236435
+      ],
+      "tip": [
+        0.15490904450416565,
+        0.01427120715379715,
+        -0.15492141246795654
+      ],
+      "direction": [
+        0.7074461579322815,
+        0.0,
+        -0.7067673206329346
+      ],
+      "length": 0.20906849162907137,
+      "width": 0.036617270111105146,
+      "confidence": 0.99
+    },
+    {
+      "index": 1,
+      "root": [
+        -0.007729745469987392,
+        -0.007239385042339563,
+        -0.007944244891405106
+      ],
+      "tip": [
+        -0.1550465077161789,
+        0.01427120715379715,
+        -0.15507644414901733
+      ],
+      "direction": [
+        -0.7075499296188354,
+        0.0,
+        -0.7066634297370911
+      ],
+      "length": 0.2093151236268616,
+      "width": 0.03659232280975277,
+      "confidence": 0.99
+    },
+    {
+      "index": 2,
+      "root": [
+        -0.007721386384218931,
+        -0.007283888291567564,
+        0.0075673977844417095
+      ],
+      "tip": [
+        -0.15502847731113434,
+        0.014271166175603867,
+        0.15500737726688385
+      ],
+      "direction": [
+        -0.7067878842353821,
+        0.0,
+        0.7074254751205444
+      ],
+      "length": 0.20952935850484353,
+      "width": 0.03666980603068983,
+      "confidence": 0.99
+    },
+    {
+      "index": 3,
+      "root": [
+        0.007799910847097635,
+        -0.008201892487704754,
+        0.007552098482847214
+      ],
+      "tip": [
+        0.15521875023841858,
+        0.014271166175603867,
+        0.15452329814434052
+      ],
+      "direction": [
+        0.7081811428070068,
+        0.0,
+        0.7060307264328003
+      ],
+      "length": 0.20937499162643686,
+      "width": 0.03752125448775343,
+      "confidence": 0.99
+    }
+  ],
+  "detections": [
+    {
+      "name": "Motor_RL",
+      "kind": "motor",
+      "confidence": 0.99,
+      "belowThreshold": false,
+      "evidence": [
+        "flat mounting plate",
+        "38 bolt hole(s)"
+      ]
+    },
+    {
+      "name": "Motor_RR",
+      "kind": "motor",
+      "confidence": 0.99,
+      "belowThreshold": false,
+      "evidence": [
+        "flat mounting plate",
+        "37 bolt hole(s)"
+      ]
+    },
+    {
+      "name": "Motor_FR",
+      "kind": "motor",
+      "confidence": 0.99,
+      "belowThreshold": false,
+      "evidence": [
+        "flat mounting plate",
+        "35 bolt hole(s)"
+      ]
+    },
+    {
+      "name": "Motor_FL",
+      "kind": "motor",
+      "confidence": 0.99,
+      "belowThreshold": false,
+      "evidence": [
+        "flat mounting plate",
+        "38 bolt hole(s)"
+      ]
+    },
+    {
+      "name": "ESC_RL",
+      "kind": "esc",
+      "confidence": 0.9405,
+      "belowThreshold": false,
+      "evidence": [
+        "arm centerline @ 60%"
+      ]
+    },
+    {
+      "name": "ESC_RR",
+      "kind": "esc",
+      "confidence": 0.9405,
+      "belowThreshold": false,
+      "evidence": [
+        "arm centerline @ 60%"
+      ]
+    },
+    {
+      "name": "ESC_FR",
+      "kind": "esc",
+      "confidence": 0.9405,
+      "belowThreshold": false,
+      "evidence": [
+        "arm centerline @ 60%"
+      ]
+    },
+    {
+      "name": "ESC_FL",
+      "kind": "esc",
+      "confidence": 0.9405,
+      "belowThreshold": false,
+      "evidence": [
+        "arm centerline @ 60%"
+      ]
+    },
+    {
+      "name": "FlightController",
+      "kind": "flight_controller",
+      "confidence": 0.5,
+      "belowThreshold": true,
+      "evidence": [
+        "hub center fallback"
+      ]
+    },
+    {
+      "name": "Battery",
+      "kind": "battery",
+      "confidence": 0.9194712524060908,
+      "belowThreshold": false,
+      "evidence": [
+        "tray plate area=0.009157",
+        "underslung"
+      ]
+    },
+    {
+      "name": "Camera",
+      "kind": "camera",
+      "confidence": 0.7690982186693948,
+      "belowThreshold": true,
+      "evidence": [
+        "front lens opening"
+      ]
+    },
+    {
+      "name": "GPS",
+      "kind": "gps",
+      "confidence": 0.7020745926020232,
+      "belowThreshold": true,
+      "evidence": [
+        "highest flat mounting area"
+      ]
+    },
+    {
+      "name": "Payload",
+      "kind": "payload",
+      "confidence": 0.78,
+      "belowThreshold": true,
+      "evidence": [
+        "parallel payload rails"
+      ]
+    },
+    {
+      "name": "Receiver",
+      "kind": "receiver",
+      "confidence": 0.425,
+      "belowThreshold": true,
+      "evidence": [
+        "derived: behind flight controller"
+      ]
+    }
+  ],
+  "timingsMs": {
+    "vertex cloud": 23.7,
+    "hole detection": 615.2,
+    "planar patches": 2812.14,
+    "BVH build": 43.9,
+    "frame analysis": 882.95,
+    "arm detection": 207.5,
+    "motor detection": 144.25,
+    "ESC placement": 0.02,
+    "FC detection": 391.39,
+    "battery detection": 32.82,
+    "camera detection": 43.64,
+    "GPS detection": 28.01,
+    "payload detection": 43.54,
+    "TOTAL detection": 5476.73
+  }
+}

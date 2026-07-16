@@ -1,0 +1,28 @@
+{
+  "name": "5010 \u2014 360 KV",
+  "mass_g": 120,
+  "qty": 4,
+  "size_mm": [
+    55,
+    26,
+    55
+  ],
+  "model": [
+    "stator.glb",
+    "rotar.glb"
+  ],
+  "specs": {
+    "KV": "360 rpm/V",
+    "Max current": "40 A",
+    "Stator": "50 \u00d7 10"
+  },
+  "physics": {
+    "kv": 360,
+    "rm_ohm": 0.1,
+    "i0_a": 0.5,
+    "max_current_a": 40,
+    "max_power_w": 1300,
+    "k_fe": 0.0007,
+    "max_cells": 12
+  }
+}

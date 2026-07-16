@@ -1,0 +1,26 @@
+{
+  "name": "Heavy-Lift 10\" Chassis",
+  "mass_g": 850,
+  "qty": 1,
+  "size_mm": [
+    600,
+    120,
+    600
+  ],
+  "model": "model.glb",
+  "specs": {
+    "Prop size": "10 in",
+    "Wheelbase": "600 mm",
+    "Material": "Carbon fibre"
+  },
+  "physics": {
+    "wheelbase_mm": 600,
+    "recommended_prop_in": [
+      10,
+      12
+    ],
+    "frontal_area_m2": 0.025,
+    "cd": 1.05,
+    "arm_length_mm": 265
+  }
+}

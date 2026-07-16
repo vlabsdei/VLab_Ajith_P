@@ -1,0 +1,72 @@
+========================================================================
+DARUKA DRONE AUTHORING TOOLKIT — VALIDATION REPORT
+========================================================================
+Generated : 2026-07-09 15:21:35
+Generator : DARUKA Drone Authoring Toolkit v1.0.0
+Scene     : Scene
+
+------------------------------------------------------------------------
+DETECTION SUMMARY
+------------------------------------------------------------------------
+Frame object      : Body1.009
+Frame dimensions  : 0.2657 x 0.2120 x 0.0601
+Hub radius        : 0.0565
+Symmetry planes   : 1
+Arms detected     : 4
+
+Component           Confidence  Evidence
+FlightController      97.4%      25.5x25.5mm hole pattern
+ESC_RL                94.0%      arm centerline @ 60%
+ESC_RR                94.0%      arm centerline @ 60%
+ESC_FR                94.0%      arm centerline @ 60%
+ESC_FL                94.0%      arm centerline @ 60%
+Battery               92.2%      tray plate area=0.007259; top mount
+Camera                85.5%  (LOW)front lens opening
+GPS                   85.0%  (LOW)highest flat mounting area
+Receiver              82.8%  (LOW)derived: behind flight controller
+Motor_RR              79.9%  (LOW)5 bolt hole(s)
+Motor_RL              79.9%  (LOW)5 bolt hole(s)
+Motor_FR              79.9%  (LOW)5 bolt hole(s)
+Motor_FL              79.9%  (LOW)5 bolt hole(s)
+Payload               78.0%  (LOW)parallel payload rails
+
+------------------------------------------------------------------------
+PERFORMANCE
+------------------------------------------------------------------------
+vertex cloud                      16.8 ms
+hole detection                   161.2 ms
+planar patches                   368.2 ms
+BVH build                          7.7 ms
+frame analysis                   364.2 ms
+arm detection                     30.6 ms
+motor detection                    5.5 ms
+ESC placement                      0.0 ms
+FC detection                      22.3 ms
+battery detection                  0.9 ms
+camera detection                   2.4 ms
+GPS detection                      0.7 ms
+payload detection                  2.6 ms
+TOTAL detection                 1021.5 ms
+
+------------------------------------------------------------------------
+VALIDATION
+------------------------------------------------------------------------
+Errors: 0   Warnings: 13   Info: 0
+
+WARNING  confidence     Detection confidence 86% is below the 90% threshold — verify placement [Camera]
+WARNING  confidence     Detection confidence 87% is below the 90% threshold — verify placement [ESC_FL]
+WARNING  confidence     Detection confidence 87% is below the 90% threshold — verify placement [ESC_FR]
+WARNING  confidence     Detection confidence 87% is below the 90% threshold — verify placement [ESC_RL]
+WARNING  confidence     Detection confidence 87% is below the 90% threshold — verify placement [ESC_RR]
+WARNING  confidence     Detection confidence 50% is below the 90% threshold — verify placement [FlightController]
+WARNING  confidence     Detection confidence 85% is below the 90% threshold — verify placement [GPS]
+WARNING  confidence     Detection confidence 79% is below the 90% threshold — verify placement [Motor_FL]
+WARNING  confidence     Detection confidence 79% is below the 90% threshold — verify placement [Motor_FR]
+WARNING  confidence     Detection confidence 79% is below the 90% threshold — verify placement [Motor_RL]
+WARNING  confidence     Detection confidence 79% is below the 90% threshold — verify placement [Motor_RR]
+WARNING  confidence     Detection confidence 78% is below the 90% threshold — verify placement [Payload]
+WARNING  confidence     Detection confidence 42% is below the 90% threshold — verify placement [Receiver]
+
+========================================================================
+VERDICT: PASS WITH WARNINGS
+========================================================================

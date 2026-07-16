@@ -1,0 +1,175 @@
+{
+  "version": 2.0,
+  "questions": [
+    {
+      "question": "Q1. To fix an unknown 2-D position purely from measured distances to known reference points (trilateration), what is the minimum number of non-collinear reference points generally required to resolve a single unambiguous position?",
+      "answers": {
+        "a": "1",
+        "b": "2",
+        "c": "3",
+        "d": "4"
+      },
+      "explanations": {
+        "a": "Incorrect — A single distance only constrains the position to a circle around that point.",
+        "b": "Incorrect — Two distances narrow the position to at most two intersection points, which is still ambiguous.",
+        "c": "Correct — Three non-collinear reference points produce three circles whose distances intersect at a single unambiguous point.",
+        "d": "Incorrect — Four points give extra redundancy but are not the minimum needed for a 2-D fix."
+      },
+      "correctAnswer": "c",
+      "difficulty": "beginner"
+    },
+    {
+      "question": "Q2. When a position is calculated from distance measurements to several reference points, why does clustering the reference points close together in roughly the same direction tend to make the calculated position less accurate, compared to spreading them out in different directions?",
+      "answers": {
+        "a": "Clustered points give the solver much less independent geometric information, so any small measurement error gets amplified into a large position error",
+        "b": "Clustered reference points always produce noisier individual distance measurements",
+        "c": "Distance measurements from clustered points are always physically longer",
+        "d": "Clustered reference points always fail entirely, giving no solution at all"
+      },
+      "explanations": {
+        "a": "Correct — When reference points sit close together, their distance equations are nearly redundant, so the geometry poorly constrains the solution and small input errors are amplified.",
+        "b": "Incorrect — Measurement noise on any single distance is independent of how the reference points are arranged.",
+        "c": "Incorrect — Clustering affects geometry, not the physical length of any individual measurement.",
+        "d": "Incorrect — A solution can usually still be computed; it is simply far more sensitive to noise."
+      },
+      "correctAnswer": "a",
+      "difficulty": "intermediate"
+    },
+    {
+      "question": "Q3. Suppose a measured position has two independent error components — an East error and a North error — each following a normal (Gaussian) distribution with the same standard deviation and zero mean. What probability distribution does the magnitude (straight-line radial distance) of the combined 2-D error follow?",
+      "answers": {
+        "a": "Uniform distribution",
+        "b": "Rayleigh distribution",
+        "c": "Binomial distribution",
+        "d": "Poisson distribution"
+      },
+      "explanations": {
+        "a": "Incorrect — A uniform distribution assigns equal probability to every radius, which is not the case here.",
+        "b": "Correct — The magnitude of a 2-D vector with two independent, equal-variance, zero-mean Gaussian components follows a Rayleigh distribution.",
+        "c": "Incorrect — A binomial distribution describes counts of successes in discrete trials, not a continuous radial error.",
+        "d": "Incorrect — A Poisson distribution describes counts of rare discrete events over an interval, not a geometric error magnitude."
+      },
+      "correctAnswer": "b",
+      "difficulty": "beginner"
+    },
+    {
+      "question": "Q4. A \"50% error radius\" statistic is defined as the radius of the circle within which half of a set of repeated measurements are expected to fall. Which basic statistical concept does this radius correspond to?",
+      "answers": {
+        "a": "The mean of the measurements",
+        "b": "The mode of the measurements",
+        "c": "The median of the radial error distribution",
+        "d": "The variance of the measurements"
+      },
+      "explanations": {
+        "a": "Incorrect — The mean is the average value, not the point that splits the distribution exactly in half.",
+        "b": "Incorrect — The mode is the most frequent value, not a 50%-containment radius.",
+        "c": "Correct — A radius that contains exactly half of all measurements, by definition, marks the median of the radial error distribution.",
+        "d": "Incorrect — Variance measures spread as a squared quantity, not a containment radius."
+      },
+      "correctAnswer": "c",
+      "difficulty": "intermediate"
+    },
+    {
+      "question": "Q5. Based on basic atmospheric physics, why does air pressure decrease as altitude above the ground increases?",
+      "answers": {
+        "a": "The chemical composition of air changes significantly with height",
+        "b": "There is progressively less air (and hence less weight of air) pressing down from above at greater heights",
+        "c": "Temperature always rises steadily with altitude, which by itself lowers pressure",
+        "d": "Gravitational acceleration drops sharply with altitude, directly reducing pressure"
+      },
+      "explanations": {
+        "a": "Incorrect — The proportion of gases in the atmosphere is essentially uniform through the troposphere.",
+        "b": "Correct — Atmospheric pressure at a point equals the weight of the column of air above it, so pressure falls as that overlying column of air gets thinner with height.",
+        "c": "Incorrect — In the lower atmosphere, temperature typically falls with height, not rises, and pressure would still fall regardless.",
+        "d": "Incorrect — Gravity changes negligibly over a few kilometres of altitude; it is not the dominant cause."
+      },
+      "correctAnswer": "b",
+      "difficulty": "beginner"
+    },
+    {
+      "question": "Q6. A sensor estimates height by inverting a known, smoothly curving pressure-vs-height relationship. At higher altitudes this curve becomes flatter (a given change in height corresponds to a smaller change in pressure). What does this imply about the height uncertainty caused by a fixed amount of pressure-measurement noise, as altitude increases?",
+      "answers": {
+        "a": "The height uncertainty decreases, because the sensor effectively becomes more sensitive",
+        "b": "The height uncertainty increases, because the same small pressure error now corresponds to a larger range of possible heights",
+        "c": "The height uncertainty stays exactly constant regardless of where on the curve the sensor operates",
+        "d": "The relationship between pressure noise and height uncertainty becomes undefined at high altitude"
+      },
+      "explanations": {
+        "a": "Incorrect — A flatter pressure-height curve means the sensor is less sensitive to height changes, not more.",
+        "b": "Correct — If the curve flattens, a fixed pressure error now maps back to a wider spread of possible heights, so height uncertainty grows.",
+        "c": "Incorrect — The steepness of the curve directly sets how a fixed input error propagates to output uncertainty, so it cannot stay constant if the curve's shape changes.",
+        "d": "Incorrect — The relationship remains well defined; it just produces a larger uncertainty value."
+      },
+      "correctAnswer": "b",
+      "difficulty": "intermediate"
+    },
+    {
+      "question": "Q7. A set of repeated measurements contains a systematic bias — a constant offset in the same direction on every reading. Which of the following is true about reducing that bias?",
+      "answers": {
+        "a": "Averaging more measurements together will drive the bias toward zero, just like it does for random noise",
+        "b": "Averaging more measurements will not remove a systematic bias — only random, zero-mean noise is reduced by averaging",
+        "c": "Taking the median instead of the mean always eliminates systematic bias",
+        "d": "Increasing the sampling rate automatically corrects a systematic bias"
+      },
+      "explanations": {
+        "a": "Incorrect — Averaging reduces random scatter around the true value, but a constant offset is present in every sample and averages out to the same offset, not to zero.",
+        "b": "Correct — A systematic bias shifts every reading in the same direction, so no amount of averaging removes it; only correcting or modeling the underlying source of the bias helps.",
+        "c": "Incorrect — The median is also shifted by the same constant offset, so it does not eliminate bias either.",
+        "d": "Incorrect — Sampling faster only gives more biased readings, not fewer biased ones."
+      },
+      "correctAnswer": "b",
+      "difficulty": "beginner"
+    },
+    {
+      "question": "Q8. Two statistically independent error sources — one horizontal, one vertical — need to be combined into a single overall position-error estimate. Which combination rule is mathematically appropriate for independent error sources?",
+      "answers": {
+        "a": "Simple arithmetic sum of the two error magnitudes",
+        "b": "Root-sum-square (the square root of the sum of the squares) of the two error magnitudes",
+        "c": "Just the larger of the two errors, ignoring the smaller one entirely",
+        "d": "The plain average of the two error magnitudes"
+      },
+      "explanations": {
+        "a": "Incorrect — A direct sum overstates the combined error, since it assumes the two errors always point in the same worst-case direction.",
+        "b": "Correct — For independent error sources, variances add, so the combined standard-deviation-like quantity is the square root of the sum of the squares (root-sum-square), the same rule used for combining perpendicular vector components.",
+        "c": "Incorrect — Ignoring the smaller error discards real information and understates the total uncertainty.",
+        "d": "Incorrect — A plain average has no statistical basis for combining independent error magnitudes."
+      },
+      "correctAnswer": "b",
+      "difficulty": "intermediate"
+    },
+    {
+      "question": "Q9. Using basic right-triangle trigonometry, if you know the angle of elevation to a distant object and your horizontal distance to it, how do you compute the object's height above your own level?",
+      "answers": {
+        "a": "Height = horizontal distance only, ignoring the angle",
+        "b": "Height = horizontal distance multiplied by the tangent of the elevation angle",
+        "c": "Height cannot be found without also knowing the object's mass",
+        "d": "Height = the elevation angle divided by the horizontal distance"
+      },
+      "explanations": {
+        "a": "Incorrect — Ignoring the angle discards essential information; two different elevation angles at the same distance give different heights.",
+        "b": "Correct — In a right triangle, the tangent of the elevation angle equals opposite (height) over adjacent (horizontal distance), so height = distance times tan(angle).",
+        "c": "Incorrect — Height from an elevation angle and distance is a pure geometry problem; mass is irrelevant.",
+        "d": "Incorrect — Dividing an angle by a distance does not correspond to any valid trigonometric relationship for height."
+      },
+      "correctAnswer": "b",
+      "difficulty": "beginner"
+    },
+    {
+      "question": "Q10. When solving a system of linear equations that is close to being singular (some equations are nearly redundant or nearly parallel to each other), what typically happens to the solution's sensitivity to small errors in the input measurements?",
+      "answers": {
+        "a": "The solution becomes less sensitive to input errors, since redundancy averages out noise",
+        "b": "The solution becomes far more sensitive to input errors, because solving a near-singular system effectively divides by a near-zero quantity, amplifying noise",
+        "c": "Sensitivity to input error is unaffected by how close the system is to singular",
+        "d": "A near-singular system always still produces a uniquely well-conditioned, low-error solution"
+      },
+      "explanations": {
+        "a": "Incorrect — Near-redundant equations provide less new information, not more noise reduction.",
+        "b": "Correct — As a system approaches singularity, its solution involves dividing by quantities approaching zero, which amplifies any small error in the measurements into a large error in the solution.",
+        "c": "Incorrect — Conditioning (closeness to singular) is precisely what governs how strongly input errors propagate to the output.",
+        "d": "Incorrect — A near-singular system is, by definition, poorly conditioned and highly sensitive to error."
+      },
+      "correctAnswer": "b",
+      "difficulty": "intermediate"
+    }
+  ]
+}

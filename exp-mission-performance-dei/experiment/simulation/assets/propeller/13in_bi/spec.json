@@ -1,0 +1,21 @@
+{
+  "name": "13\" Bi-blade  (5.5 pitch)",
+  "mass_g": 22.0,
+  "qty": 4,
+  "size_mm": [
+    330.2,
+    19.8,
+    330.2
+  ],
+  "model": "13inch_bi.glb",
+  "specs": {
+    "Diameter": "13 in",
+    "Pitch": "5.5 in",
+    "Blades": "2"
+  },
+  "physics": {
+    "diameter_in": 13.0,
+    "pitch_in": 5.5,
+    "blades": 2
+  }
+}

@@ -14,7 +14,7 @@ The pulse-width modulation models, control-resolution relationships, MOSFET cond
 4. **D. C. Hanselman**, *Brushless Permanent Magnet Motor Design*, 2nd ed. Madison, WI: Magna Physics Publishing, 2006.  
    *(Supplies the BLDC commutation and back-EMF relationships that link the ESC phase current to the motor operating point carried forward from Experiment 1.)*
 
-5. **Texas Instruments**, "Calculating Motor Driver Power Dissipation," Application Report SLVA504, Texas Instruments Inc., Dallas, TX, 2011.  
+5. **Texas Instruments**, "Calculating Power Dissipation for a H-Bridge or Half-Bridge Driver," Application Report SLVA504A, Texas Instruments Inc., Dallas, TX, 2011.  
    *(Practical reference for MOSFET conduction-loss estimation, the positive temperature coefficient of R<sub>DS(on)</sub>, and junction-to-ambient thermal-resistance heatsinking decisions.)*
 
 6. **IEEE Standard 1459-2010**, *IEEE Standard Definitions for the Measurement of Electric Power Quantities Under Sinusoidal, Nonsinusoidal, Balanced, or Unbalanced Conditions*, IEEE, New York, NY, 2010.  

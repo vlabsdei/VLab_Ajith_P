@@ -1,0 +1,25 @@
+{
+  "name": "4S LiPo — 1500 mAh (high-C)",
+  "mass_g": 175,
+  "qty": 1,
+  "size_mm": [
+    76,
+    38,
+    30
+  ],
+  "model": "assets/battery/_model/Battery_Drone.fbx",
+  "specs": {
+    "Voltage": "14.8 V (4S)",
+    "Capacity": "1500 mAh",
+    "Discharge": "130C / 100C cont.",
+    "Note": "Race-grade pack — high continuous C-rating"
+  },
+  "physics": {
+    "cells": 4,
+    "voltage_nominal_v": 14.8,
+    "capacity_mah": 1500,
+    "c_rating": 130,
+    "c_rating_cont": 100,
+    "cell_ir_mohm": 3.2
+  }
+}

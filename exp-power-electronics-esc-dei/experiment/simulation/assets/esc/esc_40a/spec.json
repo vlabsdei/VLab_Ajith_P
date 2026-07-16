@@ -1,0 +1,29 @@
+{
+  "name": "40 A BLHeli_32 (single)",
+  "mass_g": 11.2,
+  "qty": 1,
+  "size_mm": [30, 15, 5],
+  "model": null,
+  "specs": {
+    "Continuous": "40 A",
+    "Burst": "55 A",
+    "Firmware": "BLHeli_32",
+    "MOSFETs": "6 (3 half-bridge)",
+    "Rds(on)": "2.2 mΩ",
+    "Config": "single (× arm)"
+  },
+  "physics": {
+    "form_factor": "single",
+    "current_a": 40,
+    "burst_current_a": 55,
+    "rds_on_ohm": 0.0022,
+    "r_th_c_per_w": 15,
+    "r_th_heatsink_c_per_w": 8,
+    "mosfet_count": 6,
+    "f_carrier_hz": 48000,
+    "sw_time_s": 1.0e-7,
+    "cap_esr_ohm": 0.02,
+    "board_mm": [30, 15, 5],
+    "max_cells": 6
+  }
+}

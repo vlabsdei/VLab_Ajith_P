@@ -1,0 +1,18 @@
+{
+  "package": "Body1_009",
+  "generator": "DARUKA Drone Authoring Toolkit v1.0.0",
+  "created": "2026-07-09T15:21:35",
+  "coordinateSystem": "three.js (right-handed, Y-up)",
+  "files": {
+    "model": "Body1_009.glb",
+    "mounts": "Body1_009.mounts.json",
+    "bounds": "Body1_009.bounds.json",
+    "metadata": "Body1_009.metadata.json",
+    "physics": "Body1_009.physics.json",
+    "report": "report.txt"
+  },
+  "validation": {
+    "errors": 0,
+    "warnings": 13
+  }
+}

@@ -1,0 +1,175 @@
+{
+  "version": 2.0,
+  "questions": [
+    {
+      "question": "Q1. What do the two terms that make up a multirotor's cruise-power curve represent?",
+      "answers": {
+        "a": "Battery voltage and battery current",
+        "b": "Parasitic drag power and induced power",
+        "c": "Motor resistance and ESC switching loss",
+        "d": "Radio latency and control-loop delay"
+      },
+      "explanations": {
+        "a": "Incorrect — voltage and current describe the electrical system, not the aerodynamic power split.",
+        "b": "Correct — cruise power is the sum of parasitic drag power (pushing the airframe through the air) and induced power (accelerating air downward to make lift), and their opposite trends with speed create the U-shape.",
+        "c": "Incorrect — those are electrical losses, not the aerodynamic power terms in this model.",
+        "d": "Incorrect — those relate to the control system, not propulsive power."
+      },
+      "correctAnswer": "b",
+      "difficulty": "beginner"
+    },
+    {
+      "question": "Q2. Why is the cruise-power-vs-airspeed curve of a multirotor U-shaped rather than monotonically rising or falling?",
+      "answers": {
+        "a": "Because induced power falls with airspeed while parasitic drag power rises with airspeed, so their sum has a minimum in between",
+        "b": "Because the battery voltage sags at both low and high speed",
+        "c": "Because propellers only work efficiently at one fixed RPM",
+        "d": "Because air density changes randomly with speed"
+      },
+      "explanations": {
+        "a": "Correct — one term falls, the other rises with speed, so the total has an interior minimum: the classic U-shaped power curve.",
+        "b": "Incorrect — this is not a battery voltage effect in the model.",
+        "c": "Incorrect — propellers operate across a range of RPM; this is not the reason for the U-shape.",
+        "d": "Incorrect — air density is treated as constant with speed in this model; altitude changes it, not speed."
+      },
+      "correctAnswer": "a",
+      "difficulty": "beginner"
+    },
+    {
+      "question": "Q3. How does parasitic drag power (drag force times speed) scale with airspeed?",
+      "answers": {
+        "a": "It is independent of airspeed",
+        "b": "It scales linearly with airspeed",
+        "c": "It scales with the square of airspeed",
+        "d": "It scales with the cube of airspeed"
+      },
+      "explanations": {
+        "a": "Incorrect — drag power clearly increases as a craft flies faster.",
+        "b": "Incorrect — drag force alone scales with speed squared; power (force times speed) is one power higher.",
+        "c": "Incorrect — that describes the drag force, not the drag power.",
+        "d": "Correct — drag force is proportional to V^2, and power is force times speed, so parasitic power is proportional to V^3 — it dominates the curve at high speed."
+      },
+      "correctAnswer": "d",
+      "difficulty": "intermediate"
+    },
+    {
+      "question": "Q4. Why does a multirotor's induced power fall as it picks up forward airspeed?",
+      "answers": {
+        "a": "The propellers spin faster automatically at speed",
+        "b": "The rotor disk is already sweeping through fresh-moving air, so it needs to accelerate that air less to produce the same thrust",
+        "c": "Air density increases with forward speed",
+        "d": "The battery delivers more current at higher speed"
+      },
+      "explanations": {
+        "a": "Incorrect — RPM is set by throttle/thrust demand, not automatically by airspeed.",
+        "b": "Correct — this is the 'translational lift' effect: forward motion supplies some of the air's momentum change for free, lowering the induced velocity and induced power needed for the same thrust.",
+        "c": "Incorrect — air density does not increase with the craft's own airspeed.",
+        "d": "Incorrect — current draw is a consequence of power demand, not a cause of the induced-power drop."
+      },
+      "correctAnswer": "b",
+      "difficulty": "intermediate"
+    },
+    {
+      "question": "Q5. What is the key difference between a multirotor's maximum-endurance speed and its maximum-range speed?",
+      "answers": {
+        "a": "They are always the same speed",
+        "b": "Endurance speed minimises power per unit time (longest flight time); range speed minimises power per unit distance (longest distance), and is always faster",
+        "c": "Endurance speed is always faster than range speed",
+        "d": "Range speed only matters for fixed-wing aircraft, not multirotors"
+      },
+      "explanations": {
+        "a": "Incorrect — because the power curve is not symmetric, the two optimum speeds are generally different.",
+        "b": "Correct — endurance speed sits at the bottom of the power curve (minimum power); range speed minimises power divided by speed, and this always occurs at a higher speed than the power-curve minimum.",
+        "c": "Incorrect — it is the range speed that is faster, not the endurance speed.",
+        "d": "Incorrect — the same maximum-endurance vs maximum-range distinction applies to multirotors, as this experiment shows directly."
+      },
+      "correctAnswer": "b",
+      "difficulty": "intermediate"
+    },
+    {
+      "question": "Q6. Besides a single cruise-power number, what else must a full mission energy budget account for?",
+      "answers": {
+        "a": "Only the maximum thrust of the motors",
+        "b": "The propeller diameter alone",
+        "c": "The duration and power draw of every distinct flight phase — hover, cruise-out, hover-on-station, cruise-back, landing",
+        "d": "The radio transmitter's battery level"
+      },
+      "explanations": {
+        "a": "Incorrect — maximum thrust is a static rating, not an energy quantity.",
+        "b": "Incorrect — diameter affects power indirectly through disk area, but is not itself an energy budget input.",
+        "c": "Correct — a mission is a sequence of phases at different power levels and durations; the total energy is the sum of each phase's power times its time.",
+        "d": "Incorrect — the transmitter's battery is unrelated to the aircraft's own mission energy budget."
+      },
+      "correctAnswer": "c",
+      "difficulty": "beginner"
+    },
+    {
+      "question": "Q7. Why does adding payload reduce a multirotor's range more sharply than a simple proportional relationship would suggest?",
+      "answers": {
+        "a": "Because induced power required scales with weight to the 1.5 power, not linearly, so extra mass costs disproportionately more power",
+        "b": "Because heavier drones fly faster, burning more fuel",
+        "c": "Because payload reduces the propeller diameter",
+        "d": "Because payload increases the battery's internal resistance directly"
+      },
+      "explanations": {
+        "a": "Correct — momentum theory gives P_induced proportional to T^1.5 = (m·g)^1.5, so each extra gram of payload costs more power than the gram before it, making the range-payload curve fall faster than a simple inverse relationship.",
+        "b": "Incorrect — added payload does not by itself change the commanded airspeed, and multirotors use electric power, not fuel.",
+        "c": "Incorrect — propeller diameter is a fixed hardware choice, unrelated to payload.",
+        "d": "Incorrect — payload mass and battery internal resistance are unrelated quantities in this model."
+      },
+      "correctAnswer": "a",
+      "difficulty": "advanced"
+    },
+    {
+      "question": "Q8. What does a 'flat-earth' mission energy model fail to capture that a real flight actually experiences?",
+      "answers": {
+        "a": "The extra energy and induced-power cost of climbing out and descending back, since only level hover and level cruise segments are modelled",
+        "b": "The weight of the battery itself",
+        "c": "The number of propeller blades",
+        "d": "The colour of the airframe"
+      },
+      "explanations": {
+        "a": "Correct — treating every phase as level flight ignores the potential-energy and extra induced-power cost of real climbs and descents, typically an 8-12% energy penalty for short missions.",
+        "b": "Incorrect — battery mass is already included in the total mass used throughout the model.",
+        "c": "Incorrect — blade count is a propeller design detail unrelated to the flat-earth assumption.",
+        "d": "Incorrect — airframe colour has no aerodynamic or energetic relevance here."
+      },
+      "correctAnswer": "a",
+      "difficulty": "intermediate"
+    },
+    {
+      "question": "Q9. If a quantity is the sum of one term that strictly decreases as x increases and a second term that strictly increases as x increases, where does the sum generally reach its minimum?",
+      "answers": {
+        "a": "Always at x = 0, since that is where the increasing term is smallest",
+        "b": "Always at the largest possible x, since that is where the decreasing term is smallest",
+        "c": "Generally at an interior point where the two opposing trends balance, not necessarily at either endpoint",
+        "d": "The sum of a decreasing and an increasing term can never have a minimum"
+      },
+      "explanations": {
+        "a": "Incorrect — at x = 0 the decreasing term is usually at its largest, so the sum is not generally smallest there.",
+        "b": "Incorrect — at large x the increasing term dominates, typically pushing the sum back up.",
+        "c": "Correct — this is the standard calculus-of-optimization result: when one term falls and another rises with x, their sum typically traces a U-shape with an interior minimum where the two slopes cancel.",
+        "d": "Incorrect — this is precisely the condition that produces a well-defined interior minimum in many physical systems."
+      },
+      "correctAnswer": "c",
+      "difficulty": "intermediate"
+    },
+    {
+      "question": "Q10. A battery is rated at a nominal voltage of 11.1 V and a capacity of 2000 mAh. Approximately how much energy, in Watt-hours, does it store?",
+      "answers": {
+        "a": "About 2.2 Wh",
+        "b": "About 11.1 Wh",
+        "c": "About 22.2 Wh",
+        "d": "About 44.4 Wh"
+      },
+      "explanations": {
+        "a": "Incorrect — this omits the voltage multiplication.",
+        "b": "Incorrect — this is just the voltage, not the stored energy.",
+        "c": "Correct — energy in Wh = voltage (V) × capacity (Ah) = 11.1 × 2.0 = 22.2 Wh.",
+        "d": "Incorrect — this overstates the result by roughly a factor of two."
+      },
+      "correctAnswer": "c",
+      "difficulty": "beginner"
+    }
+  ]
+}

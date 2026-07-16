@@ -1,0 +1,23 @@
+{
+  "name": "3S LiPo — 2200 mAh",
+  "mass_g": 188,
+  "qty": 1,
+  "size_mm": [
+    105,
+    34,
+    25
+  ],
+  "model": "assets/battery/_model/Battery_Drone.fbx",
+  "specs": {
+    "Voltage": "11.1 V (3S)",
+    "Capacity": "2200 mAh",
+    "Discharge": "45 C"
+  },
+  "physics": {
+    "cells": 3,
+    "voltage_nominal_v": 11.1,
+    "capacity_mah": 2200,
+    "c_rating": 45,
+    "cell_ir_mohm": 5.5
+  }
+}

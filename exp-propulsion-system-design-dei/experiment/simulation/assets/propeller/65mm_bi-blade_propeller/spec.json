@@ -1,0 +1,24 @@
+{
+  "name": "65 mm Bi-Blade",
+  "mass_g": 0.5,
+  "qty": 4,
+  "size_mm": [
+    65,
+    8,
+    12
+  ],
+  "model": "65mm_bi-blade_propeller.glb",
+  "specs": {
+    "Diameter": "65 mm (2.6 in)",
+    "Pitch": "1.5 in",
+    "Blades": "2"
+  },
+  "physics": {
+    "diameter_in": 2.56,
+    "pitch_in": 1.5,
+    "blades": 2,
+    "ct": 0.1,
+    "cq": 0.0115,
+    "mass_g_each": 0.5
+  }
+}

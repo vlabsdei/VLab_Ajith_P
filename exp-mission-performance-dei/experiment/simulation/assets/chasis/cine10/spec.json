@@ -1,0 +1,28 @@
+{
+  "name": "DARUKA 10\" Cine-Lifter",
+  "mass_g": 435,
+  "qty": 1,
+  "size_mm": [
+    403.3,
+    38.0,
+    407.4
+  ],
+  "model": "Gladiator_5_DC_v26.glb",
+  "mounts": "Gladiator_5_DC_v26_mounts.json",
+  "specs": {
+    "Wheelbase": "523 mm",
+    "Arms": "4 (X-config)",
+    "Arm length": "197 mm",
+    "Mount points": "14 authored"
+  },
+  "physics": {
+    "wheelbase_mm": 523,
+    "recommended_prop_in": [
+      9,
+      10
+    ],
+    "frontal_area_m2": 0.0092,
+    "cd": 1.05,
+    "arm_length_mm": 262
+  }
+}

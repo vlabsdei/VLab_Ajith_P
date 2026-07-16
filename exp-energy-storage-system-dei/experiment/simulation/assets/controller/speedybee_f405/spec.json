@@ -1,0 +1,19 @@
+{
+  "name": "SpeedyBee F405 Mini (AIO 35A)",
+  "mass_g": 10,
+  "qty": 1,
+  "size_mm": [
+    30,
+    31,
+    9
+  ],
+  "model": "speedybee_f405.glb",
+  "specs": {
+    "MCU": "STM32F405",
+    "Mount": "25.5\u00d725.5",
+    "ESC": "BLS 35A 4-in-1 (AIO)"
+  },
+  "physics": {
+    "processor": "STM32F405"
+  }
+}

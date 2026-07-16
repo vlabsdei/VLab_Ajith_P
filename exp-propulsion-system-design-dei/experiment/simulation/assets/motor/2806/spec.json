@@ -1,0 +1,28 @@
+{
+  "name": "2806.5 \u2014 1300 KV",
+  "mass_g": 52,
+  "qty": 4,
+  "size_mm": [
+    34,
+    24,
+    34
+  ],
+  "model": [
+    "stator.glb",
+    "rotar.glb"
+  ],
+  "specs": {
+    "KV": "1300 rpm/V",
+    "Max current": "45 A",
+    "Stator": "28 \u00d7 06"
+  },
+  "physics": {
+    "kv": 1300,
+    "rm_ohm": 0.045,
+    "i0_a": 1.0,
+    "max_current_a": 45,
+    "max_power_w": 1100,
+    "k_fe": 0.0005,
+    "max_cells": 6
+  }
+}

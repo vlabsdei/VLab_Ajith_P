@@ -1,0 +1,36 @@
+{
+  "name": "X-Quad 5\" Chassis",
+  "mass_g": 160,
+  "qty": 1,
+  "size_mm": [
+    265.7,
+    60.1,
+    212.0
+  ],
+  "model": "Body1_009.glb",
+  "mounts": "Body1_009_mounts.json",
+  "specs": {
+    "Wheelbase": "290 mm",
+    "Arms": "4 (X-config)",
+    "Material": "Carbon fibre",
+    "Authoring": "DARUKA Toolkit v1.0",
+    "Mount points": "14 authored"
+  },
+  "physics": {
+    "wheelbase_mm": 290,
+    "recommended_prop_in": [
+      5,
+      6
+    ],
+    "frontal_area_m2": 0.0095,
+    "cd": 1.05,
+    "arm_length_mm": 145,
+    "native_center": [
+      -5.9e-06,
+      0.0020081,
+      0.0078002
+    ],
+    "native_max_dim": 0.265708863735199,
+    "native_up": "z"
+  }
+}

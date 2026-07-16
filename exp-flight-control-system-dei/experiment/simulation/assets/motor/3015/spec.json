@@ -1,0 +1,28 @@
+{
+  "name": "3015 \u2014 900 KV",
+  "mass_g": 95,
+  "qty": 4,
+  "size_mm": [
+    36,
+    32,
+    36
+  ],
+  "model": [
+    "stator.glb",
+    "rotar.glb"
+  ],
+  "specs": {
+    "KV": "900 rpm/V",
+    "Max current": "50 A",
+    "Stator": "30 \u00d7 15"
+  },
+  "physics": {
+    "kv": 900,
+    "rm_ohm": 0.05,
+    "i0_a": 0.8,
+    "max_current_a": 50,
+    "max_power_w": 1350,
+    "k_fe": 0.0006,
+    "max_cells": 6
+  }
+}

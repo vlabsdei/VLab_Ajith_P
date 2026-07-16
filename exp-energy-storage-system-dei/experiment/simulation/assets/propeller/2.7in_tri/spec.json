@@ -1,0 +1,21 @@
+{
+  "name": "2.7\" Tri-blade  (1.8 pitch)",
+  "mass_g": 1.5,
+  "qty": 4,
+  "size_mm": [
+    68.6,
+    4.1,
+    68.6
+  ],
+  "model": "2.7inch_tri.glb",
+  "specs": {
+    "Diameter": "2.7 in",
+    "Pitch": "1.8 in",
+    "Blades": "3"
+  },
+  "physics": {
+    "diameter_in": 2.7,
+    "pitch_in": 1.8,
+    "blades": 3
+  }
+}

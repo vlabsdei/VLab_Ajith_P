@@ -1,0 +1,22 @@
+{
+  "name": "Diatone Mamba 55 A",
+  "mass_g": 21,
+  "qty": 1,
+  "size_mm": [
+    42,
+    42,
+    6
+  ],
+  "model": "Diatone_mamba_55A.glb",
+  "specs": {
+    "Current": "55 A × 4",
+    "Firmware": "BLHeli_32",
+    "Config": "4-in-1 stack"
+  },
+  "physics": {
+    "current_a": 55,
+    "burst_current_a": 70,
+    "rds_on_ohm": 0.0018,
+    "r_th_c_per_w": 12
+  }
+}

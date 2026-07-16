@@ -1,0 +1,198 @@
+{
+  "_readme": "Drop a new option folder (with spec.json + model) inside its category folder, then add the folder name to that category's options list below. Nothing in index.html / main.css / main.js needs to change.",
+  "categories": [
+    {
+      "key": "chasis",
+      "label": "Chassis",
+      "fallback": "frame",
+      "options": [
+        "micro4",
+        "fpv5",
+        "fpv_chasis_6_350gms",
+        "free7",
+        "cine10"
+      ]
+    },
+    {
+      "key": "propeller",
+      "label": "Propeller",
+      "fallback": "prop",
+      "options": [
+        "2.7in_tri",
+        "3in_tri",
+        "5in_tri",
+        "8in_bi",
+        "9in_bi",
+        "10in_bi",
+        "11in_bi",
+        "13in_bi",
+        "15in_bi",
+        "16in_bi"
+      ]
+    },
+    {
+      "key": "motor",
+      "label": "Motor",
+      "fallback": "motor",
+      "options": [
+        "1405",
+        "1806",
+        "2310",
+        "2806",
+        "3015",
+        "4130",
+        "4530",
+        "5010",
+        "9030"
+      ]
+    },
+    {
+      "key": "esc",
+      "label": "ESC",
+      "fallback": "esc",
+      "options": [
+        "Cyclone_35A",
+        "esc_45a",
+        "Diatine_mamba_55A",
+        "esc_65a",
+        "Dakefpv_120A",
+        "UH300",
+        "esc_4in1_50a"
+      ]
+    },
+    {
+      "key": "battery",
+      "label": "Battery",
+      "fallback": "battery",
+      "options": [
+        "3s_2200",
+        "4s_1500",
+        "4s_3300",
+        "6s_4000",
+        "6s_5000",
+        "4s_1300_lowc",
+        "4s_1500_highc"
+      ]
+    },
+    {
+      "key": "controller",
+      "label": "Flight Ctrl",
+      "fallback": "fc",
+      "options": [
+        "PiHawk",
+        "diatone_mamba",
+        "speedybee_f405",
+        "matek_f405"
+      ]
+    },
+    {
+      "key": "reciever",
+      "label": "Receiver",
+      "fallback": "rx",
+      "options": [
+        "CM703",
+        "nano_rx_pro",
+        "rbx_12",
+        "rush_fpv"
+      ]
+    },
+    {
+      "key": "attachments",
+      "label": "Attachment",
+      "fallback": "gimbal",
+      "multi": true,
+      "options": [
+        "gimbal",
+        "camera",
+        "gps",
+        "thermal_cam"
+      ]
+    }
+  ],
+  "defaults": {
+    "chasis": "fpv5",
+    "propeller": "5in_tri",
+    "motor": "1806",
+    "esc": "Cyclone_35A",
+    "battery": "4s_3300",
+    "controller": "PiHawk",
+    "reciever": "CM703",
+    "attachments": []
+  },
+  "modules": [
+    {
+      "id": "m1",
+      "label": "Module 1",
+      "sub": "Pack Under Load",
+      "experiments": [
+        {
+          "id": "crate",
+          "name": "C-Rating Safety Check",
+          "unit": "A",
+          "metric": "crate",
+          "type": "bench"
+        },
+        {
+          "id": "sag",
+          "name": "Voltage Sag Under Load",
+          "unit": "V",
+          "metric": "sag",
+          "type": "bench"
+        }
+      ]
+    },
+    {
+      "id": "m2",
+      "label": "Module 2",
+      "sub": "Energy & Endurance",
+      "experiments": [
+        {
+          "id": "endurance",
+          "name": "Endurance & Diminishing Returns",
+          "unit": "min",
+          "metric": "endurance",
+          "type": "flight"
+        },
+        {
+          "id": "soc",
+          "name": "SoC Discharge Mapping",
+          "unit": "%",
+          "metric": "soc",
+          "type": "bench"
+        }
+      ]
+    }
+  ],
+  "instructor": [
+    {
+      "text": "Welcome to the Energy Storage System Lab. We will load a real LiPo pack on the bench to find its safe current limits, then fly it to see how capacity trades off against endurance.",
+      "audio": null
+    },
+    {
+      "text": "Start in Input Parameters — tap the Battery tile to open its option library. Pick a low-C undersized pack to explore the fault paths, or a high-C pack to see everything pass safely.",
+      "audio": null
+    },
+    {
+      "text": "Module 1 · Pack Under Load puts the battery on the analyzer bench. C-Rating Safety Check ramps the full 4-motor draw and watches it against the pack's continuous rating; Voltage Sag Under Load traces loaded pack voltage down to a possible ESC brownout.",
+      "audio": null
+    },
+    {
+      "text": "Module 2 · Energy & Endurance reuses the real assembled-drone hover flight sim: Endurance & Diminishing Returns flies the pack down to its cutoff and shows why a bigger battery brings sub-linear gains — and can even stop the drone from hovering at all.",
+      "audio": null
+    },
+    {
+      "text": "SoC Discharge Mapping drains the pack on a discharge rig, tracing true coulomb-counted SoC against cell voltage and comparing it with a naive voltage-only estimate. An experiment only completes on a PASS — a fault run plays out fully but won't tick the progress bar.",
+      "audio": null
+    },
+    {
+      "text": "Outstanding — every experiment is complete. Your reward component is now unlocked in the Outputs panel.",
+      "audio": null
+    }
+  ],
+  "reward": {
+    "name": "Battery Pack",
+    "desc": "Unlocked build reward — a certified high-C LiPo pack, drop reward.glb in assets/reward/ to display it here.",
+    "fallback": "battery",
+    "model": "assets/reward/reward.glb"
+  }
+}

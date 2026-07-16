@@ -1,0 +1,22 @@
+{
+  "name": "Cyclone 35 A",
+  "mass_g": 9.8,
+  "qty": 4,
+  "size_mm": [
+    28,
+    14,
+    5
+  ],
+  "model": "Cyclone_35A.glb",
+  "specs": {
+    "Current": "35 A",
+    "Firmware": "BLHeli_S",
+    "Config": "4 × single"
+  },
+  "physics": {
+    "current_a": 35,
+    "burst_current_a": 45,
+    "rds_on_ohm": 0.0028,
+    "r_th_c_per_w": 18
+  }
+}

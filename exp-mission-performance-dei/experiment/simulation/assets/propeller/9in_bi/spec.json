@@ -1,0 +1,21 @@
+{
+  "name": "9\" Bi-blade  (4.7 pitch)",
+  "mass_g": 11.0,
+  "qty": 4,
+  "size_mm": [
+    228.6,
+    13.7,
+    228.6
+  ],
+  "model": "9inch_bi.glb",
+  "specs": {
+    "Diameter": "9 in",
+    "Pitch": "4.7 in",
+    "Blades": "2"
+  },
+  "physics": {
+    "diameter_in": 9.0,
+    "pitch_in": 4.7,
+    "blades": 2
+  }
+}

@@ -1,0 +1,28 @@
+{
+  "name": "1806 \u2014 2300 KV",
+  "mass_g": 19,
+  "qty": 4,
+  "size_mm": [
+    23,
+    20,
+    23
+  ],
+  "model": [
+    "stator.glb",
+    "rotar.glb"
+  ],
+  "specs": {
+    "KV": "2300 rpm/V",
+    "Max current": "28 A",
+    "Stator": "18 \u00d7 06"
+  },
+  "physics": {
+    "kv": 2300,
+    "rm_ohm": 0.09,
+    "i0_a": 0.6,
+    "max_current_a": 28,
+    "max_power_w": 420,
+    "k_fe": 0.0003,
+    "max_cells": 6
+  }
+}

@@ -1,0 +1,19 @@
+{
+  "name": "Rush FPV RX",
+  "mass_g": 2,
+  "qty": 1,
+  "size_mm": [
+    20,
+    12,
+    4
+  ],
+  "model": "rush_fpv.glb",
+  "specs": {
+    "Protocol": "CRSF",
+    "Channels": "16",
+    "Band": "2.4 GHz"
+  },
+  "physics": {
+    "protocol": "CRSF"
+  }
+}

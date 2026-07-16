@@ -1,0 +1,47 @@
+{
+  "format": "daruka.physics",
+  "formatVersion": "1.0",
+  "generator": "DARUKA Drone Authoring Toolkit v1.0.0",
+  "generatorVersion": "1.0.0",
+  "exported": "2026-07-09T15:21:35",
+  "frame": "Body1.009",
+  "coordinateSystem": "three.js (right-handed, Y-up)",
+  "units": "meters",
+  "physics": {
+    "dimensions": [
+      0.265708863735199,
+      0.06011473760008812,
+      0.21199293434619904
+    ],
+    "boundingBox": {
+      "min": [
+        -0.13286031782627106,
+        -0.02804931253194809,
+        -0.09819623082876205
+      ],
+      "max": [
+        0.13284853100776672,
+        0.03206542506814003,
+        0.11379670351743698
+      ]
+    },
+    "motorSpacingAdjacent": 0.203369,
+    "motorSpacingDiagonal": 0.290105,
+    "armLengthMean": 0.103203,
+    "armLengths": [
+      0.10164,
+      0.101641,
+      0.104766,
+      0.104765
+    ],
+    "centerOfGravity": [
+      -0.01095886342227459,
+      -0.013771114870905876,
+      0.01803606189787388
+    ],
+    "frameVolume": 4.1645e-05,
+    "frameSurfaceArea": 0.100021,
+    "estimatedFrameMassGrams": 160.0,
+    "estimatedTotalMassGrams": 1321.0
+  }
+}

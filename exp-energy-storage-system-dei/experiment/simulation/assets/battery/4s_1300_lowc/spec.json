@@ -1,0 +1,25 @@
+{
+  "name": "4S LiPo — 1300 mAh (low-C)",
+  "mass_g": 142,
+  "qty": 1,
+  "size_mm": [
+    70,
+    35,
+    26
+  ],
+  "model": "assets/battery/_model/Battery_Drone.fbx",
+  "specs": {
+    "Voltage": "14.8 V (4S)",
+    "Capacity": "1300 mAh",
+    "Discharge": "25C / 12C cont.",
+    "Note": "Undersized budget pack — low continuous C-rating, high internal resistance"
+  },
+  "physics": {
+    "cells": 4,
+    "voltage_nominal_v": 14.8,
+    "capacity_mah": 1300,
+    "c_rating": 25,
+    "c_rating_cont": 12,
+    "cell_ir_mohm": 24
+  }
+}

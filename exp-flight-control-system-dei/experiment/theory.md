@@ -56,7 +56,7 @@
 
 <p><i>&omega;</i><sub>n</sub> is the <strong>natural frequency</strong> (how fast the loop responds) and <i>&zeta;</i> is the <strong>damping ratio</strong> (how oscillatory it is). Raising <i>K</i><sub>p</sub> speeds the loop but reduces damping; raising <i>K</i><sub>d</sub> adds damping.</p>
 
-<h3>Where does <i>J</i> come from? — the build inherited from Experiment 2</h3>
+<h3>Where does <i>J</i> come from? — the assembled airframe</h3>
 
 <p>The moment of inertia is not a free parameter; it follows from the airframe you assembled. Modelling an X-quad as its four motors lumped at the arm radius <i>L</i>, each 45&deg; from the roll axis (perpendicular distance <i>L</i>/&radic;2):</p>
 
@@ -64,11 +64,11 @@
 
 <h3>Worked Example — Roll Inertia of the 5&Prime; Reference Airframe</h3>
 
-<p>Taking the take-off mass <i>m</i> = 0.5 kg and arm length <i>L</i> = 110 mm = 0.110 m inherited from Experiment 2:</p>
+<p>Taking the take-off mass <i>m</i> = 0.5 kg and arm length <i>L</i> = 110 mm = 0.110 m for the reference 5&Prime; build (X-Quad 5&Prime; chassis with its default motor, battery, ESC, controller and receiver):</p>
 
 <p align="center"><i>J</i> = (0.5 &times; 0.110<sup>2</sup>) / 2 = (0.5 &times; 0.0121) / 2 = <b>0.00303 kg&middot;m<sup>2</sup></b> &asymp; 0.003 kg&middot;m<sup>2</sup></p>
 
-<p>Every worked example below uses this <i>J</i> = 0.003 kg&middot;m<sup>2</sup>. A heavier or larger airframe raises <i>J</i> (the 10&Prime; heavy-lift preset is ~16&times; larger), which slows the loop for the same gains.</p>
+<p>Every worked example below uses this <i>J</i> = 0.003 kg&middot;m<sup>2</sup>. A heavier or larger airframe raises <i>J</i> sharply — both the arm length and the mass grow together on a 10&Prime; Cine-Lifter build with proportionally larger motors and battery, so <i>J</i> can end up an order of magnitude or more above the 5&Prime; reference — which slows the loop for the same gains.</p>
 
 <h3>Worked Example — Natural Frequency &amp; Damping at the Default Gains</h3>
 
@@ -137,9 +137,9 @@
 
 <p align="center"><i>e</i><sub>ss</sub> = <i>&tau;</i><sub>d</sub> / <i>K</i><sub>p</sub></p>
 
-<h3>Worked Example — Droop from the Experiment-2 CG Offset</h3>
+<h3>Worked Example — Droop from an Assumed CG Offset</h3>
 
-<p>The CG offset measured in Experiment 2 is <i>d</i> = 3.57 mm, so on the 0.5 kg airframe:</p>
+<p>The <strong>Disturbance torque</strong> switch in the simulator applies a fixed reference CG offset of <i>d</i> = 3.57 mm — representative of a slightly off-centre battery or payload — so on the 0.5 kg airframe:</p>
 
 <p align="center"><i>&tau;</i><sub>d</sub> = 0.5 &times; 9.807 &times; 0.00357 = <b>0.0175 N&middot;m</b></p>
 
@@ -356,7 +356,7 @@
 
 <p>Across the full 3&times;3 matrix on this build, every complementary-filter combination scores 98&ndash;99 and every gyro-only combination collapses to the mid-50s regardless of which controller drives it — the estimator choice dominates the controller choice. This is the leaderboard's central lesson: tuning gains you cannot trust perfectly is worse than modest gains you can.</p>
 
-<p>The uncalibrated-ESC fault from Experiment 4 (if that build was finalized without completing calibration) is programmed into this loop as an actuation offset that the command path must trim through — the integral term visibly works harder, because the dead-band values stored in the flight controller no longer match the ESC's true response.</p>
+<p>The <strong>Uncalibrated ESC</strong> switch on this tab programs the same kind of fault Experiment 4 studies directly — a fixed actuation offset that the command path must trim through — into this loop. Enabling it visibly makes the integral term work harder, because the dead-band assumed by the flight controller no longer matches the ESC's true response.</p>
 
 <hr>
 

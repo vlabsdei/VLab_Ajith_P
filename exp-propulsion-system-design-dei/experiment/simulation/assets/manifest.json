@@ -1,0 +1,210 @@
+{
+  "_readme": "Drop a new option folder (with spec.json + model) inside its category folder, then add the folder name to that category's options list below. Nothing in index.html / main.css / main.js needs to change.",
+  "categories": [
+    {
+      "key": "chasis",
+      "label": "Chassis",
+      "fallback": "frame",
+      "options": [
+        "micro4",
+        "fpv5",
+        "fpv_chasis_6_350gms",
+        "free7",
+        "cine10"
+      ]
+    },
+    {
+      "key": "propeller",
+      "label": "Propeller",
+      "fallback": "prop",
+      "options": [
+        "2.7in_tri",
+        "3in_tri",
+        "5in_tri",
+        "8in_bi",
+        "9in_bi",
+        "10in_bi",
+        "11in_bi",
+        "13in_bi",
+        "15in_bi",
+        "16in_bi"
+      ]
+    },
+    {
+      "key": "motor",
+      "label": "Motor",
+      "fallback": "motor",
+      "options": [
+        "1405",
+        "1806",
+        "2310",
+        "2806",
+        "3015",
+        "4130",
+        "4530",
+        "5010",
+        "9030"
+      ]
+    },
+    {
+      "key": "esc",
+      "label": "ESC",
+      "fallback": "esc",
+      "options": [
+        "Cyclone_35A",
+        "esc_45a",
+        "Diatine_mamba_55A",
+        "esc_65a",
+        "Dakefpv_120A",
+        "UH300",
+        "esc_4in1_50a"
+      ]
+    },
+    {
+      "key": "battery",
+      "label": "Battery",
+      "fallback": "battery",
+      "options": [
+        "3s_2200",
+        "4s_1500",
+        "4s_3300",
+        "6s_4000",
+        "6s_5000"
+      ]
+    },
+    {
+      "key": "controller",
+      "label": "Flight Ctrl",
+      "fallback": "fc",
+      "options": [
+        "PiHawk",
+        "diatone_mamba",
+        "speedybee_f405",
+        "matek_f405"
+      ]
+    },
+    {
+      "key": "reciever",
+      "label": "Receiver",
+      "fallback": "rx",
+      "options": [
+        "CM703",
+        "nano_rx_pro",
+        "rbx_12",
+        "rush_fpv"
+      ]
+    },
+    {
+      "key": "attachments",
+      "label": "Attachment",
+      "fallback": "gimbal",
+      "multi": true,
+      "options": [
+        "gimbal",
+        "camera",
+        "gps",
+        "thermal_cam"
+      ]
+    }
+  ],
+  "defaults": {
+    "chasis": "fpv5",
+    "propeller": "5in_tri",
+    "motor": "1806",
+    "esc": "Cyclone_35A",
+    "battery": "4s_1500",
+    "controller": "PiHawk",
+    "reciever": "CM703",
+    "attachments": []
+  },
+  "modules": [
+    {
+      "id": "m1",
+      "label": "Module 1",
+      "sub": "Assembly & Thrust",
+      "experiments": [
+        {
+          "id": "assemble",
+          "name": "Assembly Check",
+          "unit": "",
+          "metric": "build",
+          "type": "assembly"
+        },
+        {
+          "id": "thrust",
+          "name": "Static Thrust",
+          "unit": "N",
+          "metric": "thrust",
+          "type": "bench"
+        }
+      ]
+    },
+    {
+      "id": "m2",
+      "label": "Module 2",
+      "sub": "Motor Characterisation",
+      "experiments": [
+        {
+          "id": "thermal",
+          "name": "Thermal · RPM Loss",
+          "unit": "°C",
+          "metric": "temp",
+          "type": "bench"
+        },
+        {
+          "id": "efficiency",
+          "name": "Motor Efficiency",
+          "unit": "%",
+          "metric": "eff",
+          "type": "bench"
+        }
+      ]
+    },
+    {
+      "id": "m3",
+      "label": "Module 3",
+      "sub": "Flight Verification",
+      "experiments": [
+        {
+          "id": "verify",
+          "name": "Hover / Flight",
+          "unit": "m",
+          "metric": "alt",
+          "type": "flight"
+        }
+      ]
+    }
+  ],
+  "instructor": [
+    {
+      "text": "Welcome to the Drone Technology Lab. We will assemble a quadrotor, characterise its motor on the bench, then verify that it can fly.",
+      "audio": null
+    },
+    {
+      "text": "Start in Input Parameters — tap any component tile to open its option library. Watch the Diagnostics Log: if the propellers collide or a part is over-rated it will flag an error you must fix.",
+      "audio": null
+    },
+    {
+      "text": "Module 1 · Tab 1 shows the assembled drone. Run the Assembly Check to confirm the geometry is sound, then switch to Static Thrust to mount a motor on the bench and measure its thrust.",
+      "audio": null
+    },
+    {
+      "text": "Module 2 characterises the motor on the stand: first the thermal test measures RPM loss as the windings heat up, then the efficiency test sweeps throttle to find the best operating point.",
+      "audio": null
+    },
+    {
+      "text": "Module 3 is the flight verification. Set a target altitude and run it — the drone flies with real vertical dynamics and reports whether it can hover and climb to your target.",
+      "audio": null
+    },
+    {
+      "text": "Outstanding — every experiment is complete. Your reward component is now unlocked in the Outputs panel.",
+      "audio": null
+    }
+  ],
+  "reward": {
+    "name": "Reward Component",
+    "desc": "Unlocked build reward — drop reward.glb in assets/reward/ to display it here.",
+    "fallback": "lidar",
+    "model": "assets/reward/reward.glb"
+  }
+}

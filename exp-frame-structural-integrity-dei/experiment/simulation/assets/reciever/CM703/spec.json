@@ -1,0 +1,19 @@
+{
+  "name": "CM703 7-CH Receiver",
+  "mass_g": 10,
+  "qty": 1,
+  "size_mm": [
+    48,
+    22,
+    11
+  ],
+  "model": "CM703_reciver.glb",
+  "specs": {
+    "Protocol": "PWM / PPM",
+    "Channels": "7",
+    "Band": "2.4 GHz"
+  },
+  "physics": {
+    "protocol": "PWM"
+  }
+}

@@ -1,0 +1,207 @@
+{
+  "_readme": "Drop a new option folder (with spec.json + model) inside its category folder, then add the folder name to that category's options list below. Nothing in index.html / main.css / main.js needs to change.",
+  "categories": [
+    {
+      "key": "chasis",
+      "label": "Chassis",
+      "fallback": "frame",
+      "options": [
+        "micro4",
+        "fpv5",
+        "fpv_chasis_6_350gms",
+        "free7",
+        "cine10"
+      ]
+    },
+    {
+      "key": "propeller",
+      "label": "Propeller",
+      "fallback": "prop",
+      "options": [
+        "2.7in_tri",
+        "3in_tri",
+        "5in_tri",
+        "8in_bi",
+        "9in_bi",
+        "10in_bi",
+        "11in_bi",
+        "13in_bi",
+        "15in_bi",
+        "16in_bi"
+      ]
+    },
+    {
+      "key": "motor",
+      "label": "Motor",
+      "fallback": "motor",
+      "options": [
+        "1405",
+        "1806",
+        "2310",
+        "2806",
+        "3015",
+        "4130",
+        "4530",
+        "5010",
+        "9030"
+      ]
+    },
+    {
+      "key": "esc",
+      "label": "ESC",
+      "fallback": "esc",
+      "options": [
+        "Cyclone_35A",
+        "esc_45a",
+        "Diatine_mamba_55A",
+        "esc_65a",
+        "Dakefpv_120A",
+        "UH300",
+        "esc_4in1_50a"
+      ]
+    },
+    {
+      "key": "battery",
+      "label": "Battery",
+      "fallback": "battery",
+      "options": [
+        "3s_2200",
+        "4s_1500",
+        "4s_3300",
+        "6s_4000",
+        "6s_5000"
+      ]
+    },
+    {
+      "key": "controller",
+      "label": "Flight Ctrl",
+      "fallback": "fc",
+      "options": [
+        "PiHawk",
+        "diatone_mamba",
+        "speedybee_f405",
+        "matek_f405"
+      ]
+    },
+    {
+      "key": "reciever",
+      "label": "Receiver",
+      "fallback": "rx",
+      "options": [
+        "CM703",
+        "nano_rx_pro",
+        "rbx_12",
+        "rush_fpv"
+      ]
+    },
+    {
+      "key": "attachments",
+      "label": "Attachment",
+      "fallback": "gimbal",
+      "multi": true,
+      "options": [
+        "gimbal",
+        "camera",
+        "gps",
+        "thermal_cam"
+      ]
+    }
+  ],
+  "defaults": {
+    "chasis": "fpv5",
+    "propeller": "5in_tri",
+    "motor": "1806",
+    "esc": "Cyclone_35A",
+    "battery": "4s_1500",
+    "controller": "PiHawk",
+    "reciever": "CM703",
+    "attachments": []
+  },
+  "modules": [
+    {
+      "id": "m1",
+      "label": "Module 1",
+      "sub": "Steady-State Heat",
+      "experiments": [
+        {
+          "id": "tss",
+          "name": "Steady-State Temp Sweep",
+          "unit": "°C",
+          "metric": "tss",
+          "type": "thermbench"
+        },
+        {
+          "id": "tau",
+          "name": "Thermal Time Constant",
+          "unit": "s",
+          "metric": "tau",
+          "type": "thermbench"
+        }
+      ]
+    },
+    {
+      "id": "m2",
+      "label": "Module 2",
+      "sub": "ESC Survivability",
+      "experiments": [
+        {
+          "id": "tesc",
+          "name": "ESC Thermal Check",
+          "unit": "°C",
+          "metric": "tesc",
+          "type": "escbench"
+        }
+      ]
+    },
+    {
+      "id": "m3",
+      "label": "Module 3",
+      "sub": "Active Cooling",
+      "experiments": [
+        {
+          "id": "qcool",
+          "name": "Rotor-Wash Cooling",
+          "unit": "°C",
+          "metric": "qcool",
+          "type": "coolflow"
+        }
+      ]
+    }
+  ],
+  "instructor": [
+    {
+      "text": "Welcome to the Thermal Management lab. Every motor and ESC dissipates I²R heat — here you will measure how hot they run, how fast they get there, and how to cool them so they survive.",
+      "audio": null
+    },
+    {
+      "text": "Start in Input Parameters — tap any component tile to open its option library, then use the new Environment & Cooling card to set ambient temperature, airflow and Static/Forward flight mode. Everything here is a live control — nothing runs automatically.",
+      "audio": null
+    },
+    {
+      "text": "Module 1 · Steady-State Temp Sweep: pick a throttle, press Arm, let it settle, then press Record Point. Repeat at five different throttle settings — the T_ss vs I² chart should trace a straight line whose slope is R_m·R_th.",
+      "audio": null
+    },
+    {
+      "text": "Module 1 · Thermal Time Constant: arm the bench and watch the heating curve climb. Drag the τ-cursor on the chart to the knee where it reaches 63.2% of its rise — that time is τ. Try a second throttle: τ should read the same, because it depends only on R_th·C_th, not on load.",
+      "audio": null
+    },
+    {
+      "text": "Module 2 · ESC Thermal Check: run full throttle and watch the ESC gauge against the 80 °C limit. If it trips into the red, drag a Heatsink onto the ESC or pick a beefier ESC tile to bring it back under the line.",
+      "audio": null
+    },
+    {
+      "text": "Module 3 · Rotor-Wash Cooling: in still air the case can run dangerously hot. Raise the cooling-airflow slider, drag the Ducted Fan onto the motor, and switch Static → Forward — watch the required-cooling bar and the settled temperature fall as coverage improves.",
+      "audio": null
+    },
+    {
+      "text": "Outstanding — every experiment is complete. Thermal Pads + Heatsink are now unlocked in the Outputs panel.",
+      "audio": null
+    }
+  ],
+  "reward": {
+    "name": "Thermal Pads + Heatsink",
+    "desc": "Unlocked build reward — a finned aluminium heatsink and conductive thermal pad kit for motor/ESC cooling. Drop reward.glb in assets/reward/ to display a real model here.",
+    "fallback": "lidar",
+    "model": "assets/reward/reward.glb"
+  }
+}

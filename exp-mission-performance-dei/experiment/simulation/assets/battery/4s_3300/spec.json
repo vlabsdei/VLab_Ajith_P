@@ -1,0 +1,23 @@
+{
+  "name": "4S LiPo — 3300 mAh",
+  "mass_g": 320,
+  "qty": 1,
+  "size_mm": [
+    135,
+    43,
+    32
+  ],
+  "model": "assets/battery/_model/Battery_Drone.fbx",
+  "specs": {
+    "Voltage": "14.8 V (4S)",
+    "Capacity": "3300 mAh",
+    "Discharge": "35 C"
+  },
+  "physics": {
+    "cells": 4,
+    "voltage_nominal_v": 14.8,
+    "capacity_mah": 3300,
+    "c_rating": 35,
+    "cell_ir_mohm": 6.5
+  }
+}

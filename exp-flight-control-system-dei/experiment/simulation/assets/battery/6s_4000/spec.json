@@ -1,0 +1,23 @@
+{
+  "name": "6S LiPo — 4000 mAh",
+  "mass_g": 508,
+  "qty": 1,
+  "size_mm": [
+    155,
+    48,
+    42
+  ],
+  "model": "assets/battery/_model/Battery_Drone.fbx",
+  "specs": {
+    "Voltage": "22.2 V (6S)",
+    "Capacity": "4000 mAh",
+    "Discharge": "30 C"
+  },
+  "physics": {
+    "cells": 6,
+    "voltage_nominal_v": 22.2,
+    "capacity_mah": 4000,
+    "c_rating": 30,
+    "cell_ir_mohm": 7
+  }
+}

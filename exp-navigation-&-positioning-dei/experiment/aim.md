@@ -1,0 +1,2 @@
+### Aim of the experiment
+To characterize a drone's GPS-based navigation accuracy by building a satellite constellation and computing its dilution-of-precision, deriving horizontal position accuracy (CEP) from that geometry and a receiver's ranging error, profiling a barometric altimeter against the ISA atmosphere model, and combining the horizontal and vertical error terms into a single 3-D error budget to judge whether the resulting fix is safe for autonomous flight near obstacles.

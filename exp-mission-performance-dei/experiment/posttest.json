@@ -1,0 +1,175 @@
+{
+  "version": 2.0,
+  "questions": [
+    {
+      "question": "Q1. The reference build (fpv5 chassis, 5\" tri-blade props, 1806 motors, 4S/1500 pack, no payload) has an all-up mass of about 529 g. What level-flight thrust must the motors produce?",
+      "answers": {
+        "a": "2.6 N",
+        "b": "5.19 N",
+        "c": "10.4 N",
+        "d": "51.9 N"
+      },
+      "explanations": {
+        "a": "Incorrect — that is roughly half the required thrust.",
+        "b": "Correct — T = m·g = 0.529 kg × 9.807 m/s² ≈ 5.19 N.",
+        "c": "Incorrect — that is double the required thrust.",
+        "d": "Incorrect — that overstates mass by a factor of 10 (as if mass were 5.29 kg)."
+      },
+      "correctAnswer": "b",
+      "difficulty": "intermediate"
+    },
+    {
+      "question": "Q2. Four 5\" (0.127 m diameter) propellers give a total disk area A_disk = 4·π·(0.0635)² ≈ 0.0507 m². With T ≈ 5.19 N and ρ = 1.225 kg/m³, what is the hover-induced velocity v_h = √(T / (2ρA_disk))?",
+      "answers": {
+        "a": "About 1.6 m/s",
+        "b": "About 3.2 m/s",
+        "c": "About 6.5 m/s",
+        "d": "About 13 m/s"
+      },
+      "explanations": {
+        "a": "Incorrect — recompute: 5.19 / (2×1.225×0.0507) ≈ 41.8, and √41.8 ≈ 6.5, not 1.6.",
+        "b": "Incorrect — that is roughly half the correct value.",
+        "c": "Correct — v_h = √(5.19 / (2×1.225×0.0507)) = √41.8 ≈ 6.47 m/s.",
+        "d": "Incorrect — that is roughly double the correct value."
+      },
+      "correctAnswer": "c",
+      "difficulty": "advanced"
+    },
+    {
+      "question": "Q3. Using P_ind(0) = T·v_h with T ≈ 5.19 N and v_h ≈ 6.47 m/s, what is the reference build's ideal hover power?",
+      "answers": {
+        "a": "About 8 W",
+        "b": "About 17 W",
+        "c": "About 33.5 W",
+        "d": "About 67 W"
+      },
+      "explanations": {
+        "a": "Incorrect — recompute the product 5.19 × 6.47.",
+        "b": "Incorrect — that is roughly half the correct value.",
+        "c": "Correct — P_ind(0) = 5.19 × 6.47 ≈ 33.5 W, the momentum-theory hover power floor.",
+        "d": "Incorrect — that is roughly double the correct value."
+      },
+      "correctAnswer": "c",
+      "difficulty": "intermediate"
+    },
+    {
+      "question": "Q4. For the reference build, sweeping the cruise-power curve from 2-20 m/s gives a minimum near which airspeed, and roughly what power?",
+      "answers": {
+        "a": "V ≈ 2 m/s, P ≈ 34 W",
+        "b": "V ≈ 9.5 m/s, P ≈ 26 W",
+        "c": "V ≈ 15 m/s, P ≈ 35 W",
+        "d": "V ≈ 20 m/s, P ≈ 55 W"
+      },
+      "explanations": {
+        "a": "Incorrect — 2 m/s is close to hover, where power is still near its high induced-power floor, not the minimum.",
+        "b": "Correct — the theory worked example shows the minimum near V ≈ 9.5 m/s at about 26 W, the maximum-endurance operating point.",
+        "c": "Incorrect — at 15 m/s parasitic power has already pushed cruise power well above the minimum.",
+        "d": "Incorrect — 20 m/s is near the top of the sweep, where parasitic power dominates and cruise power is well above the minimum."
+      },
+      "correctAnswer": "b",
+      "difficulty": "intermediate"
+    },
+    {
+      "question": "Q5. For the same reference build, the maximum-range speed (minimising power per unit distance) is found near V ≈ 13.5 m/s. Compared with the maximum-endurance speed of ≈ 9.5 m/s, what does this confirm?",
+      "answers": {
+        "a": "The two speeds are identical for this build",
+        "b": "Maximum-range speed is always slower than maximum-endurance speed",
+        "c": "Maximum-range speed is faster than maximum-endurance speed, as the theory predicts",
+        "d": "Airspeed has no effect on which optimum applies"
+      },
+      "explanations": {
+        "a": "Incorrect — 13.5 m/s and 9.5 m/s are clearly different speeds.",
+        "b": "Incorrect — this reverses the correct relationship; range speed is the faster one.",
+        "c": "Correct — the max-range speed sits to the right of the power-curve minimum, confirming it is always faster than the max-endurance speed.",
+        "d": "Incorrect — airspeed is exactly the variable that distinguishes the two optimum operating points."
+      },
+      "correctAnswer": "c",
+      "difficulty": "advanced"
+    },
+    {
+      "question": "Q6. In the virtual lab simulation's Mission Energy sub-experiment, a 4S/1500 mAh pack has a rated energy E_batt = 14.8 V × 1.5 Ah ≈ 22.2 Wh. A 500 m out-and-back mission at V = 10 m/s (30/60/30 s hover phases) costs the reference build about 1.85 Wh. What does this confirm about the mission?",
+      "answers": {
+        "a": "The mission fails — the pack cannot supply enough energy",
+        "b": "The mission passes with a very large energy margin, since 1.85 Wh is a small fraction of the 22.2 Wh pack",
+        "c": "The mission exactly exhausts the pack",
+        "d": "The pack capacity is irrelevant to whether the mission passes"
+      },
+      "explanations": {
+        "a": "Incorrect — 1.85 Wh is far below the 22.2 Wh rated energy; the mission does not fail here.",
+        "b": "Correct — even after the ≈0.55 electrical-to-aerodynamic efficiency factor, 1.85 Wh is a small slice of a 22.2 Wh pack, so the mission passes with substantial margin to spare.",
+        "c": "Incorrect — 1.85 Wh is nowhere near the pack's full rated energy.",
+        "d": "Incorrect — the PASS/FAIL verdict is defined precisely by comparing mission energy against usable pack capacity."
+      },
+      "correctAnswer": "b",
+      "difficulty": "intermediate"
+    },
+    {
+      "question": "Q7. In the Range-Payload sub-experiment, on the 4S/1500 pack cruising at 10 m/s, doubling payload from 200 g to 400 g cuts range from about 9.5 km to about 6.2 km. What percentage reduction in range does this represent, and why is it so large for only a doubling of payload?",
+      "answers": {
+        "a": "About 10% — because payload barely affects range",
+        "b": "About 35% — because induced power grows super-linearly with weight (T^1.5 at hover, even steeper in forward flight), so the extra mass costs disproportionately more power",
+        "c": "About 65% — because range is inversely proportional to the square of payload",
+        "d": "About 100% — because doubling payload always halves range exactly, plus a fixed penalty"
+      },
+      "explanations": {
+        "a": "Incorrect — 10% understates the actual drop shown by the worked example.",
+        "b": "Correct — (9.5 - 6.2)/9.5 ≈ 0.35, a roughly one-third cut, driven by induced power's super-linear scaling with the heavier build's weight.",
+        "c": "Incorrect — the model does not use an inverse-square relationship between range and payload.",
+        "d": "Incorrect — the actual reduction (about a third) is considerably less than a full halving, let alone 100%."
+      },
+      "correctAnswer": "b",
+      "difficulty": "advanced"
+    },
+    {
+      "question": "Q8. During the Range-Payload sub-experiment, the simulator sweeps the same payload range across three reference packs — 3S/2200 mAh, 4S/1500 mAh and 6S/5000 mAh — while leaving the rest of the build's mass exactly as configured in Input Parameters. What does this simulator behaviour mean for reading the resulting envelope?",
+      "answers": {
+        "a": "Each curve already includes the extra physical weight of its own pack, so the comparison is a true apples-to-apples flight-weight trade-off",
+        "b": "The three curves differ only because of each pack's usable Watt-hours — the simulator does not add the heavier real-world mass of a bigger pack, so the envelope isolates the energy-capacity effect alone",
+        "c": "The battery choice has no effect at all on the plotted curves",
+        "d": "The simulator recomputes the airframe's centre of gravity for each pack before sweeping"
+      },
+      "explanations": {
+        "a": "Incorrect — the dry mass used for every curve stays fixed at the currently selected battery's mass; a real 6S/5000 pack would be heavier than a 4S/1500 one, and that difference is not modelled here.",
+        "b": "Correct — rangeFor() only varies with each reference pack's rated Wh in this sweep; total mass is not re-derived per pack, so the three curves show the pure effect of energy capacity on range.",
+        "c": "Incorrect — battery choice clearly shifts each curve, through its usable energy term.",
+        "d": "Incorrect — the simulator has no centre-of-gravity model; this experiment only tracks total mass, drag and power."
+      },
+      "correctAnswer": "b",
+      "difficulty": "advanced"
+    },
+    {
+      "question": "Q9. In the virtual lab simulation, if you lengthen the cruise-out and cruise-back legs in the Mission Energy sub-experiment's phase-duration editor while keeping payload and battery fixed, what happens to the PASS/FAIL verdict?",
+      "answers": {
+        "a": "Nothing changes — phase durations don't affect the verdict",
+        "b": "The verdict always stays PASS regardless of duration",
+        "c": "Total mission energy rises with the added cruise time, shrinking the margin against usable pack energy and eventually flipping the verdict to FAIL",
+        "d": "Longer cruise legs reduce the mission energy because cruise power is lower than hover power"
+      },
+      "explanations": {
+        "a": "Incorrect — the phase durations are exactly what the energy summation is built from; changing them changes the total directly.",
+        "b": "Incorrect — energy grows without bound as duration grows, so a long enough leg will always exceed the pack's usable energy.",
+        "c": "Correct — E_total sums power times duration over every phase; stretching the cruise legs adds proportionally more Watt-hours until the usable pack energy is exceeded and the verdict flips.",
+        "d": "Incorrect — whether cruise power is lower than hover power depends on the chosen airspeed, and even when it is, more time still means more energy, not less."
+      },
+      "correctAnswer": "c",
+      "difficulty": "intermediate"
+    },
+    {
+      "question": "Q10. In the virtual lab simulation, moving the Density Altitude slider upward (increasing altitude) before running Power Profiling changes air density ρ. What happens to the U-shaped cruise-power curve as a result?",
+      "answers": {
+        "a": "The curve is unaffected — altitude only matters for the Range-Payload sub-experiment",
+        "b": "Both the parasitic-power term and the hover-induced-velocity term change, because both F_D(V) and v_h depend on ρ, so the whole curve — and its minimum — shifts",
+        "c": "Only the parasitic drag term changes; induced power is independent of air density",
+        "d": "The curve becomes flat because thinner air removes all drag"
+      },
+      "explanations": {
+        "a": "Incorrect — altitude changes ρ, which every metric in this experiment depends on through drag and induced velocity.",
+        "b": "Correct — F_D(V) = ½ρV²C_dA falls with lower ρ, and v_h = √(T/(2ρA_disk)) rises with lower ρ, so thinner air at altitude reshapes both halves of the curve and moves its minimum.",
+        "c": "Incorrect — v_h, and hence induced power, explicitly depends on ρ through the same formula used since Section 2.",
+        "d": "Incorrect — thinner air reduces drag but does not eliminate it, and induced power actually rises as density falls."
+      },
+      "correctAnswer": "b",
+      "difficulty": "advanced"
+    }
+  ]
+}

@@ -1,0 +1,24 @@
+{
+  "name": "4\" Bi-Blade",
+  "mass_g": 2.8,
+  "qty": 4,
+  "size_mm": [
+    102,
+    10,
+    16
+  ],
+  "model": "4_tri-blade_propeller-2.glb",
+  "specs": {
+    "Diameter": "4 in",
+    "Pitch": "3.5 in",
+    "Blades": "2"
+  },
+  "physics": {
+    "diameter_in": 4,
+    "pitch_in": 3.5,
+    "blades": 2,
+    "ct": 0.108,
+    "cq": 0.012,
+    "mass_g_each": 2.8
+  }
+}

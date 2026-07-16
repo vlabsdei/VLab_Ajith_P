@@ -1,0 +1,19 @@
+{
+  "name": "GPS Module",
+  "mass_g": 10,
+  "qty": 1,
+  "size_mm": [
+    25,
+    25,
+    8
+  ],
+  "model": "gps.glb",
+  "specs": {
+    "System": "GPS/GLONASS",
+    "Compass": "Integrated"
+  },
+  "physics": {
+    "payload": true,
+    "mount_type": "gps"
+  }
+}

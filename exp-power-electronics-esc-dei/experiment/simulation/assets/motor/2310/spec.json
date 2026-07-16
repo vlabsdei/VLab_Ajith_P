@@ -1,0 +1,28 @@
+{
+  "name": "2310 \u2014 2400 KV",
+  "mass_g": 33,
+  "qty": 4,
+  "size_mm": [
+    28,
+    24,
+    28
+  ],
+  "model": [
+    "stator.glb",
+    "rotar.glb"
+  ],
+  "specs": {
+    "KV": "2400 rpm/V",
+    "Max current": "30 A",
+    "Stator": "23 \u00d7 10"
+  },
+  "physics": {
+    "kv": 2400,
+    "rm_ohm": 0.06,
+    "i0_a": 0.9,
+    "max_current_a": 30,
+    "max_power_w": 650,
+    "k_fe": 0.0004,
+    "max_cells": 6
+  }
+}

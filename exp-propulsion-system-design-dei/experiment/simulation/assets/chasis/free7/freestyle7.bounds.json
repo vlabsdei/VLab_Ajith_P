@@ -1,0 +1,12 @@
+{
+  "format": "daruka.bounds",
+  "formatVersion": "1.0",
+  "generator": "DARUKA Drone Authoring Toolkit v1.0.0",
+  "generatorVersion": "1.0.0",
+  "exported": "2026-07-10T03:43:55",
+  "frame": "freestyle7",
+  "coordinateSystem": "three.js (right-handed, Y-up)",
+  "units": "meters",
+  "boundsCount": 0,
+  "bounds": []
+}

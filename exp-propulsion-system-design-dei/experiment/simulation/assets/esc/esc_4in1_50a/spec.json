@@ -1,0 +1,25 @@
+{
+  "name": "4-in-1 50 A / ch",
+  "mass_g": 9,
+  "qty": 1,
+  "size_mm": [
+    42,
+    42,
+    8
+  ],
+  "model": "esc_single.glb",
+  "specs": {
+    "Current": "50 A/ch",
+    "Firmware": "BLHeli_32",
+    "Config": "4-in-1 (stacks under FC)",
+    "Note": "shared model"
+  },
+  "physics": {
+    "current_a": 50,
+    "burst_current_a": 65,
+    "rds_on_ohm": 0.0018,
+    "r_th_c_per_w": 12,
+    "max_cells": 6,
+    "form_factor": "4in1"
+  }
+}

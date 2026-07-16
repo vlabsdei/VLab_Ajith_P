@@ -1,0 +1,28 @@
+{
+  "name": "4530 \u2014 300 KV",
+  "mass_g": 152,
+  "qty": 4,
+  "size_mm": [
+    50,
+    42,
+    50
+  ],
+  "model": [
+    "stator.glb",
+    "rotar.glb"
+  ],
+  "specs": {
+    "KV": "300 rpm/V",
+    "Max current": "45 A",
+    "Stator": "45 \u00d7 30"
+  },
+  "physics": {
+    "kv": 300,
+    "rm_ohm": 0.11,
+    "i0_a": 0.5,
+    "max_current_a": 45,
+    "max_power_w": 1650,
+    "k_fe": 0.0008,
+    "max_cells": 12
+  }
+}

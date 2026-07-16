@@ -1,0 +1,28 @@
+{
+  "name": "DARUKA Freestyle 7\"",
+  "mass_g": 283,
+  "qty": 1,
+  "size_mm": [
+    320.6,
+    180.4,
+    320.6
+  ],
+  "model": "Freestyle_7.glb",
+  "mounts": "Freestyle_7_mounts.json",
+  "specs": {
+    "Wheelbase": "402 mm",
+    "Arms": "4 (X-config)",
+    "Arm length": "209 mm",
+    "Mount points": "14 authored"
+  },
+  "physics": {
+    "wheelbase_mm": 402,
+    "recommended_prop_in": [
+      6,
+      7
+    ],
+    "frontal_area_m2": 0.0347,
+    "cd": 1.05,
+    "arm_length_mm": 201
+  }
+}

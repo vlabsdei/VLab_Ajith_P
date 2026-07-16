@@ -1,0 +1,19 @@
+{
+  "name": "Diatone Mamba F405",
+  "mass_g": 9,
+  "qty": 1,
+  "size_mm": [
+    36,
+    36,
+    8
+  ],
+  "model": "diatone_mamba.glb",
+  "specs": {
+    "MCU": "STM32F405",
+    "Mount": "30.5\u00d730.5",
+    "Gyro": "MPU6000"
+  },
+  "physics": {
+    "processor": "STM32F405"
+  }
+}

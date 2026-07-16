@@ -1,0 +1,206 @@
+{
+  "_readme": "Drop a new option folder (with spec.json + model) inside its category folder, then add the folder name to that category's options list below. Nothing in index.html / main.css / main.js needs to change.",
+  "categories": [
+    {
+      "key": "chasis",
+      "label": "Chassis",
+      "fallback": "frame",
+      "options": [
+        "micro4",
+        "fpv5",
+        "fpv_chasis_6_350gms",
+        "free7",
+        "cine10"
+      ]
+    },
+    {
+      "key": "propeller",
+      "label": "Propeller",
+      "fallback": "prop",
+      "options": [
+        "2.7in_tri",
+        "3in_tri",
+        "5in_tri",
+        "8in_bi",
+        "9in_bi",
+        "10in_bi",
+        "11in_bi",
+        "13in_bi",
+        "15in_bi",
+        "16in_bi"
+      ]
+    },
+    {
+      "key": "motor",
+      "label": "Motor",
+      "fallback": "motor",
+      "options": [
+        "1405",
+        "1806",
+        "2310",
+        "2806",
+        "3015",
+        "4130",
+        "4530",
+        "5010",
+        "9030"
+      ]
+    },
+    {
+      "key": "esc",
+      "label": "ESC",
+      "fallback": "esc",
+      "options": [
+        "Cyclone_35A",
+        "esc_45a",
+        "Diatine_mamba_55A",
+        "esc_65a",
+        "Dakefpv_120A",
+        "UH300",
+        "esc_4in1_50a"
+      ]
+    },
+    {
+      "key": "battery",
+      "label": "Battery",
+      "fallback": "battery",
+      "options": [
+        "3s_2200",
+        "4s_1500",
+        "4s_3300",
+        "6s_4000",
+        "6s_5000"
+      ]
+    },
+    {
+      "key": "controller",
+      "label": "Flight Ctrl",
+      "fallback": "fc",
+      "options": [
+        "PiHawk",
+        "diatone_mamba",
+        "speedybee_f405",
+        "matek_f405"
+      ]
+    },
+    {
+      "key": "reciever",
+      "label": "Receiver",
+      "fallback": "rx",
+      "options": [
+        "CM703",
+        "nano_rx_pro",
+        "rbx_12",
+        "rush_fpv"
+      ]
+    },
+    {
+      "key": "attachments",
+      "label": "Attachment",
+      "fallback": "gimbal",
+      "multi": true,
+      "options": [
+        "gimbal",
+        "camera",
+        "gps",
+        "thermal_cam"
+      ]
+    }
+  ],
+  "defaults": {
+    "chasis": "fpv5",
+    "propeller": "5in_tri",
+    "motor": "1806",
+    "esc": "Cyclone_35A",
+    "battery": "4s_1500",
+    "controller": "PiHawk",
+    "reciever": "CM703",
+    "attachments": []
+  },
+  "modules": [
+    {
+      "id": "m1",
+      "label": "Module 1",
+      "sub": "Horizontal Accuracy",
+      "name": "GPS Constellation",
+      "experiments": [
+        {
+          "id": "geometry",
+          "name": "Constellation Geometry",
+          "unit": "",
+          "metric": "hdop",
+          "type": "skyplot"
+        },
+        {
+          "id": "horizontal",
+          "name": "Horizontal Accuracy",
+          "unit": "m",
+          "metric": "cep",
+          "type": "skyplot"
+        }
+      ]
+    },
+    {
+      "id": "m2",
+      "label": "Module 2",
+      "sub": "ISA Altitude",
+      "name": "Barometric Altimetry",
+      "experiments": [
+        {
+          "id": "profiling",
+          "name": "ISA Altitude Profiling",
+          "unit": "m",
+          "metric": "baroerr",
+          "type": "baro"
+        }
+      ]
+    },
+    {
+      "id": "m3",
+      "label": "Module 3",
+      "sub": "Nav Synthesis",
+      "name": "3D Error Budget",
+      "experiments": [
+        {
+          "id": "budget",
+          "name": "Error Budget Synthesis",
+          "unit": "m",
+          "metric": "nav3d",
+          "type": "nav3d"
+        }
+      ]
+    }
+  ],
+  "instructor": [
+    {
+      "text": "Welcome to the Navigation & Positioning Lab. We will build up a drone's GPS constellation geometry, measure its horizontal accuracy, profile a barometric altimeter against the ISA atmosphere, then combine both into a full 3-D error budget.",
+      "audio": null
+    },
+    {
+      "text": "Module 1 · Tab 1 — Constellation Geometry. Open the Constellation card and drag satellites on the sky-plot editor (elevation 90° at the centre, the horizon at the rim). Watch HDOP / VDOP / PDOP update live as you spread, cluster, or line them up — run the check once the geometry looks good.",
+      "audio": null
+    },
+    {
+      "text": "Module 1 · Tab 2 — Horizontal Accuracy. HDOP alone isn't a distance — multiply it by the receiver's ranging error (UERE) to get CEP, the radius that contains half of all GPS fixes. Try the urban-canyon multipath scenario and watch the fix cloud balloon outward.",
+      "audio": null
+    },
+    {
+      "text": "Module 2 — ISA Altitude Profiling. The barometer infers altitude purely from pressure using the ISA lapse-rate model. Slide the altitude control and compare the sensed vs. true altitude column — a coarse sensor scatters, a temperature inversion biases the whole reading.",
+      "audio": null
+    },
+    {
+      "text": "Module 3 — Error Budget Synthesis. GPS gives you a horizontal CEP, the barometer gives you a vertical error — combine them as a 3-D ellipsoid: total = √(CEP² + h_err²). Keep the total under 5 m and the drone is safe to fly autonomously near the obstacle.",
+      "audio": null
+    },
+    {
+      "text": "Outstanding — every experiment is complete. Your GPS module reward is now unlocked in the Outputs panel.",
+      "audio": null
+    }
+  ],
+  "reward": {
+    "name": "GPS Module",
+    "desc": "Unlocked — a real GNSS/compass module, ready to mount on the mast once the full nav error budget checks out.",
+    "fallback": "gps",
+    "model": "assets/attachments/gps/gps.glb"
+  }
+}

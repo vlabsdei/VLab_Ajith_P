@@ -1,0 +1,27 @@
+{
+  "name": "1405 \u2014 3800 KV",
+  "mass_g": 8.9,
+  "qty": 4,
+  "size_mm": [
+    19,
+    15,
+    19
+  ],
+  "model": [
+    "stator.glb",
+    "rotar.glb"
+  ],
+  "specs": {
+    "KV": "3800 rpm/V",
+    "Max current": "22 A",
+    "Stator": "14 \u00d7 05"
+  },
+  "physics": {
+    "kv": 3800,
+    "rm_ohm": 0.21,
+    "i0_a": 0.28,
+    "max_current_a": 22,
+    "max_power_w": 330,
+    "k_fe": 0.0002
+  }
+}

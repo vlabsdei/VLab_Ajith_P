@@ -1,0 +1,21 @@
+{
+  "name": "8\" Bi-blade  (4.5 pitch)",
+  "mass_g": 9.0,
+  "qty": 4,
+  "size_mm": [
+    203.2,
+    12.2,
+    203.2
+  ],
+  "model": "8inch_bi.glb",
+  "specs": {
+    "Diameter": "8 in",
+    "Pitch": "4.5 in",
+    "Blades": "2"
+  },
+  "physics": {
+    "diameter_in": 8.0,
+    "pitch_in": 4.5,
+    "blades": 2
+  }
+}

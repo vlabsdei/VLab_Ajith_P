@@ -1,0 +1,189 @@
+{
+  "_readme": "Drop a new option folder (with spec.json + model) inside its category folder, then add the folder name to that category's options list below. Nothing in index.html / main.css / main.js needs to change.",
+  "categories": [
+    {
+      "key": "chasis",
+      "label": "Chassis",
+      "fallback": "frame",
+      "options": [
+        "micro4",
+        "fpv5",
+        "fpv_chasis_6_350gms",
+        "free7",
+        "cine10"
+      ]
+    },
+    {
+      "key": "propeller",
+      "label": "Propeller",
+      "fallback": "prop",
+      "options": [
+        "2.7in_tri",
+        "3in_tri",
+        "5in_tri",
+        "8in_bi",
+        "9in_bi",
+        "10in_bi",
+        "11in_bi",
+        "13in_bi",
+        "15in_bi",
+        "16in_bi"
+      ]
+    },
+    {
+      "key": "motor",
+      "label": "Motor",
+      "fallback": "motor",
+      "options": [
+        "1405",
+        "1806",
+        "2310",
+        "2806",
+        "3015",
+        "4130",
+        "4530",
+        "5010",
+        "9030"
+      ]
+    },
+    {
+      "key": "esc",
+      "label": "ESC",
+      "fallback": "esc",
+      "options": [
+        "Cyclone_35A",
+        "esc_45a",
+        "Diatine_mamba_55A",
+        "esc_65a",
+        "Dakefpv_120A",
+        "UH300",
+        "esc_4in1_50a"
+      ]
+    },
+    {
+      "key": "battery",
+      "label": "Battery",
+      "fallback": "battery",
+      "options": [
+        "3s_2200",
+        "4s_1500",
+        "4s_3300",
+        "6s_4000",
+        "6s_5000"
+      ]
+    },
+    {
+      "key": "controller",
+      "label": "Flight Ctrl",
+      "fallback": "fc",
+      "options": [
+        "PiHawk",
+        "diatone_mamba",
+        "speedybee_f405",
+        "matek_f405"
+      ]
+    },
+    {
+      "key": "reciever",
+      "label": "Receiver",
+      "fallback": "rx",
+      "options": [
+        "CM703",
+        "nano_rx_pro",
+        "rbx_12",
+        "rush_fpv"
+      ]
+    },
+    {
+      "key": "attachments",
+      "label": "Attachment",
+      "fallback": "gimbal",
+      "multi": true,
+      "options": [
+        "gimbal",
+        "camera",
+        "gps",
+        "thermal_cam"
+      ]
+    }
+  ],
+  "defaults": {
+    "chasis": "fpv5",
+    "propeller": "5in_tri",
+    "motor": "1806",
+    "esc": "Cyclone_35A",
+    "battery": "4s_1500",
+    "controller": "PiHawk",
+    "reciever": "CM703",
+    "attachments": []
+  },
+  "placement": {
+    "_readme": "Components a user may reposition to tune the Centre of Gravity. Motors, propellers and ESCs are fixed to the arms/stack and are NOT movable (they are mirrored across the 4 arms and their positions define the geometry). Ranges are millimetres in the top-view plane: x = right(+)/left(-), y = forward(+)/aft(-).",
+    "movable": ["battery", "controller", "reciever", "attachments"],
+    "fixed": ["motor", "propeller", "esc", "chasis"],
+    "ranges": {
+      "battery":     { "x": [-80, 80], "y": [-100, 100] },
+      "controller":  { "x": [-40, 40], "y": [-40, 40] },
+      "reciever":    { "x": [-50, 50], "y": [-60, 60] },
+      "attachments": { "x": [-70, 70], "y": [-90, 90] }
+    }
+  },
+  "modules": [
+    {
+      "id": "m1",
+      "label": "Module 1",
+      "sub": "Assembly & CoG Balancing",
+      "experiments": [
+        {
+          "id": "balance",
+          "name": "Assemble & Balance",
+          "unit": "mm",
+          "metric": "cog",
+          "type": "assembly"
+        }
+      ]
+    },
+    {
+      "id": "m2",
+      "label": "Module 2",
+      "sub": "Cantilever Arm Stress",
+      "experiments": [
+        {
+          "id": "stress",
+          "name": "Bending & Yield",
+          "unit": "SF",
+          "metric": "sf",
+          "type": "stress"
+        }
+      ]
+    }
+  ],
+  "instructor": [
+    {
+      "text": "Welcome to the Drone Structural Lab. We will assemble a quadrotor from real component models, balance its centre of gravity, then stress-test the arm that carries the load.",
+      "audio": null
+    },
+    {
+      "text": "Start in Input Parameters — tap any component tile to open its option library. Pick a chassis, motors, propellers, a battery and any payload. Every choice re-assembles the drone and updates its mass budget.",
+      "audio": null
+    },
+    {
+      "text": "Module 1 assembles the drone at its real mount points. Motors, propellers and ESCs are fixed to the arms, but you can slide the battery and payload to move the centre of gravity. Aim to bring the net CoG offset under 10 mm — watch the heatmap and the top-view blueprint as the weight redistributes across the arms.",
+      "audio": null
+    },
+    {
+      "text": "Module 2 clamps one arm as a cantilever and applies the motor's full thrust and weight at the tip. It solves the bending moment, root stress and safety factor against the frame material's yield strength. Longer arms and heavier motors reduce the margin.",
+      "audio": null
+    },
+    {
+      "text": "Outstanding — the drone is balanced and the arm survives its load. Your reward chassis is now unlocked in the Outputs panel.",
+      "audio": null
+    }
+  ],
+  "reward": {
+    "name": "Reward Component",
+    "desc": "Unlocked build reward — drop reward.glb in assets/reward/ to display it here.",
+    "fallback": "lidar",
+    "model": "assets/reward/reward.glb"
+  }
+}

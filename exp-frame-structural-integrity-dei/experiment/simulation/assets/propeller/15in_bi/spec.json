@@ -1,0 +1,21 @@
+{
+  "name": "15\" Bi-blade  (5.5 pitch)",
+  "mass_g": 28.0,
+  "qty": 4,
+  "size_mm": [
+    381.0,
+    22.9,
+    381.0
+  ],
+  "model": "15inch_bi.glb",
+  "specs": {
+    "Diameter": "15 in",
+    "Pitch": "5.5 in",
+    "Blades": "2"
+  },
+  "physics": {
+    "diameter_in": 15.0,
+    "pitch_in": 5.5,
+    "blades": 2
+  }
+}

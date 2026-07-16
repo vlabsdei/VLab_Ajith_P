@@ -1,0 +1,171 @@
+{
+  "_readme": "Drop a new option folder (with spec.json + model) inside its category folder, then add the folder name to that category's options list below. Nothing in index.html / main.css / main.js needs to change.",
+  "categories": [
+    {
+      "key": "chasis",
+      "label": "Chassis",
+      "fallback": "frame",
+      "options": [
+        "micro4",
+        "fpv5",
+        "fpv_chasis_6_350gms",
+        "free7",
+        "cine10"
+      ]
+    },
+    {
+      "key": "propeller",
+      "label": "Propeller",
+      "fallback": "prop",
+      "options": [
+        "2.7in_tri",
+        "3in_tri",
+        "5in_tri",
+        "8in_bi",
+        "9in_bi",
+        "10in_bi",
+        "11in_bi",
+        "13in_bi",
+        "15in_bi",
+        "16in_bi"
+      ]
+    },
+    {
+      "key": "motor",
+      "label": "Motor",
+      "fallback": "motor",
+      "options": [
+        "1405",
+        "1806",
+        "2310",
+        "2806",
+        "3015",
+        "4130",
+        "4530",
+        "5010",
+        "9030"
+      ]
+    },
+    {
+      "key": "esc",
+      "label": "ESC",
+      "fallback": "esc",
+      "options": [
+        "Cyclone_35A",
+        "esc_45a",
+        "Diatine_mamba_55A",
+        "esc_65a",
+        "Dakefpv_120A",
+        "UH300",
+        "esc_4in1_50a"
+      ]
+    },
+    {
+      "key": "battery",
+      "label": "Battery",
+      "fallback": "battery",
+      "options": [
+        "3s_2200",
+        "4s_1500",
+        "4s_3300",
+        "6s_4000",
+        "6s_5000"
+      ]
+    },
+    {
+      "key": "controller",
+      "label": "Flight Ctrl",
+      "fallback": "fc",
+      "options": [
+        "PiHawk",
+        "diatone_mamba",
+        "speedybee_f405",
+        "matek_f405"
+      ]
+    },
+    {
+      "key": "reciever",
+      "label": "Receiver",
+      "fallback": "rx",
+      "options": [
+        "CM703",
+        "nano_rx_pro",
+        "rbx_12",
+        "rush_fpv"
+      ]
+    },
+    {
+      "key": "attachments",
+      "label": "Attachment",
+      "fallback": "gimbal",
+      "multi": true,
+      "options": [
+        "gimbal",
+        "camera",
+        "gps",
+        "thermal_cam"
+      ]
+    }
+  ],
+  "defaults": {
+    "chasis": "fpv5",
+    "propeller": "5in_tri",
+    "motor": "1806",
+    "esc": "Cyclone_35A",
+    "battery": "4s_1500",
+    "controller": "PiHawk",
+    "reciever": "CM703",
+    "attachments": []
+  },
+  "modules": [
+    {
+      "id": "m1",
+      "label": "Module 1",
+      "sub": "Flight Performance Envelope",
+      "experiments": [
+        {
+          "id": "hover",
+          "name": "Hover & Control Margin",
+          "unit": "%",
+          "metric": "hover",
+          "type": "flight"
+        },
+        {
+          "id": "payload",
+          "name": "Payload Envelope",
+          "unit": "g",
+          "metric": "payload",
+          "type": "flight"
+        }
+      ]
+    }
+  ],
+  "instructor": [
+    {
+      "text": "Welcome to Experiment 06 — Flight Performance Envelope. There is no new bench testing here: the thrust, current and efficiency you measured in Experiment 01 are inherited, and this lab turns them into drone-level performance — thrust-to-weight, hover throttle, control margin and payload capacity.",
+      "audio": null
+    },
+    {
+      "text": "Start in Input Parameters — tap any component tile to pick a chassis, motor, prop and battery. Every number in the Calculations strip and every chart updates live from those choices; watch the Diagnostics Log for collisions or over-rated parts.",
+      "audio": null
+    },
+    {
+      "text": "Tab 1 · Hover & Control Margin is a real flight. Use the throttle slider to lift the drone off the pad from the ground and hold a steady hover. Watch the TWR traffic-light halo and the live hover throttle and control-margin readouts as you fly.",
+      "audio": null
+    },
+    {
+      "text": "Toggle Forward Flight 30° while hovering: only cos(30°) of your thrust now holds altitude, so the drone tips forward, translates across the chamber and the control margin drops — add throttle to hold height. This is the cosine-loss lesson.",
+      "audio": null
+    },
+    {
+      "text": "Tab 2 · Payload Envelope loads cargo up to 2 kg. Run it to sweep the load and find where thrust-to-weight falls through 1.5 (the practical safe limit) and 1.0 (the absolute lift-off limit). Complete both tabs to unlock your reward component.",
+      "audio": null
+    }
+  ],
+  "reward": {
+    "name": "Reward Component",
+    "desc": "Unlocked build reward — drop reward.glb in assets/reward/ to display it here.",
+    "fallback": "lidar",
+    "model": "assets/reward/reward.glb"
+  }
+}

@@ -1,0 +1,29 @@
+{
+  "name": "20 A BLHeli_S (single)",
+  "mass_g": 8.1,
+  "qty": 1,
+  "size_mm": [25, 13, 4],
+  "model": null,
+  "specs": {
+    "Continuous": "20 A",
+    "Burst": "25 A",
+    "Firmware": "BLHeli_S",
+    "MOSFETs": "6 (3 half-bridge)",
+    "Rds(on)": "3.5 mΩ",
+    "Config": "single (× arm)"
+  },
+  "physics": {
+    "form_factor": "single",
+    "current_a": 20,
+    "burst_current_a": 25,
+    "rds_on_ohm": 0.0035,
+    "r_th_c_per_w": 22,
+    "r_th_heatsink_c_per_w": 12,
+    "mosfet_count": 6,
+    "f_carrier_hz": 24000,
+    "sw_time_s": 1.0e-7,
+    "cap_esr_ohm": 0.03,
+    "board_mm": [25, 13, 4],
+    "max_cells": 6
+  }
+}

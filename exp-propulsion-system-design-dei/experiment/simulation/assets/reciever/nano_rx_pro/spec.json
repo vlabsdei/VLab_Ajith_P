@@ -1,0 +1,19 @@
+{
+  "name": "Nano RX Pro",
+  "mass_g": 1.5,
+  "qty": 1,
+  "size_mm": [
+    15,
+    10,
+    3
+  ],
+  "model": "nano_rx_pro.glb",
+  "specs": {
+    "Protocol": "ExpressLRS",
+    "Channels": "16",
+    "Band": "2.4 GHz"
+  },
+  "physics": {
+    "protocol": "ELRS"
+  }
+}

@@ -1,0 +1,196 @@
+{
+  "_readme": "Drop a new option folder (with spec.json + model) inside its category folder, then add the folder name to that category's options list below. Nothing in index.html / main.css / main.js needs to change.",
+  "categories": [
+    {
+      "key": "chasis",
+      "label": "Chassis",
+      "fallback": "frame",
+      "options": [
+        "micro4",
+        "fpv5",
+        "fpv_chasis_6_350gms",
+        "free7",
+        "cine10"
+      ]
+    },
+    {
+      "key": "propeller",
+      "label": "Propeller",
+      "fallback": "prop",
+      "options": [
+        "2.7in_tri",
+        "3in_tri",
+        "5in_tri",
+        "8in_bi",
+        "9in_bi",
+        "10in_bi",
+        "11in_bi",
+        "13in_bi",
+        "15in_bi",
+        "16in_bi"
+      ]
+    },
+    {
+      "key": "motor",
+      "label": "Motor",
+      "fallback": "motor",
+      "options": [
+        "1405",
+        "1806",
+        "2310",
+        "2806",
+        "3015",
+        "4130",
+        "4530",
+        "5010",
+        "9030"
+      ]
+    },
+    {
+      "key": "esc",
+      "label": "ESC",
+      "fallback": "esc",
+      "options": [
+        "Cyclone_35A",
+        "esc_45a",
+        "Diatine_mamba_55A",
+        "esc_65a",
+        "Dakefpv_120A",
+        "UH300",
+        "esc_4in1_50a"
+      ]
+    },
+    {
+      "key": "battery",
+      "label": "Battery",
+      "fallback": "battery",
+      "options": [
+        "3s_2200",
+        "4s_1500",
+        "4s_3300",
+        "6s_4000",
+        "6s_5000"
+      ]
+    },
+    {
+      "key": "controller",
+      "label": "Flight Ctrl",
+      "fallback": "fc",
+      "options": [
+        "PiHawk",
+        "diatone_mamba",
+        "speedybee_f405",
+        "matek_f405"
+      ]
+    },
+    {
+      "key": "reciever",
+      "label": "Receiver",
+      "fallback": "rx",
+      "options": [
+        "CM703",
+        "nano_rx_pro",
+        "rbx_12",
+        "rush_fpv"
+      ]
+    },
+    {
+      "key": "attachments",
+      "label": "Attachment",
+      "fallback": "gimbal",
+      "multi": true,
+      "options": [
+        "gimbal",
+        "camera",
+        "gps",
+        "thermal_cam"
+      ]
+    }
+  ],
+  "defaults": {
+    "chasis": "fpv5",
+    "propeller": "5in_tri",
+    "motor": "1806",
+    "esc": "Cyclone_35A",
+    "battery": "4s_1500",
+    "controller": "PiHawk",
+    "reciever": "CM703",
+    "attachments": []
+  },
+  "modules": [
+    {
+      "id": "m1",
+      "label": "Module 1",
+      "sub": "Power & Speed",
+      "experiments": [
+        {
+          "id": "power_profiling",
+          "name": "Power Profiling",
+          "unit": "W",
+          "metric": "pcruise",
+          "type": "assembly"
+        },
+        {
+          "id": "endurance_speed",
+          "name": "Endurance Speed",
+          "unit": "m/s",
+          "metric": "vendur",
+          "type": "assembly"
+        }
+      ]
+    },
+    {
+      "id": "m2",
+      "label": "Module 2",
+      "sub": "Mission & Range",
+      "experiments": [
+        {
+          "id": "energy_budget",
+          "name": "Mission Energy",
+          "unit": "Wh",
+          "metric": "energy",
+          "type": "assembly"
+        },
+        {
+          "id": "range_payload",
+          "name": "Range–Payload",
+          "unit": "m",
+          "metric": "range",
+          "type": "assembly"
+        }
+      ]
+    }
+  ],
+  "instructor": [
+    {
+      "text": "Welcome to the capstone. Every drone you have built across the lab series — its propulsion, its mass, its power system — comes together here into one mission model: how much power it burns, how much energy it needs, and how far it can fly.",
+      "audio": null
+    },
+    {
+      "text": "Start in Input Parameters — pick your components (the battery matters most for this capstone), then set the density altitude and payload sliders. Watch the Diagnostics Log for any build errors before you run.",
+      "audio": null
+    },
+    {
+      "text": "Module 1 · Power Profiling sweeps airspeed from 2 to 20 m/s and plots cruise power against speed. Watch the U-shape emerge — parasitic drag rising with speed against the induced-power floor falling with it.",
+      "audio": null
+    },
+    {
+      "text": "Module 1 · Endurance Speed reads the exact bottom of that U-curve. The speed at minimum power is the maximum-endurance speed — the airspeed that keeps the craft aloft longest per Watt-hour.",
+      "audio": null
+    },
+    {
+      "text": "Module 2 · Mission Energy — set the takeoff, cruise, hover-on-station, return and landing durations, and watch the Watt-hour budget accumulate phase by phase. The verdict confirms whether the pack holds enough charge for the full mission.",
+      "audio": null
+    },
+    {
+      "text": "Module 2 · Range–Payload sweeps payload across three battery packs to map the range-payload envelope — the primary deliverable of any UAV mission brief. Complete it to unlock the capstone reward.",
+      "audio": null
+    }
+  ],
+  "reward": {
+    "name": "Payload Bay + Mission Spec",
+    "desc": "Capstone complete — payload bay locked in and the drone's mission envelope (optimal speed, endurance speed, range-payload limits) is finalized.",
+    "fallback": "lidar",
+    "model": "assets/reward/reward.glb"
+  }
+}

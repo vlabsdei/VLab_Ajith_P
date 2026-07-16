@@ -1,0 +1,19 @@
+{
+  "name": "PiHawk v2 Autopilot",
+  "mass_g": 48,
+  "qty": 1,
+  "size_mm": [
+    85,
+    52,
+    20
+  ],
+  "model": "Pi_hawk_v2.glb",
+  "specs": {
+    "MCU": "STM32H743",
+    "GNSS": "Ready",
+    "IMU": "Triple redundant"
+  },
+  "physics": {
+    "processor": "STM32H743"
+  }
+}

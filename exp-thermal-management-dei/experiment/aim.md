@@ -1,0 +1,2 @@
+### Aim of the experiment
+To characterize the thermal behaviour of a drone's motor and ESC under sustained electrical load by measuring the steady-state temperature rise against current, extracting the thermal time constant from a heating curve, checking ESC survivability against a fixed over-temperature limit, and evaluating how rotor-wash and forced-convection airflow reduce thermal resistance to keep both components within safe operating margins.

@@ -1,0 +1,336 @@
+{
+  "frame": {
+    "name": "Gladiator_5_DC_v26",
+    "version": "1.0"
+  },
+  "mounts": [
+    {
+      "name": "motor_fr",
+      "type": "motor",
+      "mode": "point",
+      "position": [
+        0.18,
+        0.18,
+        0.01
+      ],
+      "direction": "+Z",
+      "rotation": 0,
+      "normal": [
+        0,
+        0,
+        1
+      ]
+    },
+    {
+      "name": "motor_rr",
+      "type": "motor",
+      "mode": "point",
+      "position": [
+        0.18,
+        -0.18,
+        0.01
+      ],
+      "direction": "+Z",
+      "rotation": 0,
+      "normal": [
+        0,
+        0,
+        1
+      ]
+    },
+    {
+      "name": "motor_fl",
+      "type": "motor",
+      "mode": "point",
+      "position": [
+        -0.18,
+        0.18,
+        0.01
+      ],
+      "direction": "+Z",
+      "rotation": 0,
+      "normal": [
+        0,
+        0,
+        1
+      ]
+    },
+    {
+      "name": "motor_rl",
+      "type": "motor",
+      "mode": "point",
+      "position": [
+        -0.18,
+        -0.18,
+        0.01
+      ],
+      "direction": "+Z",
+      "rotation": 0,
+      "normal": [
+        0,
+        0,
+        1
+      ]
+    },
+    {
+      "name": "esc_fr",
+      "type": "esc",
+      "mode": "point",
+      "position": [
+        0.13,
+        0.14,
+        0
+      ],
+      "direction": "+Z",
+      "rotation": 0,
+      "normal": [
+        0.09,
+        -0.09,
+        0.99
+      ],
+      "esc_type": "single"
+    },
+    {
+      "name": "esc_rr",
+      "type": "esc",
+      "mode": "point",
+      "position": [
+        0.13,
+        -0.14,
+        0
+      ],
+      "direction": "+Z",
+      "rotation": 0,
+      "normal": [
+        0.09,
+        -0.09,
+        0.99
+      ],
+      "esc_type": "single"
+    },
+    {
+      "name": "esc_fl",
+      "type": "esc",
+      "mode": "point",
+      "position": [
+        -0.13,
+        0.14,
+        0
+      ],
+      "direction": "+Z",
+      "rotation": 0,
+      "normal": [
+        0.09,
+        -0.09,
+        0.99
+      ],
+      "esc_type": "single"
+    },
+    {
+      "name": "esc_rl",
+      "type": "esc",
+      "mode": "point",
+      "position": [
+        -0.13,
+        -0.14,
+        0
+      ],
+      "direction": "+Z",
+      "rotation": 0,
+      "normal": [
+        0.09,
+        -0.09,
+        0.99
+      ],
+      "esc_type": "single"
+    },
+    {
+      "name": "esc_stack",
+      "type": "esc",
+      "mode": "point",
+      "position": [
+        0,
+        -0.01,
+        -0.02
+      ],
+      "direction": "+Z",
+      "rotation": 0,
+      "normal": [
+        0,
+        0,
+        1
+      ],
+      "esc_type": "4in1"
+    },
+    {
+      "name": "fc",
+      "type": "flight_controller",
+      "mode": "point",
+      "position": [
+        0,
+        -0.06,
+        0.02
+      ],
+      "direction": "+Z",
+      "rotation": 0,
+      "normal": [
+        0,
+        0,
+        1
+      ],
+      "stack": "30.5x30.5"
+    },
+    {
+      "name": "battery",
+      "type": "battery",
+      "mode": "region",
+      "corners": [
+        [
+          -0.03,
+          0.1,
+          -0.02
+        ],
+        [
+          -0.03,
+          -0.1,
+          -0.02
+        ],
+        [
+          0.02,
+          -0.1,
+          -0.02
+        ],
+        [
+          0.02,
+          0.1,
+          -0.02
+        ]
+      ],
+      "center": [
+        0,
+        0,
+        -0.02
+      ],
+      "width": 0.2,
+      "height": 0.05,
+      "normal": [
+        0,
+        0,
+        1
+      ]
+    },
+    {
+      "name": "payload",
+      "type": "payload",
+      "mode": "region",
+      "corners": [
+        [
+          -0.03,
+          -0.08,
+          -0.02
+        ],
+        [
+          -0.03,
+          0.06,
+          -0.02
+        ],
+        [
+          0.03,
+          0.06,
+          -0.02
+        ],
+        [
+          0.03,
+          -0.08,
+          -0.02
+        ]
+      ],
+      "center": [
+        0,
+        -0.01,
+        -0.02
+      ],
+      "width": 0.14,
+      "height": 0.06,
+      "normal": [
+        0,
+        0,
+        -1
+      ]
+    },
+    {
+      "name": "camera",
+      "type": "camera",
+      "mode": "point",
+      "position": [
+        0,
+        -0.13,
+        0.02
+      ],
+      "direction": "+Z",
+      "rotation": 0,
+      "normal": [
+        0,
+        0,
+        1
+      ],
+      "tilt": 0
+    },
+    {
+      "name": "gps",
+      "type": "gps",
+      "mode": "point",
+      "position": [
+        0,
+        0.1,
+        0.02
+      ],
+      "direction": "+Z",
+      "rotation": 0,
+      "normal": [
+        0,
+        0,
+        1
+      ]
+    },
+    {
+      "name": "receiver",
+      "type": "receiver",
+      "mode": "region",
+      "corners": [
+        [
+          -0.02,
+          0.07,
+          0.02
+        ],
+        [
+          -0.02,
+          -0.02,
+          0.02
+        ],
+        [
+          0.02,
+          -0.02,
+          0.02
+        ],
+        [
+          0.02,
+          0.07,
+          0.02
+        ]
+      ],
+      "center": [
+        0,
+        0.03,
+        0.02
+      ],
+      "width": 0.09,
+      "height": 0.04,
+      "normal": [
+        0,
+        0,
+        1
+      ]
+    }
+  ]
+}

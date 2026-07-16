@@ -1,0 +1,17 @@
+{
+  "name": "Bench DC Supply — 30 V / 40 A",
+  "model": null,
+  "specs": {
+    "Voltage": "0 – 30 V",
+    "Current": "0 – 40 A",
+    "Regulation": "CV / CC",
+    "Readback": "4-digit V & A",
+    "Terminals": "binding posts (+ / −)"
+  },
+  "physics": {
+    "v_max": 30,
+    "i_max": 40,
+    "lead_r_ohm": 0.004,
+    "note": "Stiff programmable supply. Holds V constant in CV; folds to CC when the load demands more than the current limit."
+  }
+}

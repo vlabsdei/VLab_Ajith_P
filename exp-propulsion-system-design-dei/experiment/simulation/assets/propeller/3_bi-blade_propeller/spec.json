@@ -1,0 +1,24 @@
+{
+  "name": "3\" Bi-Blade",
+  "mass_g": 1.6,
+  "qty": 4,
+  "size_mm": [
+    76,
+    9,
+    14
+  ],
+  "model": "3_bi-blade_propeller.glb",
+  "specs": {
+    "Diameter": "3 in",
+    "Pitch": "3.0 in",
+    "Blades": "2"
+  },
+  "physics": {
+    "diameter_in": 3,
+    "pitch_in": 3,
+    "blades": 2,
+    "ct": 0.105,
+    "cq": 0.0118,
+    "mass_g_each": 1.6
+  }
+}

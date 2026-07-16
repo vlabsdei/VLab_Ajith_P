@@ -1,0 +1,20 @@
+{
+  "name": "NL 2-Axis Gimbal",
+  "mass_g": 178,
+  "qty": 1,
+  "size_mm": [
+    60,
+    90,
+    55
+  ],
+  "model": "NL_DRONE_GIMBAL_GC.glb",
+  "specs": {
+    "Axes": "2 (brushless)",
+    "Payload": "Action camera",
+    "Tilt": "-90\u00b0 / +30\u00b0"
+  },
+  "physics": {
+    "payload": true,
+    "mount_type": "payload"
+  }
+}

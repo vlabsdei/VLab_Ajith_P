@@ -1,0 +1,22 @@
+{
+  "name": "UH300 — 300 A HV",
+  "mass_g": 196,
+  "qty": 4,
+  "size_mm": [
+    92,
+    46,
+    22
+  ],
+  "model": "UH300_300A.glb",
+  "specs": {
+    "Current": "300 A",
+    "Firmware": "Industrial HV",
+    "Config": "4 × single"
+  },
+  "physics": {
+    "current_a": 300,
+    "burst_current_a": 400,
+    "rds_on_ohm": 0.0006,
+    "r_th_c_per_w": 4
+  }
+}

@@ -1,58 +1,51 @@
-<h1>Lab Procedure: ESC Anatomy, Calibration, Protocol Latency &amp; Thermal Sizing</h1>
+<h1>Lab Procedure: ESC Anatomy, Commission, Protocol Latency &amp; Thermal Sizing</h1>
 
-<p>This document outlines the step-by-step workflow for <strong>Experiment 4: Power Electronics — ESC Anatomy, Throttle Calibration, Protocol Latency &amp; Thermal Sizing</strong>. The experiment runs across <strong>two modules and four stages</strong>. Module 1 covers the ESC's anatomy and its live throttle calibration; Module 2 covers signal-protocol latency and thermal sizing.</p>
+<p>This document outlines the step-by-step workflow for <strong>Experiment 4: Power Electronics — ESC Anatomy, Commissioning, Protocol Latency &amp; Thermal Sizing</strong>. The experiment runs as a single research-grade bench across <strong>two modules and four stages</strong>. Module 1 covers the ESC's anatomy and its live commissioning on a bench <strong>DC power supply</strong>; Module 2 covers signal-protocol latency and thermal sizing.</p>
+
+<p>The lab uses the standard three-column layout: <strong>Input Parameters</strong> (left), the <strong>3D bench viewport</strong> with module and stage tabs, live telemetry and the run row (centre), and <strong>Outputs</strong> — live graph, analysis charts and the unlocked-component reward (right). A floating <strong>Lab Instructor</strong> guides each step, and the <strong>Diagnostics Log</strong> flags any wiring, current or thermal fault before it lets you run.</p>
 
 <blockquote>
-<p>The <strong>Continue to Module 2</strong> button appears only after <strong>both</strong> Module 1 tabs are complete: every component inspected on Tab 1 <strong>and</strong> the calibration recorded on Tab 2.</p>
+<p><strong>Module 2 unlocks only after Module 1 · Commission is signed off.</strong> Inspecting the board (Tab 1) and commissioning it on the supply (Tab 2) are the gate to the characterisation module.</p>
 </blockquote>
 
 <hr>
 
-<h2>Stage 1: Component Explorer — ESC Anatomy (Module 1 &middot; Tab 1)</h2>
+<h2>Stage 1: Anatomy — The ESC Board (Module 1 &middot; Tab 1)</h2>
 
 <h3>Objective</h3>
-<p>Learn what an ESC is <em>made of</em> before calibrating it — identify every component on the board and the role it plays in turning a small throttle command into high-current three-phase motor power.</p>
+<p>Learn what an ESC is <em>made of</em> before commissioning it — identify every component on the board and the role it plays in turning a small throttle command into high-current three-phase motor power. Both a <strong>single</strong> arm-ESC and a <strong>4-in-1 stack</strong> are procedurally modelled to full board detail.</p>
 
 <p><img src="./images/esc_block_diagram.png" alt="ESC Bench &amp; Signal Block Diagram"></p>
 
 <h3>Step-by-Step Procedure</h3>
 <ol>
-<li><strong>Launch the simulator.</strong> Module 1 opens on <strong>Tab 1 &middot; Component Explorer</strong>, showing the ESC as an exploded 3D board (no live experiment here — this stage is pure anatomy).</li>
-<li><strong>Pick an ESC platform</strong> from the breakout gallery (e.g. <em>20A BLHeli_S</em>, <em>30A BLHeli_32</em>, <em>4-in-1 45A / 60A</em> stacks). The teardown spec card lists its topology, firmware, continuous / burst current, MOSFET count, conduction resistance <i>R</i><sub>DS(on)</sub>, supported protocols, board size and mass.</li>
-<li><strong>Move around the board.</strong> Left-drag to orbit, right-drag (or two-finger) to pan, and scroll to zoom. Toggle <strong>Teardown / exploded view</strong> to collapse or fan out the layers.</li>
-<li><strong>Inspect every component.</strong> Click each callout in the 3D view, or each entry in the <strong>Components</strong> list on the left. For each part the <strong>Component Datasheet</strong> panel explains what it is, its role, and a design note. The components are: FR4 substrate, solder mask &amp; silkscreen, castellated I/O pads, power MOSFETs, MCU / gate-driver, electrolytic capacitor(s), SMD passives, signal connector (JST), battery leads, and mounting screws.</li>
-<li><strong>Complete the tab.</strong> The datasheet tag counts your progress (e.g. <em>7 / 10 viewed</em>). Once every component has been inspected it reads <strong>all 10 viewed &#10003;</strong> — Tab 1 is complete. (This is one of the two requirements that reveal the Module 2 button.)</li>
+<li><strong>Launch the simulator.</strong> It opens on <strong>Module 1 &middot; Anatomy</strong>, showing the ESC as a procedural 3D board (no live experiment here — this stage is pure anatomy).</li>
+<li><strong>Pick an ESC platform</strong> from the ESC tile / option library (20 A / 30 A / 40 A single boards, or 4-in-1 45 A / 60 A stacks). The datasheet card lists its firmware, continuous / burst current, MOSFET count, conduction resistance <i>R</i><sub>DS(on)</sub>, thermal resistance, board size and mass.</li>
+<li><strong>Move around the board.</strong> Left-drag to orbit, scroll to zoom. Drag the <strong>Teardown</strong> slider to pull the board apart layer by layer.</li>
+<li><strong>Inspect every component.</strong> Click each part in the 3D view, or each entry in the <strong>Teardown</strong> list. For each part the <strong>Component Datasheet</strong> explains what it is, its role, and a design note. The components are: FR4 substrate + solder-mask, power MOSFETs, MCU / gate-driver, bulk electrolytic capacitor, SMD passives, signal connector, battery/supply power pads, three phase pads, and mounting grommets.</li>
+<li><strong>Complete the tab.</strong> The datasheet tag counts your progress (e.g. <em>7 / 9 viewed</em>). Once every component has been inspected the stage is signed off.</li>
 </ol>
 
 <hr>
 
-<h2>Stage 2: Calibrate &amp; Commission — Wire It, Then Map It (Module 1 &middot; Tab 2)</h2>
+<h2>Stage 2: Commission — Wire the Bench, Then Map It (Module 1 &middot; Tab 2)</h2>
 
 <h3>Objective</h3>
-<p>Build the real circuit by hand — drag wires from the battery to the ESC and from the ESC to the motor in the 3D view — then store the throttle endpoints, arm the ESC, and map the <em>real</em> pulse&rarr;throttle response against the <em>ideal</em> straight-line map.</p>
+<p>Build the real circuit by hand — wire the bench <strong>DC supply</strong> to the ESC and the ESC to the motor in the 3D view — then store the throttle endpoints, arm the ESC, and map the <em>real</em> pulse&rarr;throttle response against the <em>ideal</em> straight line.</p>
+
+<h3>The bench DC supply</h3>
+<p>The power source is a <strong>stiff programmable DC supply</strong>, not a battery. Set its <strong>voltage</strong> (0–30 V) and <strong>current limit</strong> on the left; the front-panel displays read back the live output. In <strong>CV</strong> the bus holds your set voltage; if the load demands more than the current limit the supply folds into <strong>CC</strong> (the display turns amber and the LED flips) and the bus voltage sags — exactly like a real bench supply.</p>
 
 <h3>Step-by-Step Procedure</h3>
 <ol>
-<li><strong>Open Tab 2 &middot; Calibrate &amp; Commission.</strong> In the left panel set the <strong>Drivetrain</strong>: the motor load (the catalogue mirrors Experiment 1), the battery pack and the state of charge. The bench appears bare — the battery and ESC power/phase leads are not pre-wired; the terminal pads are small gold posts you can pick up.</li>
-<li><strong>Wire the power circuit.</strong> In the 3D view, click-drag from the battery's <strong>red (+)</strong> terminal to the ESC's <strong>red power-input</strong> pad, then drag from the battery's <strong>black (&minus;)</strong> terminal to the ESC's <strong>black power-input</strong> pad. There is no on-screen hint for which pad is which — the wiring is exactly as free-form as a real bench: cross the polarity, or bridge the battery's own two terminals directly, and the ESC is destroyed instantly (a real hobby ESC has no reverse-voltage protection) and must be replaced from the breakout gallery before you can continue.</li>
-<li><strong>Wire the three phase leads.</strong> Drag a wire from each of the ESC's three gold phase pads to one of the motor's three phase terminals. All three must be connected, one-to-one, before the circuit is complete — a missing or doubled-up pad means the ESC can never sense rotor position and won't commutate. Swap any <strong>two</strong> of the three wires (not all three) and the motor will spin in reverse once running — a real BLDC consequence, not a warning label.</li>
-<li><strong>Store the endpoints.</strong> Once wired, click <strong>Store endpoints</strong>. The ESC records 1000–2000 &micro;s and snaps the stick to idle. (Selecting a fault scenario first marks the stored endpoints invalid.)</li>
-<li><strong>Arm at idle.</strong> Click <strong>Arm ESC</strong>. Arming is refused until the power wiring is complete (and the ESC is undamaged); once wired, arming always brings the stick to idle first, so the ESC arms cleanly and the HUD reads <strong>ARMED</strong>. Disarming is allowed at any throttle.</li>
-<li><strong>Run the simulation.</strong> Click <strong>Run simulation</strong> — this also requires the phase wiring to be complete. Drag the <strong>Pulse width</strong> slider across its full 1000–2000 &micro;s range; the motor spins live and the oscilloscope chart plots:
-  <ul>
-  <li>the <strong>dashed blue Expected</strong> line — the ideal linear map you assumed, and</li>
-  <li>the <strong>amber Obtained</strong> curve — the real ESC, including this unit's own dead-band (seeded per ESC, roughly 35–65 &micro;s — not a fixed textbook 50 &micro;s), any injected fault, and receiver jitter.</li>
-  </ul>
-</li>
-<li><strong>Try the fault scenarios.</strong> Use the <strong>Fault Injection</strong> selector and re-sweep to watch the Obtained curve distort:
-  <ul>
-  <li><strong>Inverted endpoints</strong> — idle reads ~100% (the curve runs backwards): the "spins to full on power-up" hazard.</li>
-  <li><strong>Minimum endpoint too high</strong> — the low third of the stick is dead and the live range is compressed.</li>
-  <li><strong>Noisy receiver jitter</strong> — the throttle scatters around the true curve.</li>
-  </ul>
-  A stored fault blocks arming, exactly as a real ESC refuses a bad calibration.
-</li>
-<li><strong>Sign off.</strong> The <strong>Experiment Sign-off</strong> panel shows a PASS/WARN/FAIL verdict chip plus the objectives checklist: <em>wired</em>, <em>endpoints stored</em>, <em>armed at idle</em>, <em>swept the full range</em>, and <em>map tracks the ideal</em>. With both Module 1 tabs complete, the <strong>Continue to Module 2</strong> button appears.</li>
+<li><strong>Open Module 1 &middot; Commission.</strong> Set the <strong>Motor load</strong> and <strong>Propeller</strong> (the mechanical load the ESC must drive), and dial in the <strong>supply voltage</strong> and <strong>current limit</strong>.</li>
+<li><strong>Wire the power circuit.</strong> Click the supply's <strong>red (+)</strong> binding post, then the ESC's <strong>red power pad</strong>; repeat for the <strong>black (&minus;)</strong> post and pad. There is no hint for which pad is which — the wiring is as free-form as a real bench. <strong>Cross the polarity</strong> and the ESC is destroyed instantly (a hobby ESC has no reverse-voltage protection) and must be replaced — <em>unless</em> you set a low current limit first, in which case the supply catches it in CC and the board survives (the reason a technician current-limits the bench before first power-up).</li>
+<li><strong>Wire the three phase leads.</strong> Connect each of the ESC's three phase pads (A / B / C) to the motor's three terminals. All three must be connected one-to-one before the ESC can commutate — a missing or doubled-up lead means the rotor just buzzes. Swap any <strong>two</strong> of the three and the motor spins in reverse once running (the classic three-phase rule, computed from the wiring parity).</li>
+<li><strong>Store the endpoints.</strong> Click <strong>Store endpoints</strong> — the ESC records the 1000–2000 µs band and snaps the stick to idle.</li>
+<li><strong>Arm at idle.</strong> Click <strong>Arm ESC</strong>. Arming is refused until the power wiring is correct, the endpoints are stored, and no calibration fault is active; once armed the HUD reads <strong>ARMED</strong>.</li>
+<li><strong>Run the sweep.</strong> Click <strong>Run Sim</strong> to sweep the pulse across the full 1000–2000 µs range. The motor spins live and the <strong>PWM oscilloscope</strong> plots the dashed-blue <strong>Expected</strong> line against the amber <strong>Obtained</strong> curve — including this unit's own dead-band (seeded ~35–65 µs, not a fixed 50 µs) and any injected fault. You can also drag the <strong>Pulse</strong> slider by hand at any time.</li>
+<li><strong>Try the fault scenarios.</strong> Use <strong>Fault Injection</strong> and re-store endpoints: <em>Inverted endpoints</em> (idle reads ~100%), <em>Minimum too high</em> (the low third of the stick is dead), <em>Noisy jitter</em> (points scatter). A stored fault blocks arming, exactly as a real ESC refuses a bad calibration.</li>
+<li><strong>Sign off.</strong> The verdict chip reports the map RMS error against the ideal. With both Module 1 tabs complete, Module 2 unlocks.</li>
 </ol>
 
 <hr>
@@ -64,33 +57,26 @@
 
 <h3>Step-by-Step Procedure</h3>
 <ol>
-<li><strong>Open Module 2.</strong> Click <strong>Continue to Module 2</strong> — <code>index1.html</code> loads on <strong>Tab 1 &middot; Protocol &amp; Latency</strong>, restoring your ESC, motor and protocol.</li>
-<li><strong>Watch the command-vs-response scope.</strong> The chart shows two traces: a <strong>blue command</strong> (your stick stepping up and down) and an <strong>amber ESC response</strong> that trails it by the protocol's latency. The <strong>&Delta;t</strong> readout and the <strong>Latency</strong> card show the lag.</li>
-<li><strong>Step through the protocols.</strong> Use the <strong>Command protocol</strong> selector — <em>Standard PWM 50 Hz</em>, <em>Fast PWM 400 / 500 Hz</em>, <em>OneShot125</em>, <em>DShot300 / 600</em> — and watch the amber response chase the blue command:
-  <ul>
-  <li><strong>50 Hz</strong> — the response lags ~<strong>20 ms</strong> (a wide, obvious gap).</li>
-  <li><strong>400 Hz</strong> — the gap shrinks to ~<strong>2.5 ms</strong>.</li>
-  <li><strong>DShot</strong> — the response snaps almost on top of the command (tens of microseconds).</li>
-  </ul>
-</li>
-<li><strong>Separate resolution from latency.</strong> Note the <strong>Resolution</strong> card stays at <strong>1000 steps</strong> for every analog rate — resolution is set by the timer tick, not the refresh rate. Select both 50 Hz and 400 Hz to satisfy the <em>Resolution unchanged</em> objective; DShot jumps to ~<strong>2000 levels</strong> with no calibration and no dead-band.</li>
-<li><strong>Lock in a flight-ready protocol.</strong> The stage signs off only when you settle on a protocol with latency <strong>under 5 ms</strong> — <em>Standard PWM 50 Hz is too slow to pass</em> (it is the deliberate "fault" here). Choose 400 Hz, OneShot or DShot to complete the run-sheet.</li>
+<li><strong>Open Module 2 &middot; Protocol &amp; Latency.</strong> The live graph shows a <strong>blue command</strong> (your stick stepping up and down) and an <strong>amber ESC response</strong> that trails it by the protocol's latency &tau;.</li>
+<li><strong>Step through the protocols.</strong> Use the <strong>Command protocol</strong> selector — <em>Standard PWM 50 Hz</em>, <em>Fast PWM 400 / 500 Hz</em>, <em>OneShot125</em>, <em>DShot300 / 600</em> — and run it. Watch the amber response chase the blue command: <strong>50 Hz</strong> lags ~<strong>20 ms</strong>; <strong>400 Hz</strong> shrinks to ~<strong>2.5 ms</strong>; <strong>DShot</strong> snaps almost on top of the command (tens of microseconds).</li>
+<li><strong>Separate resolution from latency.</strong> The <strong>Resolution</strong> chip stays at <strong>1000 steps</strong> for every analog rate — resolution is set by the timer tick, not the refresh rate. DShot jumps to <strong>2000 levels</strong> with no calibration and no dead-band.</li>
+<li><strong>Lock in a flight-ready protocol.</strong> The stage signs off only on a protocol with latency <strong>under 5 ms</strong> — <em>Standard PWM 50 Hz is the deliberate "too slow" fault</em>. Choose 400 Hz, OneShot or DShot to pass.</li>
 </ol>
 
 <hr>
 
-<h2>Stage 4: Thermal Sweep &amp; Heatsink Sizing (Module 2 &middot; Tab 2)</h2>
+<h2>Stage 4: Thermal &amp; Heatsink Sizing (Module 2 &middot; Tab 2)</h2>
 
 <h3>Objective</h3>
 <p>Compute the ESC's conduction loss, run a thermal sweep to find the current at which the junction reaches 80 &deg;C, and size the cooling.</p>
 
 <h3>Step-by-Step Procedure</h3>
 <ol>
-<li><strong>Open Tab 2 &middot; Thermal Sweep.</strong> Set the <strong>Sustained Load</strong>: the phase current (use the <strong>Hover</strong> / <strong>Full load</strong> presets — full load is seeded from Experiment 1's real solved current when that experiment has been finalized, a datasheet default otherwise) and the <strong>Ambient temp</strong>.</li>
-<li><strong>Read the live derivations.</strong> The derivation cards update live: <strong>Pack Voltage &amp; Loaded RPM</strong>, <strong>Conduction Loss</strong> <i>P</i> = <i>I</i><sup>2</sup>&middot;<i>R</i>(<i>T</i>), and <strong>Thermal Equilibrium</strong> <i>T</i> = <i>T</i><sub>amb</sub> + <i>P</i>&middot;<i>R</i><sub>th</sub>. The MOSFET junction probes and the HUD hotspot track the operating point.</li>
-<li><strong>Run the sweep.</strong> Click <strong>Run simulation</strong>. The <i>T</i>–<i>I</i> curve is plotted and the <strong>80 &deg;C passive-current threshold</strong> is found and reported.</li>
-<li><strong>Read the verdict.</strong> The verdict card shows <strong>PASSIVE OK / HEATSINK REQ / OVER LIMIT</strong>. For a 30 A ESC (<i>R</i><sub>ESC</sub> &asymp; 3 m&Omega;): at <strong>25 A</strong> &rarr; 1.875 W (passive OK); at <strong>30 A</strong> &rarr; 2.7 W (heatsink required).</li>
-<li><strong>Enable the hot-resistance model.</strong> Toggle <strong>Hot-resistance feedback</strong> to let <i>R</i><sub>DS(on)</sub> climb with temperature and solve the self-consistent hot operating point — a bare 30 A ESC settles at &asymp; <strong>93.6 &deg;C</strong>, over the 80 &deg;C limit. If the operating point diverges rather than settling, the instructor calls out <strong>thermal runaway</strong> — the same static-model trap Section 6 of the theory warns about.</li>
-<li><strong>Fit the heatsink and re-run.</strong> Toggle <strong>Clamp-on heatsink</strong> to drop <i>R</i><sub>th</sub> and run the sweep again: the safe threshold current rises and the hotspot falls to &asymp; <strong>53.4 &deg;C</strong> — safely under the limit.</li>
-<li><strong>Sign off.</strong> The Experiment Sign-off panel's PASS/WARN/FAIL verdict and objectives checklist confirm the sweep was run, the hotspot stayed under 80 &deg;C, the full-throttle current came from Experiment 1 (not a default), the heatsink decision was made against the 2 W line, and the bulk capacitor is fitted. The full characterisation — dissipation, thermal state, and the calibrated dead-band map from Module 1 — is written to the shared build store for Experiment 5 (Flight Control System) and Experiment 9 (Thermal Management), completing Experiment 4.</li>
+<li><strong>Open Module 2 &middot; Thermal &amp; Heatsink.</strong> Choose the sustained load with the <strong>Hover / Full load</strong> presets (seeded from the live motor operating point) and set the <strong>Ambient temp</strong>.</li>
+<li><strong>Read the live derivations.</strong> The Calculations chips update live: <strong>Phase current</strong>, <strong>Conduction loss</strong> <i>P</i> = <i>I</i><sup>2</sup>&middot;<i>R</i>(<i>T</i>), <strong>total loss</strong> (+ switching + capacitor), and <strong>junction temperature</strong> <i>T</i> = <i>T</i><sub>amb</sub> + <i>P</i>&middot;<i>R</i><sub>th</sub>. The MOSFETs on the 3D board glow with the junction temperature.</li>
+<li><strong>Run the sweep.</strong> Click <strong>Run Sim</strong> to watch the junction temperature climb to equilibrium (30&times; fast-forward). The <strong>80 &deg;C passive-current threshold</strong> is found and reported.</li>
+<li><strong>Read the verdict.</strong> <strong>Passive OK</strong> below the limit, <strong>Heatsink required</strong> above it. For a 30 A ESC (<i>R</i> &asymp; 3 m&Omega;): at <strong>25 A</strong> &rarr; 1.9 W (passive OK); at <strong>30 A</strong> &rarr; 2.7 W (heatsink).</li>
+<li><strong>Enable the hot-resistance model.</strong> Toggle <strong>Hot R(T)</strong> to let <i>R</i><sub>DS(on)</sub> climb with temperature and solve the self-consistent hot operating point. If it diverges the instructor calls out <strong>thermal runaway</strong>.</li>
+<li><strong>Fit the heatsink and re-run.</strong> Toggle <strong>Heatsink</strong> to drop <i>R</i><sub>th</sub>: the safe threshold current rises and the hotspot falls back under the limit.</li>
+<li><strong>Sign off.</strong> With all four stages signed off, the reward component (a clamp-on heatsink) unlocks in the Outputs panel, completing Experiment 4.</li>
 </ol>

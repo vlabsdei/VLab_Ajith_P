@@ -1,0 +1,19 @@
+{
+  "name": "RBX12 Module RX",
+  "mass_g": 3,
+  "qty": 1,
+  "size_mm": [
+    22,
+    16,
+    5
+  ],
+  "model": "rbx_12_module.glb",
+  "specs": {
+    "Protocol": "SBUS",
+    "Channels": "12",
+    "Band": "2.4 GHz"
+  },
+  "physics": {
+    "protocol": "SBUS"
+  }
+}

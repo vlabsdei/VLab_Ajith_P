@@ -1,0 +1,193 @@
+{
+  "_readme": "Flight Control System (Experiment 5). Component catalog is shared with the platform — the assembled airframe sets the roll-axis inertia J that drives every closed loop. The four experiments are the four tabs: PID Tuning, Ziegler-Nichols, Sensor Fusion, Full System. localStorage stores PROGRESS ONLY; no values are read from or written to other experiments.",
+  "categories": [
+    {
+      "key": "chasis",
+      "label": "Airframe",
+      "fallback": "frame",
+      "options": [
+        "micro4",
+        "fpv5",
+        "fpv_chasis_6_350gms",
+        "free7",
+        "cine10"
+      ]
+    },
+    {
+      "key": "propeller",
+      "label": "Propeller",
+      "fallback": "prop",
+      "options": [
+        "2.7in_tri",
+        "3in_tri",
+        "5in_tri",
+        "8in_bi",
+        "9in_bi",
+        "10in_bi",
+        "11in_bi",
+        "13in_bi",
+        "15in_bi",
+        "16in_bi"
+      ]
+    },
+    {
+      "key": "motor",
+      "label": "Motor",
+      "fallback": "motor",
+      "options": [
+        "1405",
+        "1806",
+        "2310",
+        "2806",
+        "3015",
+        "4130",
+        "4530",
+        "5010",
+        "9030"
+      ]
+    },
+    {
+      "key": "esc",
+      "label": "ESC",
+      "fallback": "esc",
+      "options": [
+        "Cyclone_35A",
+        "esc_45a",
+        "Diatine_mamba_55A",
+        "esc_65a",
+        "Dakefpv_120A",
+        "UH300",
+        "esc_4in1_50a"
+      ]
+    },
+    {
+      "key": "battery",
+      "label": "Battery",
+      "fallback": "battery",
+      "options": [
+        "3s_2200",
+        "4s_1500",
+        "4s_3300",
+        "6s_4000",
+        "6s_5000"
+      ]
+    },
+    {
+      "key": "controller",
+      "label": "Flight Ctrl",
+      "fallback": "fc",
+      "options": [
+        "PiHawk",
+        "diatone_mamba",
+        "speedybee_f405",
+        "matek_f405"
+      ]
+    },
+    {
+      "key": "reciever",
+      "label": "Receiver",
+      "fallback": "rx",
+      "options": [
+        "CM703",
+        "nano_rx_pro",
+        "rbx_12",
+        "rush_fpv"
+      ]
+    },
+    {
+      "key": "attachments",
+      "label": "Attachment",
+      "fallback": "gimbal",
+      "multi": true,
+      "options": [
+        "gimbal",
+        "camera",
+        "gps",
+        "thermal_cam"
+      ]
+    }
+  ],
+  "defaults": {
+    "chasis": "fpv5",
+    "propeller": "5in_tri",
+    "motor": "1806",
+    "esc": "Cyclone_35A",
+    "battery": "4s_1500",
+    "controller": "PiHawk",
+    "reciever": "CM703",
+    "attachments": []
+  },
+  "modules": [
+    {
+      "id": "m1",
+      "label": "Flight Control",
+      "sub": "PID / Z-N / Fusion / Full",
+      "experiments": [
+        {
+          "id": "pid",
+          "name": "1 · PID Tuning",
+          "unit": "deg",
+          "metric": "pid",
+          "type": "flight"
+        },
+        {
+          "id": "zn",
+          "name": "2 · Ziegler-Nichols",
+          "unit": "",
+          "metric": "zn",
+          "type": "flight"
+        },
+        {
+          "id": "fusion",
+          "name": "3 · Sensor Fusion",
+          "unit": "deg",
+          "metric": "fusion",
+          "type": "flight"
+        },
+        {
+          "id": "full",
+          "name": "4 · Full System",
+          "unit": "score",
+          "metric": "full",
+          "type": "flight"
+        }
+      ]
+    }
+  ],
+  "instructor": [
+    {
+      "text": "Welcome to the Flight Control System lab. A multirotor is open-loop unstable — the control loop is what makes stable flight. We build that loop across four tabs: PID Tuning, Ziegler-Nichols, Sensor Fusion, and the Full System.",
+      "audio": "assets/audio/voice/m1_intro.mp3"
+    },
+    {
+      "text": "First fix the airframe. In Input Parameters pick an Airframe — its take-off mass and arm length set the roll-axis inertia J = m L squared over two, shown live. Select the 5-inch airframe to reproduce the worked examples at J = 0.003.",
+      "audio": "assets/audio/voice/m1_intro.mp3"
+    },
+    {
+      "text": "Tab 1 · PID Tuning. Drag Kp, Ki and Kd, then Run to command an attitude step on the real one-over-J-s-squared plant. Raise Kp and watch overshoot climb past the 25% comfort limit while settling time stays fixed — that is set by Kd, not Kp. Turn on the disturbance torque to expose steady-state droop, then null it with Ki.",
+      "audio": "assets/audio/voice/m1_kp_trap.mp3"
+    },
+    {
+      "text": "Tab 2 · Ziegler-Nichols. Raise the proportional sweep gain until the inner rate loop oscillates at constant amplitude — that latches the ultimate gain Ku and period Pu. Auto-tune reads the gains from the table; the classic tune is aggressive, so retune to Tyreus-Luyben. Then dial in real air resistance and wind and watch drag do the damping for free.",
+      "audio": "assets/audio/voice/m2_zn_intro.mp3"
+    },
+    {
+      "text": "Tab 3 · Sensor Fusion. The gyro drifts, the accelerometer is noisy. The complementary filter blends them with one coefficient alpha. Sweep alpha and find the value that minimises the combined error — about 0.98 for the reference IMU. Set alpha to 1.0 and watch the ghost drone peel away as pure gyro integration drifts without bound.",
+      "audio": "assets/audio/voice/m3_intro.mp3"
+    },
+    {
+      "text": "Tab 4 · Full System. Now the controller acts on the estimate, not the truth. Fly every controller-by-estimator combination — nine flight-control systems — and read the live leaderboard. Every complementary-filter row scores in the high 90s; every gyro-only row collapses. The estimator choice dominates the controller choice.",
+      "audio": "assets/audio/voice/m4_intro.mp3"
+    },
+    {
+      "text": "Outstanding — the flight controller is tuned, the estimator chosen, and every tab verified. The Flight Controller Board and IMU are now unlocked in the Outputs panel.",
+      "audio": "assets/audio/voice/verdict_pass.mp3"
+    }
+  ],
+  "reward": {
+    "name": "Flight Controller + IMU",
+    "desc": "Tuned PID gains, Ziegler-Nichols Ku/Pu, complementary-filter alpha and the chosen estimator — the stabilised flight-control configuration this experiment produces.",
+    "fallback": "fc",
+    "model": "assets/controller/PiHawk/Pi_hawk_v2.glb"
+  }
+}

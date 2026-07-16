@@ -1,0 +1,23 @@
+{
+  "name": "4S LiPo — 1500 mAh",
+  "mass_g": 178,
+  "qty": 1,
+  "size_mm": [
+    76,
+    38,
+    30
+  ],
+  "model": "assets/battery/_model/Battery_Drone.fbx",
+  "specs": {
+    "Voltage": "14.8 V (4S)",
+    "Capacity": "1500 mAh",
+    "Discharge": "95 C"
+  },
+  "physics": {
+    "cells": 4,
+    "voltage_nominal_v": 14.8,
+    "capacity_mah": 1500,
+    "c_rating": 95,
+    "cell_ir_mohm": 4
+  }
+}
