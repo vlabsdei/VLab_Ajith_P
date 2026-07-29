@@ -1,21 +1,13 @@
 # Academic References
 
-The mathematical models, aerodynamic equations, and airfoil data implemented in this experiment are derived from the following aerospace engineering and fluid dynamics literature:
+The lift-coefficient, drag and advance-ratio models in this experiment are based on the following laboratory manual (primary) and prescribed Indian-university textbooks.
 
-1. **I. H. Abbott and A. E. Von Doenhoff**, *Theory of Wing Sections: Including a Summary of Airfoil Data*, 2nd ed. New York, NY: Dover Publications, 1959.  
-   *(Comprehensive compilation of NACA airfoil characteristics including lift coefficients, drag polars, and moment coefficients from wind tunnel tests.)*
+**Laboratory manual (primary)**
 
-2. **NACA Technical Report 824**, "Summary of Airfoil Data," National Advisory Committee for Aeronautics, Washington, DC, 1945.  
-   *(Foundational reference for NACA airfoil designations, zero-lift angles, and stall characteristics used in Sub-Calc A.)*
+1. **Institute of Aeronautical Engineering (IARE), Hyderabad**, *Aerodynamics & Propulsion Laboratory Manual* (AAEB12). Thin-airfoil lift coefficient *Cl = 2·π·α* (p13); pressure-coefficient *Cp* distribution → evaluation of lift and drag, and Reynolds number (p10, p6–25).
+   https://www.iare.ac.in/sites/default/files/lab1/AERO_AEROSPACE_PROPULSION_LABORATORY_LAB_MANUAL.pdf
 
-3. **S. F. Hoerner**, *Fluid-Dynamic Drag: Practical Information on Aerodynamic Drag and Hydrodynamic Resistance*. Bakersfield, CA: Hoerner Fluid Dynamics, 1965.  
-   *(Standard empirical reference for bluff-body drag coefficients, including the X-frame/flat-plate values used for the Cd ≈ 1.05 airframe drag in Sub-Calc B.)*
+**Textbooks**
 
-4. **J. D. Anderson, Jr.**, *Fundamentals of Aerodynamics*, 6th ed. New York, NY: McGraw-Hill Education, 2017.  
-   *(Covers thin airfoil theory, lift coefficient derivation, and the fundamental principles of aerodynamic drag.)*
-
-5. **J. G. Leishman**, *Principles of Helicopter Aerodynamics*, 2nd ed. Cambridge, UK: Cambridge University Press, 2006.  
-   *(Details propeller aerodynamics, advance ratio concepts, blade element theory, and propulsive efficiency calculations used in Sub-Calc C.)*
-
-6. **M. Drela**, "QPROP Formulation," MIT Department of Aeronautics and Astronautics, Cambridge, MA, June 2006.  
-   *(Outlines the blade-element/vortex numerical method for modeling small UAV-scale propellers operating in low Reynolds number regimes.)*
+2. **E. Rathakrishnan**, *Theoretical Aerodynamics*, Wiley. Thin-aerofoil theory and the lift-coefficient derivation.
+3. **J. G. Leishman**, *Principles of Helicopter Aerodynamics*, Cambridge University Press. Advance ratio *J = V/(nD)* and propulsive efficiency.

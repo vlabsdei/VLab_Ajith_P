@@ -1,4 +1,175 @@
 {
   "version": 2.0,
-  "questions": []
+  "questions": [
+    {
+      "question": "Q1. A LiPo pack is labelled 4S 1500 mAh, 100C continuous. What continuous current can it legally supply?",
+      "answers": {
+        "a": "100 A",
+        "b": "150 A",
+        "c": "1500 A",
+        "d": "15 A"
+      },
+      "explanations": {
+        "a": "Incorrect — 100 is the C-rating, not a current. It has to be multiplied by the capacity in amp-hours.",
+        "b": "Correct — I_cont = C_cont x Capacity_Ah = 100 x 1.5 Ah = 150 A.",
+        "c": "Incorrect — this multiplies the C-rating by the capacity in milliamp-hours instead of amp-hours.",
+        "d": "Incorrect — this is unrelated to the discharge rating."
+      },
+      "correctAnswer": "b",
+      "difficulty": "beginner"
+    },
+    {
+      "question": "Q2. What does the S number in a 4S LiPo pack describe?",
+      "answers": {
+        "a": "The number of cells wired in series, which sets the pack voltage",
+        "b": "The pack's continuous discharge rating",
+        "c": "The number of cells wired in parallel, which sets the capacity",
+        "d": "The number of balance leads on the connector"
+      },
+      "explanations": {
+        "a": "Correct — four cells in series give roughly 14.8 V nominal and 16.8 V fully charged.",
+        "b": "Incorrect — that is the C-rating, quoted separately.",
+        "c": "Incorrect — parallel cells are denoted P, and they add capacity rather than voltage.",
+        "d": "Incorrect — the balance lead count follows from the cell count, but it is not what S means."
+      },
+      "correctAnswer": "a",
+      "difficulty": "beginner"
+    },
+    {
+      "question": "Q3. Two 4S packs are offered: 5200 mAh at 30C, and 1500 mAh at 100C. Which can safely supply the larger continuous current?",
+      "answers": {
+        "a": "The 5200 mAh pack, because capacity and current capability are the same thing",
+        "b": "The 1500 mAh pack, at 150 A against the 5200 mAh pack's 156 A",
+        "c": "The 5200 mAh pack, at 156 A against the 1500 mAh pack's 150 A",
+        "d": "They are identical, because both are 4S"
+      },
+      "explanations": {
+        "a": "Incorrect — capacity and discharge capability are separate specifications entirely.",
+        "b": "Incorrect — the arithmetic is right for the 1500 mAh pack, but it is the smaller of the two limits.",
+        "c": "Correct — 5.2 Ah x 30C = 156 A against 1.5 Ah x 100C = 150 A. The two are nearly equal despite a threefold capacity difference, which is exactly why the mAh label alone tells you nothing about current capability.",
+        "d": "Incorrect — cell count sets voltage, not current capability."
+      },
+      "correctAnswer": "c",
+      "difficulty": "intermediate"
+    },
+    {
+      "question": "Q4. Why does a pack's terminal voltage fall as soon as a heavy load is applied?",
+      "answers": {
+        "a": "The cells lose charge instantly at high current",
+        "b": "Current through the pack's internal resistance drops voltage inside the pack itself",
+        "c": "The ESC reduces the voltage to protect the motor",
+        "d": "The nominal voltage rating only applies at zero current"
+      },
+      "explanations": {
+        "a": "Incorrect — the sag appears the instant load is applied, long before meaningful charge has been drawn.",
+        "b": "Correct — V_terminal = N_cells x (V_oc - I x R_cell,eff). The I x R term is lost across the cells' own resistance.",
+        "c": "Incorrect — the ESC switches the pack voltage through to the motor; it does not regulate it down.",
+        "d": "Incorrect — nominal voltage is a chemistry convention, not a no-load-only specification."
+      },
+      "correctAnswer": "b",
+      "difficulty": "beginner"
+    },
+    {
+      "question": "Q5. Which cell property most directly limits how high a pack's C-rating can be?",
+      "answers": {
+        "a": "The internal resistance of the cells",
+        "b": "The physical size of the discharge connector",
+        "c": "The number of balance leads",
+        "d": "The printed capacity in mAh"
+      },
+      "explanations": {
+        "a": "Correct — internal resistance sets both the heat generated at a given current and the voltage sag, and it is what caps the safe continuous rate.",
+        "b": "Incorrect — connectors are chosen to suit the pack, not the other way round.",
+        "c": "Incorrect — balance leads are for charging, not for discharge capability.",
+        "d": "Incorrect — capacity and discharge rate are independent; a small high-C pack beats a large low-C one on current."
+      },
+      "correctAnswer": "a",
+      "difficulty": "intermediate"
+    },
+    {
+      "question": "Q6. In the simulator, what is the loaded cell voltage below which the bench reports an ESC brownout?",
+      "answers": {
+        "a": "3.70 V per cell",
+        "b": "2.80 V per cell",
+        "c": "3.30 V per cell",
+        "d": "4.20 V per cell"
+      },
+      "explanations": {
+        "a": "Incorrect — 3.70 V is roughly the nominal resting voltage of a LiPo cell, not the brownout limit.",
+        "b": "Incorrect — 2.80 V per cell is deep into damage territory, well past the point where the ESC has already dropped out.",
+        "c": "Correct — the bench flags ESC brownout when loaded voltage sags below 3.30 V per cell.",
+        "d": "Incorrect — 4.20 V per cell is the fully charged voltage, the top of the range rather than the floor."
+      },
+      "correctAnswer": "c",
+      "difficulty": "beginner"
+    },
+    {
+      "question": "Q7. The open-circuit voltage of a cell follows V_oc = 3.50 + 0.70(SoC) + 0.10(SoC)^3. What does the shape of that curve imply for a voltage-based fuel gauge?",
+      "answers": {
+        "a": "Voltage maps linearly onto state of charge, so a simple gauge is accurate",
+        "b": "The curve is steep at both ends and flat through the middle, so voltage is a poor indicator of charge over most of the discharge",
+        "c": "Voltage stays constant until the pack is empty, then collapses",
+        "d": "The cubic term dominates, so voltage rises as the pack empties"
+      },
+      "explanations": {
+        "a": "Incorrect — the cubic term exists precisely because the relationship is not linear.",
+        "b": "Correct — the flat middle region means a large change in charge produces very little change in voltage, so a voltage-only gauge has its worst resolution exactly where most of the flight happens.",
+        "c": "Incorrect — the voltage falls continuously; it is the rate of fall that varies.",
+        "d": "Incorrect — the cubic coefficient is small and positive, so voltage falls monotonically as SoC falls."
+      },
+      "correctAnswer": "b",
+      "difficulty": "intermediate"
+    },
+    {
+      "question": "Q8. A brief current spike occurs as the throttle ramps up. Why does the bench not immediately flag a fault?",
+      "answers": {
+        "a": "Spikes are ignored entirely by the instrumentation",
+        "b": "The fault timer requires roughly three seconds of sustained draw above the continuous limit",
+        "c": "The C-rating only applies below 50% throttle",
+        "d": "The pack automatically raises its C-rating during transients"
+      },
+      "explanations": {
+        "a": "Incorrect — the spike is measured and displayed; it simply does not by itself constitute a fault.",
+        "b": "Correct — packs tolerate short bursts above the continuous rating, so the bench only latches a vent fault after about three seconds of sustained over-current.",
+        "c": "Incorrect — the continuous rating applies at every throttle setting.",
+        "d": "Incorrect — the burst rating is a separate published figure, not something the pack generates on demand."
+      },
+      "correctAnswer": "b",
+      "difficulty": "intermediate"
+    },
+    {
+      "question": "Q9. Why does doubling a pack's capacity fail to double hover endurance?",
+      "answers": {
+        "a": "The larger pack's own mass has to be lifted too, so hover current rises with it",
+        "b": "Larger packs always have lower C-ratings",
+        "c": "The ESC limits current more aggressively on larger packs",
+        "d": "Capacity has no effect on endurance at all"
+      },
+      "explanations": {
+        "a": "Correct — endurance is capacity divided by hover current, and adding cells raises both. The gain flattens out and eventually reverses.",
+        "b": "Incorrect — often true in practice, but not the reason the endurance curve bends over.",
+        "c": "Incorrect — the current limit is a property of the ESC, not of the pack size.",
+        "d": "Incorrect — capacity clearly extends endurance, just not proportionally."
+      },
+      "correctAnswer": "a",
+      "difficulty": "intermediate"
+    },
+    {
+      "question": "Q10. What does a coulomb counter measure when it estimates state of charge?",
+      "answers": {
+        "a": "The pack's terminal voltage at each instant",
+        "b": "The integral of current over time, that is, charge drawn out of the pack",
+        "c": "The internal resistance of each cell",
+        "d": "The pack's temperature rise during discharge"
+      },
+      "explanations": {
+        "a": "Incorrect — that describes a voltage-based gauge, a different and less accurate method.",
+        "b": "Correct — it accumulates amp-hours drawn and subtracts them from an assumed total capacity.",
+        "c": "Incorrect — internal resistance affects sag but is not what a coulomb counter integrates.",
+        "d": "Incorrect — temperature is a symptom of losses, not a measure of charge."
+      },
+      "correctAnswer": "b",
+      "difficulty": "beginner"
+    }
+  ]
 }

@@ -21,7 +21,6 @@
 
 /* ════════════ 1 · CATALOG LOADER ════════════ */
 let DRONE_DB = null;
-const STAND_MODEL = "assets/stand/motor_holder.glb";
 
 function bootProgress(txt, frac){
   const s = document.getElementById("bootSub"), f = document.getElementById("bootFill");
@@ -80,16 +79,52 @@ async function loadCatalog(){
     const opts = (byCat[c.key] || []).sort((a,b)=>order.indexOf(a.id)-order.indexOf(b.id));
     return { key:c.key, label:c.label, multi:!!c.multi, options:opts };
   });
+  /* Reward pool. The reward names a CATEGORY and the unlock draws a random real
+     component from it. That category is not always a selectable one in this
+     experiment (exp-03 awards a propeller but never lets you pick one), so any
+     option that wasn't already loaded is fetched straight from its spec.json. */
+  const rwCfg = manifest.reward || {};
+  let rewardPool = [];
+  if(rwCfg.category){
+    const inCat = byCat[rwCfg.category] || [];
+    const wantIds = rwCfg.options || inCat.map(o=>o.id);
+    const missing = wantIds.filter(id => !inCat.some(o=>o.id===id));
+    let extra = [];
+    if(missing.length){
+      extra = (await Promise.all(missing.map(async id=>{
+        const base = "assets/" + rwCfg.category + "/" + id;
+        try{
+          const spec = await (await fetch(base + "/spec.json", {cache:"no-store"})).json();
+          let files = [];
+          if(spec.model){
+            const arr = Array.isArray(spec.model) ? spec.model : [spec.model];
+            files = arr.map(f => f.includes("/") ? f : base + "/" + f);
+          }
+          return { id, name: spec.name || id, catKey: rwCfg.category,
+                   mass: spec.mass_g || 0, qty: spec.qty || 1,
+                   size: spec.size_mm || null, view: spec.view || null,
+                   specs: Object.entries(spec.specs || {}), phys: spec.physics || {},
+                   files, mounts: null,
+                   fallback: { kind: rwCfg.fallback || "none", color: 0x5a6672, s: 1 } };
+        }catch(e){ console.warn("reward spec missing for", base); return null; }
+      }))).filter(Boolean);
+    }
+    const all = inCat.concat(extra);
+    rewardPool = wantIds.map(id => all.find(o=>o.id===id)).filter(Boolean);
+  }
   DRONE_DB = {
     categories,
     defaults: manifest.defaults || {},
     modules: manifest.modules,
     instructor: manifest.instructor,
-    reward: {
-      name: manifest.reward.name, desc: manifest.reward.desc,
-      files: manifest.reward.model ? [manifest.reward.model] : [],
-      fallback: { kind: manifest.reward.fallback || "lidar", color: 0x845b23, s: 1 }
-    }
+    /* The reward is no longer one hardcoded mesh: it names a CATEGORY, and the
+       unlock draws a random real component from it (a random motor, a random
+       airframe, …). Because the drawn option is a genuine catalogue entry it
+       carries its own catKey, so fitUnit applies the same orientation rule the
+       component uses everywhere else — the old reward object had no catKey at
+       all, which is why it rendered at an arbitrary angle. */
+        reward: { category: rwCfg.category || null, name: rwCfg.name || "", desc: rwCfg.desc || "",
+              fallback: { kind: rwCfg.fallback || "lidar", color: 0x845b23, s: 1 }, pool: rewardPool }
   };
 }
 
@@ -141,7 +176,8 @@ function loadState(){
     esc:   Object.assign({heatsink:false,pad:false,fan:false}, (s.cooling&&s.cooling.esc)||{})
   };
   state.tssPoints = Array.isArray(s.tssPoints) ? s.tssPoints : [];
-  state.tauAttempts = Array.isArray(s.tauAttempts) ? s.tauAttempts : [];
+  // attempts saved before τ was stamped with its own expectation are unusable
+  state.tauAttempts = Array.isArray(s.tauAttempts) ? s.tauAttempts.filter(a=>a && a.expect != null) : [];
 }
 function saveState(){
   try{
@@ -220,7 +256,19 @@ const rhoNow = () => rhoAt(state.altitude);
 /* ---- Exp 09 Thermal Management additions (additive only, all existing fns unchanged) ---- */
 const ESC_TLIMIT = 80;            // ESC over-temperature threshold, °C (Sub-Calc C)
 const CP_AIR = 1005;              // specific heat of air, J/kg·°C (Sub-Calc D)
-const R_WH = 5;                   // winding→housing thermal resistance, °C/W (reality-layer hotspot)
+/* Winding→housing thermal resistance, °C/W.
+   This used to be a flat 5 °C/W for every motor, which is not survivable as a
+   model: a 95 g motor dissipating 38 W then showed a 192 °C gradient INSIDE the
+   can, so the temperature-dependent copper term diverged and every build in the
+   catalogue reported thermal runaway at part throttle.
+   The winding is potted against the lamination stack, which is bolted to the
+   housing — a solid conduction path, and therefore a much SMALLER resistance
+   than the convective housing→air path in series after it. Scaling it as a
+   fraction of the housing resistance keeps that ordering for every motor size
+   and lands the winding 20–40 °C above the case at rated load, which is what the
+   hotspot layer is supposed to teach. */
+const R_WH_FRAC = 0.30;
+function windingRth(rThBase){ return Math.max(R_WH_FRAC * rThBase, 0.4); }
 const TW_BURNOUT = 240;           // winding insulation-failure ceiling, °C — above this the motor cooks
 // Reference mass for the fallback R_th/C_th scaling below, tuned so a "2204-class" motor
 // (no spec.json thermal fields present) reproduces the PDF worked example: R_th=8 °C/W,
@@ -279,7 +327,22 @@ function cellIR(p, soc){
 }
 function motorRm(p, tempC){ return p.rm20 * (1 + ALPHA_CU*((tempC==null?20:tempC) - 20)); }
 
-/* BEMT-lite propeller aero coefficients — pitch/diameter + Reynolds + induced-flow corrected */
+/* BEMT-lite propeller aero coefficients — pitch/diameter + Reynolds + figure of merit.
+
+   Ct is a static thrust coefficient fitted to the catalogue's hand-authored
+   empirical propellers (5x4.3 tri -> 0.130, 10x4.5 bi -> 0.100).
+
+   Cq is NOT an independent fit. Hover shaft power must equal the induced power
+   divided by the rotor's figure of merit:
+
+       2*pi*Cq*rho*n^3*D^5  =  T^1.5 / (FoM * sqrt(2*rho*A)),   T = Ct*rho*n^2*D^4
+
+   which reduces to  Cq = Ct^1.5 * 0.12699 / FoM.  Deriving Cq this way keeps
+   thrust and torque thermodynamically consistent — the previous independent
+   `ct*(0.045*reFactor + 0.11*pd)` fit drifted about 30% high on torque while Ct
+   itself read ~20% low, so every build drew far more current than the same parts
+   would in reality. Bigger discs are more efficient; low Reynolds (small, slow
+   props) costs figure of merit. */
 function propAero(p, omega){
   const pd = Math.max(0.2, Math.min(1.2, p.pitchIn / Math.max(p.diaIn,1)));
   const R = p.D/2, chord = 0.1*p.D;
@@ -287,17 +350,15 @@ function propAero(p, omega){
   const rho = rhoNow();
   const Re = Math.max(rho * Vtip * chord / MU_AIR, 1000);
   const reFactor = Math.pow(150000/Re, 0.25);
-  const ctStatic = p.ctRaw!=null ? p.ctRaw : 0.115 * pd;
-  const cqBase = p.cqRaw!=null ? p.cqRaw : ctStatic * (0.045*reFactor + 0.11*pd);
-  const Ji = Math.sqrt(Math.max(2*ctStatic/Math.PI, 0));
-  const ctEff = ctStatic;                    // authored Ct is already an empirical hover measurement
-  const cqEff = cqBase * (1 + 1.5*Ji*Ji);     // induced-power penalty still raises torque/current/heat
-  return { ctEff, cqEff, rho };
+  const ctStatic = p.ctRaw!=null ? p.ctRaw : 0.067 + 0.073*pd;
+  const fom = Math.max(0.40, Math.min(0.78, 0.42 + 0.022*p.diaIn)) / Math.sqrt(Math.max(reFactor,1));
+  const cqEff = p.cqRaw!=null ? p.cqRaw : Math.pow(ctStatic,1.5)*0.12699/Math.max(fom,0.25);
+  return { ctEff: ctStatic, cqEff, rho };
 }
 /* solve steady-state motor+prop point via quadratic torque balance. returns null on stall. */
 function calcMotorPoint(duty, V, Rm, Resc){
   const p = propulsionParams();
-  if(duty <= 0 || V <= 0) return { rpm:0, omega:0, T:0, Q:0, I:p.i0*0, P:0, Pmech:0, stalled:false };
+  if(duty <= 0 || V <= 0) return { rpm:0, omega:0, T:0, Q:0, I:p.i0*0, Idc:0, P:0, Pmech:0, stalled:false };
   Rm = Rm==null ? motorRm(p,20) : Rm;
   const Reff = Rm + (Resc||0);
   const ke = 60/(2*Math.PI*p.kv), kt = ke;
@@ -313,13 +374,24 @@ function calcMotorPoint(duty, V, Rm, Resc){
     if(!isFinite(next) || next < 0){ stalled = true; omega = 0; break; }
     omega += (next - omega) * 0.6;
   }
-  if(stalled) return { rpm:0, omega:0, T:0, Q:0, I:0, P:0, Pmech:0, stalled:true };
+  if(stalled) return { rpm:0, omega:0, T:0, Q:0, I:0, Idc:0, P:0, Pmech:0, stalled:true };
   const n = omega/(2*Math.PI);
   const T = aero.ctEff * aero.rho * n*n * Math.pow(p.D,4);
   const Q = aero.cqEff * aero.rho * n*n * Math.pow(p.D,5);
   const I = Math.min(Q/kt + p.i0, p.imax*1.6);
   const Vterm = Math.max(V*duty - I*Reff, 0);
-  return { rpm: n*60, omega, T:Math.max(T,0), Q, I, P: Vterm*I + I*I*Reff, Pmech: Q*omega, stalled:false };
+  // Two different currents, and mixing them up is the classic drive-train error:
+  //   I    — PHASE current in the motor branch. Sets copper loss, motor heating
+  //          and the motor / ESC per-channel ratings.
+  //   Idc  — DC-LINK current the PACK actually supplies. The ESC is a switching
+  //          converter, so it steps V down to V·duty: power in = power out gives
+  //          V·Idc = (V·duty)·I, i.e. Idc = duty·I. The two coincide at full
+  //          throttle, but at a ~30 % hover the pack sees roughly a third of the
+  //          phase current — treating them as equal made hover draw ~3× too high
+  //          and cut every endurance figure to a third of the real value.
+  const Idc = duty * I;
+  return { rpm: n*60, omega, T:Math.max(T,0), Q, I, Idc,
+           P: Vterm*I + I*I*Reff, Pmech: Q*omega, stalled:false };
 }
 /* full quad at throttle d + state-of-charge soc (0..1), incl. pack sag under 4-motor draw */
 function solveQuad(d, soc){
@@ -328,11 +400,14 @@ function solveQuad(d, soc){
   const rIR = cellIR(p, s), Rpack = p.cells*rIR;
   let V = cellOCV(s)*p.cells, r = calcMotorPoint(d, V, motorRm(p,20), p.rdsOn);
   for(let k=0;k<6;k++){
-    V = Math.max(cellOCV(s)*p.cells - 4*r.I*Rpack, p.cells*2.8);
+    // the pack sags against what it actually delivers — the DC-link current
+    V = Math.max(cellOCV(s)*p.cells - 4*r.Idc*Rpack, p.cells*2.8);
     r = calcMotorPoint(d, V, motorRm(p,20), p.rdsOn);
   }
-  return { rpm:r.rpm, omega:r.omega, Tper:r.T, Ttot:4*r.T, Iper:r.I, Itot:4*r.I,
-           V, P:V*4*r.I, Pmech:4*r.Pmech, Q:r.Q, stalled:r.stalled };
+  return { rpm:r.rpm, omega:r.omega, Tper:r.T, Ttot:4*r.T,
+           Iper:r.I,          // phase current — motor / ESC channel ratings, heating
+           Itot:4*r.Idc,      // pack current  — C-rating, sag, coulomb count
+           V, P:4*r.P, Pmech:4*r.Pmech, Q:r.Q, stalled:r.stalled };
 }
 /* single motor on the bench (1 motor draws from the pack); tempC = winding temp for Rm */
 function solveBench(d, soc, tempC){
@@ -342,7 +417,7 @@ function solveBench(d, soc, tempC){
   const Rm = motorRm(p, tempC==null?20:tempC);
   let V = cellOCV(s)*p.cells, r = calcMotorPoint(d, V, Rm, p.rdsOn);
   for(let k=0;k<6;k++){
-    V = Math.max(cellOCV(s)*p.cells - r.I*Rpack, p.cells*2.8);
+    V = Math.max(cellOCV(s)*p.cells - r.Idc*Rpack, p.cells*2.8);
     r = calcMotorPoint(d, V, Rm, p.rdsOn);
   }
   return Object.assign(r, { V, Rm });
@@ -374,17 +449,39 @@ function escThermalStep(T, I, p, dt){
   return Math.min(Tn, 180);
 }
 
-/* ---- Exp 09 Thermal Management — pure steady-state/lumped thermal calc (additive) ----
-   Rotor-wash cooling model: downwash over the motor/ESC case improves convection, i.e.
-   lowers R_th. Forward flight sees clean uniform airflow so the achievable reduction
-   ranges 15%(coolFactor=0)→25%(coolFactor=1). Static hover recirculates its own hot
-   exhaust back over the case, so the same fan/prop airflow buys much less: 3%→10%.
-   coolFactor is the 0..1 "cooling airflow" control (fan speed / rotor-wash strength). */
-function coolingRth(rTh, coolFactor, forward){
+/* ---- Convective cooling model ------------------------------------------------
+   A motor on a running propeller is never in still air: the disc above it pushes
+   its own downwash straight over the can. The previous model ignored that and
+   only offered a small fixed percentage reduction from the airflow slider, so a
+   motor at full throttle was treated as convecting into dead air — which is what
+   pushed every steady state into runaway.
+
+   Induced velocity through the disc (momentum theory):  v_i = √(T / (2·ρ·A))
+   Forced convection then reduces the housing→ambient resistance as
+
+       R_th_eff = R_th / (1 + k·v^0.6)
+
+   the usual Nusselt-style power law for cross-flow over a cylinder. k is set so a
+   healthy full-throttle wash (~12 m/s) roughly halves R_th, which is the order of
+   improvement measured on bench motors.
+
+   Static vs forward is a RECIRCULATION term, not a different coefficient: hovering
+   in place the motor re-ingests its own heated exhaust, so only a fraction of the
+   flow is effective. In forward flight the case sees clean air and all of it
+   counts. The cooling-airflow slider adds a duct/fan on top of the self-wash and
+   is subject to the same recirculation penalty. */
+const WASH_K = 0.276, WASH_EXP = 0.6;
+const RECIRC_STATIC = 0.45;       // fraction of the flow that is still cool in static hover
+const FAN_VEL_MAX = 9;            // m/s a fully-open ducted fan adds over the case
+function inducedVelocity(thrustN, D, rho){
+  const A = Math.PI*(D/2)*(D/2);
+  return Math.sqrt(Math.max(thrustN, 0) / (2*Math.max(rho, 0.1)*Math.max(A, 1e-4)));
+}
+/* rTh → effective rTh. vWash = the part's own rotor downwash (m/s). */
+function coolingRth(rTh, coolFactor, forward, vWash){
   const cf = Math.max(0, Math.min(1, coolFactor || 0));
-  const lo = forward ? 0.15 : 0.03, hi = forward ? 0.25 : 0.10;
-  const frac = lo + (hi - lo) * cf;
-  return rTh * (1 - frac);
+  const v = Math.max(0, ((vWash || 0) + FAN_VEL_MAX*cf) * (forward ? 1 : RECIRC_STATIC));
+  return rTh / (1 + WASH_K*Math.pow(v, WASH_EXP));
 }
 /* Drag-drop cooling-tray parts (Heatsink / Thermal Pad / Ducted Fan) mounted on
    the motor or ESC each cut the local R_th by a fixed fraction, stacking
@@ -409,7 +506,7 @@ function partsRthMultiplier(parts){
    are now EMERGENT: T_w = T_h + P·R_wh falls straight out of the network, not an
    additive hack.  The lumped spec fields split into the two nodes so the 2204
    reference still yields slope ≈ 0.96 °C/W and dominant τ ≈ 120 s:
-     R_th_eff = r_th_cw (housing→ambient, then forced-convection reduced)
+     R_th_eff = r_th_cw (housing→ambient, then convection-reduced)  ·  R_wh = 0.3·R_th
      C_w + C_h = c_th_jc   ·   C_w = THERM_CW_FRAC·C_th (fast), C_h the slow bulk
    The dominant (slow) eigenvalue of the 2×2 system is τ; because R_wh (5) is not
    ≪ R_th_eff the value emerges a few % above the first-order C·R product — the
@@ -428,14 +525,14 @@ const THERM_C_CAL   = 0.845;
    state and reports thermal runaway, instead of the copper coefficient diverging
    to a non-physical thousands-of-°C fixed point. Above ~TW_BURNOUT the enamel
    insulation fails and the winding is destroyed — the model pins there. */
-function twoNodeSteady(p, duty, soc, Tamb, RthEff){
+function twoNodeSteady(p, duty, soc, Tamb, RthEff, Rwh){
   let Tw = Tamb + 15, I = 0, Rm = 0, P = 0, Th = Tamb;
   for(let k=0;k<24;k++){
     const Tlook = Math.min(Tw, TW_BURNOUT);
     const b = solveBench(duty, soc, Tlook);
     I = b.I; Rm = motorRm(p, Tlook); P = I*I*Rm;
     Th = Tamb + P*RthEff;                // housing / case sensor reading
-    const TwNext = Th + P*R_WH;          // winding hotspot (derived, not additive)
+    const TwNext = Th + P*Rwh;           // winding hotspot (derived, not additive)
     Tw += (TwNext - Tw)*0.5;
   }
   const runaway = Tw >= TW_BURNOUT;      // thermal runaway → winding burns out
@@ -478,21 +575,31 @@ function thermalCalc(opts){
   const motorParts = opts.motorParts || null, escParts = opts.escParts || null;
 
   const RthEffBase = p.rThCw, CthTot = p.cThJc * THERM_C_CAL, RthEscBase = p.rThEscCw;
-  // R_th_eff DECREASES with airflow velocity (forced convection); forward flight
-  // = uniform clean flow, static hover = recirculation penalty. Drag-dropped
-  // heatsink/pad/fan cut it further. This is the ONE housing→ambient path.
-  const RthEff = coolingRth(RthEffBase, coolFactor, forward) * partsRthMultiplier(motorParts);
-  const RthEsc = RthEscBase * partsRthMultiplier(escParts);
+  const Rwh = windingRth(RthEffBase);
+  // The motor's OWN downwash is the dominant cooling term on a running bench, so
+  // it has to come from the operating point rather than from a slider. Thrust is
+  // essentially set by the aerodynamics, not by winding temperature, so one cold
+  // solve is enough to size the wash velocity — no need to fold it into the
+  // temperature fixed point below.
+  const cold = solveBench(duty, soc, 20);
+  const vWash = inducedVelocity(cold.T, p.D, rhoNow());
+  // ONE housing→ambient path: base resistance, reduced by convection (self-wash +
+  // ducted fan, penalised by recirculation in static hover), then by any
+  // drag-dropped heatsink / pad / fan.
+  const RthEff = coolingRth(RthEffBase, coolFactor, forward, vWash) * partsRthMultiplier(motorParts);
+  // The ESC sits on the bench beside the motor, not under the disc, so it only
+  // benefits from the forced airflow — never from the rotor wash.
+  const RthEsc = coolingRth(RthEscBase, coolFactor, forward, 0) * partsRthMultiplier(escParts);
   const Cw = THERM_CW_FRAC*CthTot, Ch = (1-THERM_CW_FRAC)*CthTot;
 
-  const ss = twoNodeSteady(p, duty, soc, Tamb, RthEff);
+  const ss = twoNodeSteady(p, duty, soc, Tamb, RthEff, Rwh);
   const I = ss.I, Rm = ss.Rm, Resc = p.rdsOn, Pheat = ss.P;
   const Tss = ss.Th;                      // housing / case = primary "motor T_ss"
   const Twind = ss.Tw;                    // winding hotspot (emergent)
   const runaway = ss.runaway;             // true → this operating point cooks the winding
 
   // observable τ (case-temp 63.2%-crossing) + ambient-anchored heating-curve closure
-  const tau = twoNodeTau(Cw, Ch, R_WH, RthEff);
+  const tau = twoNodeTau(Cw, Ch, Rwh, RthEff);
   const tauFirstOrder = p.cThJc * RthEff;  // textbook single-node C·R (unscaled, for the panel)
   const Tt = t => Tamb + (Tss - Tamb) * (1 - Math.exp(-t / tau));
 
@@ -507,8 +614,9 @@ function thermalCalc(opts){
   // D · required cooling airflow for a target ΔT rise over ambient (instrument readout)
   const Qreq = Pheat / (rhoNow() * CP_AIR * dTair);
 
-  return { I, Rm, Resc, Rth:RthEff, RthEff, RthBase:RthEffBase, Cth:CthTot, Cw, Ch, Rwh:R_WH,
-           RthEsc, Tss, Twind, runaway, tau, tauFirstOrder, TssTextbook, TwindTextbookGap, Tt,
+  return { I, Rm, Resc, Rth:RthEff, RthEff, RthBase:RthEffBase, Cth:CthTot, Cw, Ch, Rwh,
+           RthEsc, RthEscBase, vWash, Tss, Twind, runaway, tau, tauFirstOrder,
+           TssTextbook, TwindTextbookGap, Tt,
            Tesc, escOver, Pheat, Qreq, coolFactor, forward, dTair };
 }
 /* τ-cursor "63.2% of rise" snap value — the classic first-order-lag knee,
@@ -566,8 +674,12 @@ function diagnostics(){
   const geom = propGeometry();
   const c = calc(), p = c.p;
 
-  // 1 · propeller collision (blocking)
-  if(geom.collide){
+  // 1 · propeller collision (blocking). Geometry checks describe an ASSEMBLED
+  // quad; this experiment only ever runs one motor in a clamp, so the arm-spacing
+  // and thrust-to-weight family of checks is skipped on a thermal bench and
+  // replaced by the thermal limits further down.
+  const flightBuild = !isThermalBench();
+  if(flightBuild && geom.collide){
     items.push({ sev:"err", block:true, tag:"prop-collision",
       msg:"Propellers collide — "+geom.propDiaMm.toFixed(0)+" mm props overlap on a "+geom.wbMm+" mm wheelbase (arm spacing "+geom.adjacentMm.toFixed(0)+" mm).",
       fix:"Fit a smaller propeller or a larger chassis before running." });
@@ -577,7 +689,7 @@ function diagnostics(){
       fix:"A smaller propeller improves the safety margin." });
   }
   // 2 · recommended prop size for the frame
-  if(ch && ch.phys && ch.phys.recommended_prop_in && pr && pr.phys){
+  if(flightBuild && ch && ch.phys && ch.phys.recommended_prop_in && pr && pr.phys){
     const rec = ch.phys.recommended_prop_in, dia = pr.phys.diameter_in;
     const lo = Math.min(...rec), hi = Math.max(...rec);
     if(dia < lo - 0.5 || dia > hi + 0.5){
@@ -588,7 +700,9 @@ function diagnostics(){
   }
   // 3 · motor over-current at full throttle
   if(mo){
-    if(c.full.Iper > p.imax){
+    // max_current_a is a short-burst (~60 s) rating, so a modest exceedance at
+    // wide-open throttle is a warning, not a dead build.
+    if(c.full.Iper > p.imax*1.15){
       items.push({ sev:"err", block:false,
         msg:"Motor over-current — draws "+c.full.Iper.toFixed(1)+" A vs "+p.imax+" A rating at full throttle.",
         fix:"Use a smaller prop, lower cell count, or a higher-current motor." });
@@ -601,10 +715,19 @@ function diagnostics(){
   // 4 · ESC current rating
   if(esc && esc.phys && esc.phys.current_a){
     const escA = esc.phys.current_a;
-    if(c.full.Iper > escA){
+    // Judge against the ESC's authored BURST rating (burst_current_a) when the
+    // spec carries one — it was present in every ESC spec.json but unused — and
+    // fall back to +25% headroom otherwise. current_a is the continuous figure,
+    // and wide-open throttle is a burst condition.
+    const escBurst = (esc.phys.burst_current_a || escA*1.25);
+    if(c.full.Iper > escBurst){
       items.push({ sev:"err", block:false,
         msg:"ESC under-rated — "+escA+" A/ch vs "+c.full.Iper.toFixed(1)+" A motor draw.",
         fix:"Choose an ESC rated above the motor's peak current." });
+    } else if(c.full.Iper > escA){
+      items.push({ sev:"warn",
+        msg:"ESC above continuous rating ("+c.full.Iper.toFixed(1)+" / "+escA+" A per channel).",
+        fix:"Survivable in bursts; it will run hot at sustained full throttle." });
     }
   }
   // 5 · battery discharge capability — burst (warn) vs continuous (error)
@@ -612,14 +735,23 @@ function diagnostics(){
     const capAh = ba.phys.capacity_mah/1000;
     const burstA = capAh * (ba.phys.c_rating||30);
     const contA  = capAh * p.cRatingCont;
-    if(c.full.Itot > contA){
+    // Full throttle is a BURST condition, not a sustained one — a pack may legally
+    // exceed its continuous rating in a punch-out and only has to survive its burst
+    // rating. The previous ordering tested continuous first, so the burst branch was
+    // unreachable and every build that merely bursted past continuous was failed
+    // outright. Sustained overdraw is judged separately, at the hover point.
+    if(c.full.Itot > burstA){
       items.push({ sev:"err", block:false, tag:"batt-crate",
-        msg:"Battery continuous C-rate exceeded — pack sustains "+contA.toFixed(0)+" A but the build pulls "+c.full.Itot.toFixed(0)+" A; cells overheat and vent.",
+        msg:"Battery burst limit exceeded — pack peaks at "+burstA.toFixed(0)+" A but full throttle pulls "+c.full.Itot.toFixed(0)+" A; cells overheat and vent.",
         fix:"Higher C-rating / capacity, or a lower-current motor & prop." });
-    } else if(c.full.Itot > burstA){
+    } else if(c.hoverI > contA){
+      items.push({ sev:"err", block:false, tag:"batt-crate",
+        msg:"Battery continuous C-rate exceeded in the hover — pack sustains "+contA.toFixed(0)+" A but hover alone needs "+c.hoverI.toFixed(0)+" A.",
+        fix:"Higher C-rating / capacity, or a more efficient motor & prop." });
+    } else if(c.full.Itot > contA){
       items.push({ sev:"warn",
-        msg:"Battery burst limit exceeded — pack "+burstA.toFixed(0)+" A vs "+c.full.Itot.toFixed(0)+" A full-throttle draw.",
-        fix:"Higher C-rating or capacity keeps voltage sag in check." });
+        msg:"Full throttle ("+c.full.Itot.toFixed(0)+" A) is above the pack's "+contA.toFixed(0)+" A continuous rating.",
+        fix:"Fine in bursts; sustained wide-open throttle will heat the cells." });
     }
   }
   // 6 · over-voltage — pack cell count above ESC / motor rating (burns the ESC on spin-up)
@@ -667,31 +799,73 @@ function diagnostics(){
     });
   }
   // 6 · thrust-to-weight / hover feasibility
-  if(c.tw < 1.05){
+  if(flightBuild && c.tw < 1.05){
     items.push({ sev:"err", block:false, tag:"no-hover",
       msg:"Cannot hover — thrust-to-weight is "+c.tw.toFixed(2)+" (need > 1.0).",
       fix:"Lighter build, larger prop, or a more powerful motor." });
-  } else if(c.tw < 1.5){
+  } else if(flightBuild && c.tw < 1.5){
     items.push({ sev:"warn",
       msg:"Marginal thrust-to-weight ("+c.tw.toFixed(2)+") — limited control authority.",
       fix:"Aim for T/W \u2265 1.8 for stable flight." });
   }
 
   // hover-throttle headroom — no control margin if it takes ~all the throttle
-  if(c.tw >= 1.05 && c.hoverPct > 88){
+  if(flightBuild && c.tw >= 1.05 && c.hoverPct > 88){
     items.push({ sev:"warn",
       msg:"No control headroom — hover needs "+Math.round(c.hoverPct)+" % throttle; little left to stabilise.",
       fix:"More thrust (bigger prop / higher-Kv motor) lowers hover throttle." });
   }
+  // ── thermal limits (this experiment's own checks) ──────────────────────────
+  // Predicted at FULL throttle from the live Environment & Cooling settings, so the
+  // panel warns before the student arms the bench, not after the motor has cooked.
+  if(isThermalBench()){
+    const th = liveThermalCalc(1);
+    const mParts = Object.keys(COOLING_PART_FRAC).filter(k=>state.cooling.motor[k]).length;
+    if(th.runaway){
+      items.push({ sev:"err", block:false, tag:"thermal-runaway",
+        msg:"Thermal runaway at full throttle — the winding converges past the "+TW_BURNOUT+" \u00b0C insulation limit; hot copper draws more loss, which makes it hotter still.",
+        fix:"De-rate the propeller, drop the cell count, add cooling, or fit a motor rated for this current." });
+    } else if(th.Twind > TW_BURNOUT*0.6){
+      items.push({ sev:"warn", tag:"winding-hot",
+        msg:"Winding hotspot reaches "+th.Twind.toFixed(0)+" \u00b0C at full throttle \u2014 "+(th.Twind-th.Tss).toFixed(0)+" \u00b0C above what the case sensor reads.",
+        fix:"The case looks survivable and the copper is not; cool the motor or reduce the load." });
+    }
+    if(th.Tss > QCOOL_SAFE_T){
+      items.push({ sev:"warn", tag:"case-hot",
+        msg:"Case settles at "+th.Tss.toFixed(0)+" \u00b0C at full throttle, above the "+QCOOL_SAFE_T+" \u00b0C safe-operating ceiling.",
+        fix:"Raise the cooling airflow, switch Static \u2192 Forward, or mount a heatsink on the motor." });
+    }
+    if(th.escOver){
+      items.push({ sev:"err", block:false, tag:"esc-overtemp",
+        msg:"ESC exceeds its "+ESC_TLIMIT+" \u00b0C limit at full throttle \u2014 predicted "+th.Tesc.toFixed(0)+" \u00b0C from I\u00b2\u00b7R_ds_on \u00d7 R_th_ESC.",
+        fix:"Fit an ESC with a lower on-state resistance, or drop a heatsink / thermal pad onto the board." });
+    }
+    if(state.ambientT >= 40 && (state.coolAirflow||0) < 20 && !mParts){
+      items.push({ sev:"warn", tag:"hot-ambient",
+        msg:"Ambient is "+state.ambientT+" \u00b0C with essentially no cooling \u2014 every temperature rise here starts from that baseline.",
+        fix:"Ambient adds directly to T_ss; raise the airflow or mount a cooling part." });
+    }
+    if(!state.airForward && (state.coolAirflow||0) > 60){
+      items.push({ sev:"warn", tag:"recirc",
+        msg:"High airflow in STATIC mode buys little \u2014 a hovering motor recirculates its own hot exhaust, so R_th only drops 3\u201310 %.",
+        fix:"Switch to Forward for clean flow and 15\u201325 % instead." });
+    }
+  }
   const errors = items.filter(i=>i.sev==="err").length;
   const warns = items.filter(i=>i.sev==="warn").length;
   const blocked = items.some(i=>i.block);
-  if(!items.length) items.push({ sev:"ok", msg:"All checks passed — geometry, current and thrust margins are within limits.", fix:"" });
+  if(!items.length) items.push({ sev:"ok",
+    msg: isThermalBench()
+      ? "All checks passed \u2014 current, voltage and thermal margins are within limits for this bench."
+      : "All checks passed \u2014 geometry, current and thrust margins are within limits.", fix:"" });
   return { items, errors, warns, blocked };
 }
 
 /* ════════════ 6 · 3D MODELS + SIZING ════════════ */
-function mat(color, opts){ return new THREE.MeshStandardMaterial(Object.assign({color, roughness:.55, metalness:.35}, opts||{})); }
+/* envMapIntensity is dialled below 1 because the scene now carries a PMREM
+   environment (initViewport) — at full strength the pale anodised parts read as
+   mirrors instead of machined metal. */
+function mat(color, opts){ return new THREE.MeshStandardMaterial(Object.assign({color, roughness:.55, metalness:.35, envMapIntensity:.55}, opts||{})); }
 function buildFallback(spec){
   const T = THREE, g = new T.Group();
   const c = spec.color, s = spec.s || 1;
@@ -909,7 +1083,20 @@ function seatModel(g, mode){
   else                g.position.y += (c.y - b.min.y) / s;
 }
 /* immediate placeholder group; swaps in the real oriented+fitted model on arrival */
-function modelFor(o, span, onReady){
+/* Orientation used for the small PREVIEW renders only (tiles, picker, reward
+   card). The assembled drone seats attachments with its own mount logic
+   (orientThinUp / orientCameraForward / seatModel "hang"), so this deliberately
+   does NOT touch the spec files — changing those would double-rotate the parts
+   on the rig. ORIENT has attachments:"none", which left a GPS board standing on
+   edge and a gimbal lying on its side in every preview. */
+function previewOrient(o){
+  if(!o || o.catKey !== "attachments") return undefined;
+  const mt = (o.phys && o.phys.mount_type) || "";
+  if(mt === "gps") return "flat";        // thin PCB face → horizontal
+  if(mt === "payload") return "axis";    // gimbal yoke → long axis vertical
+  return undefined;
+}
+function modelFor(o, span, onReady, orientRule){
   span = span || 1.6;
   const g = new THREE.Group();
   const fb = buildFallback((o && o.fallback) || {kind:"none",color:0xcccccc,s:1});
@@ -920,24 +1107,12 @@ function modelFor(o, span, onReady){
       const parts = masters.map(m=>m.clone(true));
       parts.forEach(p=>merged.add(p));
       const oriented = o.catKey === "motor" && orientMotorCombo(merged, parts);
-      const fitted = fitUnit(merged, span, o, oriented ? "none" : undefined);
+      const fitted = fitUnit(merged, span, o, oriented ? "none" : orientRule);
       while(g.children.length) g.remove(g.children[0]);
       g.add(fitted);
       if(onReady) onReady(g);
     }).catch(err=>console.warn("model load failed for", o && o.id, err.message||err));
   }
-  return g;
-}
-/* raw fitted stand model (no per-category orientation) */
-function standModel(span, onReady){
-  const g = new THREE.Group();
-  g.add(fitUnit(buildFallback({kind:"stand",color:0x9aa5b1,s:1}), span, null));
-  loadModelFile(STAND_MODEL).then(m=>{
-    const fitted = fitUnit(m.clone(true), span, null);
-    while(g.children.length) g.remove(g.children[0]);
-    g.add(fitted);
-    if(onReady) onReady(g);
-  }).catch(()=>{});
   return g;
 }
 function measuredHeight(group){
@@ -991,26 +1166,462 @@ function detectArmTips(root, fallbackR){
     return { x:Math.cos(a)*fallbackR, z:Math.sin(a)*fallbackR, y:null, a }; });
 }
 
+/* ════════════ 6b · PROCEDURAL BENCH HARDWARE ════════════
+   This experiment used to import assets/stand/motor_holder.glb — a single
+   tripod-style holder that is not what a thermal bench looks like and gave the
+   ESC nowhere to sit (which is why the ESC Thermal Check showed a motor and
+   nothing else). Everything below is generated in code instead:
+
+     buildBenchPlatform() — anodised aluminium breadboard deck, drilled M6 grid,
+                            machined edge rails, rubber feet.  userData.topY
+     buildMotorMount()    — machined base + slotted uprights + clamp ring
+     buildEsdMat()        — dissipative mat the ESC lies on
+     buildEscBoard()      — real ESC: FR4/solder-mask substrate, power DFN or
+                            metal-can MOSFETs, bulk caps, MCU, gold pads,
+                            castellations, silkscreen, power pigtails.  Carries
+                            userData.mosfets (the heat-mapped packages) and
+                            userData.nodes (phase / power terminals).
+     buildPowerFeed()     — bench supply block with binding posts
+     buildThermoMeter()   — 2-channel thermocouple meter with a live display
+
+   All materials are owned by these builders (never a shared GLB material), so
+   the per-frame thermal recolouring can never leak into another scene. */
+function metalMat(c, r, m){ return mat(c, {roughness:r==null?.3:r, metalness:m==null?.9:m}); }
+/* PCB palette matched to real hardware (blue 4-in-1 boards, black singles) */
+const PCB = { blue:0x123f6d, blueDeep:0x0d3358, black:0x131619, blackDeep:0x0a0c0e,
+              gold:0xb8912a, goldLit:0xcfae4b, silver:0xb6bdc4, tin:0x9aa2aa,
+              fet:0x17191d, ic:0x0e1013, capTan:0x8a5426, capCan:0x8d959c };
+/* rounded-corner extruded board. `holes` = [[x,z,r],…] drilled clean through —
+   shape-space y maps to world −z after the rotate below. */
+function roundedBoard(w, d, h, r, m, holes){
+  const shape = new THREE.Shape();
+  const x = -w/2, y = -d/2;
+  shape.moveTo(x+r, y);
+  shape.lineTo(x+w-r, y); shape.quadraticCurveTo(x+w, y, x+w, y+r);
+  shape.lineTo(x+w, y+d-r); shape.quadraticCurveTo(x+w, y+d, x+w-r, y+d);
+  shape.lineTo(x+r, y+d); shape.quadraticCurveTo(x, y+d, x, y+d-r);
+  shape.lineTo(x, y+r); shape.quadraticCurveTo(x, y, x+r, y);
+  (holes||[]).forEach(hl=>{
+    const pth = new THREE.Path();
+    pth.absarc(hl[0], -hl[1], hl[2], 0, Math.PI*2, true);
+    shape.holes.push(pth);
+  });
+  const g = new THREE.ExtrudeGeometry(shape, { depth:h, bevelEnabled:true,
+    bevelThickness:h*0.14, bevelSize:h*0.12, bevelSegments:2, steps:1 });
+  g.rotateX(-Math.PI/2);
+  return new THREE.Mesh(g, m);
+}
+/* flat silkscreen text decal laid on a board top */
+function silkLabel(text, wm, hm, col){
+  const cv = document.createElement("canvas"); cv.width = 256; cv.height = 128;
+  const ctx = cv.getContext("2d"); ctx.clearRect(0,0,256,128);
+  ctx.fillStyle = col || "#cdd8d3"; ctx.font = "700 74px 'IBM Plex Mono', monospace";
+  ctx.textAlign = "center"; ctx.textBaseline = "middle";
+  ctx.fillText(text, 128, 70);
+  const tex = new THREE.CanvasTexture(cv); tex.anisotropy = 4;
+  if(THREE.sRGBEncoding !== undefined) tex.encoding = THREE.sRGBEncoding;
+  const m = new THREE.Mesh(new THREE.PlaneGeometry(wm, hm),
+    new THREE.MeshBasicMaterial({ map:tex, transparent:true, depthWrite:false, toneMapped:false }));
+  m.rotation.x = -Math.PI/2; return m;
+}
+/* drooping wire between two world-space points */
+function wireTube(a, b, r, col, sag){
+  const mid = a.clone().add(b).multiplyScalar(.5);
+  mid.y -= (sag == null ? a.distanceTo(b)*0.18 : sag);
+  const curve = new THREE.CatmullRomCurve3([a, mid, b]);
+  return new THREE.Mesh(new THREE.TubeGeometry(curve, 26, r, 8, false),
+    mat(col, {roughness:.55, metalness:.08}));
+}
+function scaleToSpan(g, span){
+  const s = new THREE.Box3().setFromObject(g).getSize(new THREE.Vector3());
+  const m = Math.max(s.x, s.y, s.z) || 1;
+  g.scale.setScalar(span/m);
+  return g;
+}
+/* anodised aluminium test-bench deck. userData.topY = working surface height. */
+function buildBenchPlatform(){
+  const g = new THREE.Group();
+  const Wp = 5.6, Dp = 3.1, T = 0.16;
+  g.add(roundedBoard(Wp, Dp, T, .10, mat(0x51585f,{roughness:.38,metalness:.82})));
+  const field = roundedBoard(Wp*0.965, Dp*0.92, T*0.14, .07, mat(0x454c53,{roughness:.5,metalness:.7}));
+  field.position.y = T; g.add(field);
+  [-1,1].forEach(s=>{
+    const rail = roundedBoard(Wp, Dp*0.05, T*0.5, .02, mat(0x6b747c,{roughness:.3,metalness:.9}));
+    rail.position.set(0, T, s*Dp*0.468); g.add(rail);
+  });
+  // drilled M6 grid — instanced so a few hundred holes stay cheap
+  const cols = 22, rows = 11, pitch = .24;
+  const holeMesh = new THREE.InstancedMesh(new THREE.CylinderGeometry(.032,.032,T*0.5,10),
+    mat(0x22272c,{roughness:.8,metalness:.3}), cols*rows);
+  const m4 = new THREE.Matrix4(); let n = 0;
+  for(let i=0;i<cols;i++) for(let j=0;j<rows;j++){
+    m4.makeTranslation((i-(cols-1)/2)*pitch, T*1.02, (j-(rows-1)/2)*pitch);
+    holeMesh.setMatrixAt(n++, m4);
+  }
+  holeMesh.instanceMatrix.needsUpdate = true; g.add(holeMesh);
+  [[-1,-1],[-1,1],[1,-1],[1,1]].forEach(c=>{
+    const foot = new THREE.Mesh(new THREE.CylinderGeometry(.13,.15,.1,18), mat(0x1b1e22,{roughness:.9,metalness:.05}));
+    foot.position.set(c[0]*Wp*0.44, -.05, c[1]*Dp*0.40); g.add(foot);
+  });
+  const deckLabel = silkLabel("THERMAL BENCH", 1.5, 0.34, "#8b949d");
+  deckLabel.position.set(-Wp*0.30, T*1.09, Dp*0.40); g.add(deckLabel);
+  g.userData.topY = T*1.06;
+  return g;
+}
+/* machined motor mount — base plate, two slotted uprights, clamp ring.
+   userData.topY = motor seating height above the mount's own origin. */
+function buildMotorMount(h){
+  const g = new THREE.Group();
+  g.add(roundedBoard(.92,.92,.07,.06, mat(0x3d444b,{roughness:.42,metalness:.78})));
+  [[-1,-1],[-1,1],[1,-1],[1,1]].forEach(c=>{
+    const bolt = new THREE.Mesh(new THREE.CylinderGeometry(.045,.045,.03,12), metalMat(0x9aa5b1,.28,.92));
+    bolt.position.set(c[0]*.34,.075,c[1]*.34); g.add(bolt);
+  });
+  const ph = Math.max(h-.14, .12);
+  [-1,1].forEach(s=>{
+    const post = roundedBoard(.16,.5,ph,.05, mat(0x8e979f,{roughness:.3,metalness:.88}));
+    post.position.set(s*.3,.07,0); g.add(post);
+    const slot = new THREE.Mesh(new THREE.BoxGeometry(.18,ph*.5,.24), mat(0x333a40,{roughness:.6}));
+    slot.position.set(s*.3,.07+ph*.5,0); g.add(slot);
+  });
+  const shelf = roundedBoard(.74,.62,.05,.06, mat(0x8e979f,{roughness:.3,metalness:.88}));
+  shelf.position.y = h-.05; g.add(shelf);
+  const ring = new THREE.Mesh(new THREE.TorusGeometry(.30,.045,14,36), metalMat(0xa7b0b8,.28,.9));
+  ring.rotation.x = Math.PI/2; ring.position.y = h; g.add(ring);
+  g.userData.topY = h+.02;
+  return g;
+}
+/* dissipative ESD mat the ESC lies on */
+function buildEsdMat(w, d){
+  const g = new THREE.Group();
+  const pad = roundedBoard(w, d, .045, .06, mat(0x2a3138,{roughness:.78,metalness:.06}));
+  g.add(pad);
+  const edge = roundedBoard(w*0.94, d*0.9, .05, .05, mat(0x323a42,{roughness:.85,metalness:.04}));
+  edge.position.y = .045; g.add(edge);
+  const l = silkLabel("ESD", w*0.2, w*0.2, "#6d7c86"); l.position.set(-w*0.36, .097, d*0.32); g.add(l);
+  g.userData.topY = .09;
+  return g;
+}
+/* procedural high-poly ESC board — single-channel or 4-in-1, sized from the
+   selected option's real size_mm.  userData.mosfets = the packages the thermal
+   heat-map recolours; userData.nodes = terminals the phase/power wires land on. */
+function buildEscBoard(o){
+  const p = (o && o.phys) || {}, four = escIs4in1(o);
+  const board = (o && o.size) || (four ? [46,46,6] : [27,14,4]);
+  const W = board[0]/1000, D = board[1]/1000, H = board[2]/1000 * 0.30;
+  const g = new THREE.Group();
+  g.userData.nodes = {}; g.userData.mosfets = []; g.userData.owned = [];
+  const own = m => { g.userData.owned.push(m); return m; };
+  const mn = Math.min(W, D);
+  const maskCol = four ? PCB.blue : PCB.black;
+  const holeR = 0.0019;
+  const holes = four ? [[-1,-1],[-1,1],[1,-1],[1,1]].map(c=>[c[0]*W*0.385, c[1]*D*0.385, holeR]) : [];
+
+  const plate = roundedBoard(W, D, H, mn*0.09, own(mat(maskCol,{roughness:.52,metalness:.12})), holes);
+  g.add(plate);
+  const pour = roundedBoard(W*0.95, D*0.95, H*0.22, mn*0.075,
+    own(mat(four?PCB.blueDeep:PCB.blackDeep,{roughness:.66,metalness:.2})), holes);
+  pour.position.y = H; g.add(pour);
+  const topY = H*1.22;
+
+  const mkNode = (id,x,z,color,r)=>{
+    r = r || mn*0.05;
+    const post = new THREE.Mesh(new THREE.CylinderGeometry(r*0.9, r, H*1.5, 20),
+      own(mat(color,{metalness:.85,roughness:.3,emissive:color,emissiveIntensity:.12})));
+    post.position.set(x, topY+H*0.65, z); g.add(post);
+    g.userData.nodes[id] = post; return post;
+  };
+  /* black power DFN with exposed drain tab — the heat source on a 4-in-1 */
+  const mkFetDfn = (x,z,s,vert)=>{
+    const bw = vert ? s*0.78 : s, bd = vert ? s : s*0.78;
+    const bodyMat = own(mat(PCB.fet,{roughness:.38,metalness:.28,emissive:0x000000}));
+    const body = new THREE.Mesh(new THREE.BoxGeometry(bw, H*1.15, bd), bodyMat);
+    body.position.set(x, topY+H*0.575, z);
+    body.userData.baseColor = PCB.fet; g.userData.mosfets.push(body); g.add(body);
+    const lid = new THREE.Mesh(new THREE.BoxGeometry(bw*0.74, H*0.12, bd*0.74), own(metalMat(PCB.tin,.32,.85)));
+    lid.position.set(x, topY+H*1.16, z); g.add(lid);
+    const pinGeo = new THREE.BoxGeometry(vert?s*0.14:s*0.2, H*0.14, vert?s*0.2:s*0.14);
+    for(let k=-1;k<=1;k+=2) for(let i=-1;i<=1;i++){
+      const pin = new THREE.Mesh(pinGeo, own(metalMat(PCB.tin,.3,.9)));
+      pin.position.set(x + (vert? k*bw*0.52 : i*bw*0.3), topY+H*0.07, z + (vert? i*bd*0.3 : k*bd*0.52));
+      g.add(pin);
+    }
+  };
+  /* silver metal-can FET — the big packages on a high-current single ESC */
+  const mkFetCan = (x,z,s)=>{
+    const seat = new THREE.Mesh(new THREE.BoxGeometry(s*0.98, H*0.5, s*0.9), own(mat(PCB.fet,{roughness:.5,metalness:.2})));
+    seat.position.set(x, topY+H*0.25, z); g.add(seat);
+    const lidMat = own(metalMat(PCB.silver,.26,.88)); lidMat.emissive = new THREE.Color(0x000000);
+    const lid = roundedBoard(s*0.94, s*0.86, H*0.5, s*0.06, lidMat);
+    lid.position.set(x, topY+H*0.46, z);
+    lid.userData.baseColor = PCB.silver; g.userData.mosfets.push(lid); g.add(lid);
+    const pinGeo = new THREE.BoxGeometry(s*0.18, H*0.16, s*0.14);
+    for(let i=-1;i<=1;i++){ const pin = new THREE.Mesh(pinGeo, own(metalMat(PCB.tin,.3,.9)));
+      pin.position.set(x+i*s*0.3, topY+H*0.08, z-s*0.52); g.add(pin); }
+  };
+  const mkCapCan = (x,z,r,h)=>{
+    const can = new THREE.Mesh(new THREE.CylinderGeometry(r,r,h,24), own(metalMat(0x2a2f36,.34,.72)));
+    can.position.set(x, topY+h/2, z); g.add(can);
+    const top = new THREE.Mesh(new THREE.CylinderGeometry(r*0.97,r*0.97,h*0.05,24), own(metalMat(PCB.capCan,.28,.88)));
+    top.position.set(x, topY+h*0.98, z); g.add(top);
+  };
+  const mkCapTan = (x,z,w,d,h)=>{
+    const body = roundedBoard(w,d,h, Math.min(w,d)*0.28, own(mat(PCB.capTan,{roughness:.45,metalness:.25})));
+    body.position.set(x, topY, z); g.add(body);
+    const band = new THREE.Mesh(new THREE.BoxGeometry(w*0.16,h*1.04,d*1.02), own(metalMat(PCB.tin,.32,.85)));
+    band.position.set(x-w*0.42, topY+h*0.5, z); g.add(band);
+  };
+  const mkIC = (x,z,s,tall)=>{
+    const ic = roundedBoard(s, s, H*(tall?0.95:0.62), s*0.06, own(mat(PCB.ic,{roughness:.34,metalness:.22})));
+    ic.position.set(x, topY, z); g.add(ic);
+    const geoH = new THREE.BoxGeometry(s*0.08,H*0.1,s*0.06), geoV = new THREE.BoxGeometry(s*0.06,H*0.1,s*0.08);
+    for(let side=0;side<4;side++){
+      const horiz = side<2;
+      for(let i=-2;i<=2;i++){
+        const lead = new THREE.Mesh(horiz?geoH:geoV, own(metalMat(PCB.tin,.3,.9)));
+        const t = i*s*0.17;
+        if(horiz) lead.position.set(x+t, topY+H*0.05, z+(side?1:-1)*s*0.5);
+        else      lead.position.set(x+(side===2?-1:1)*s*0.5, topY+H*0.05, z+t);
+        g.add(lead);
+      }
+    }
+  };
+  const mkPassives = (x0,z0,nx,nz,sp,vert)=>{
+    for(let i=0;i<nx;i++) for(let j=0;j<nz;j++){
+      const w = vert? sp*0.3 : sp*0.52, d = vert? sp*0.52 : sp*0.3;
+      const bodyC = (i+j)%3===0 ? 0x8a6a3a : ((i+j)%3===1 ? 0x24282e : 0xb9a06a);
+      const r = new THREE.Mesh(new THREE.BoxGeometry(w,H*0.34,d), own(mat(bodyC,{roughness:.5})));
+      r.position.set(x0+i*sp, topY+H*0.17, z0+j*sp); g.add(r);
+    }
+  };
+  const mkPad = (x,z,w,d)=>{
+    const pd = roundedBoard(w, d, H*0.13, Math.min(w,d)*0.2, own(mat(PCB.gold,{metalness:.88,roughness:.28})));
+    pd.position.set(x, topY, z); g.add(pd); return pd;
+  };
+  const castellate = (n, along)=>{
+    const cr = 0.0005;
+    const cg = new THREE.CylinderGeometry(cr, cr, H*1.55, 8, 1, false, 0, Math.PI);
+    for(let i=0;i<n;i++){ const t = (i/(n-1)-0.5)*(along==="x"?W:D)*0.84;
+      [-1,1].forEach(s=>{
+        const c = new THREE.Mesh(cg, own(mat(PCB.gold,{metalness:.8,roughness:.35})));
+        if(along==="x"){ c.position.set(t, topY-H*0.62, s*D*0.5); c.rotation.y = s>0 ? 0 : Math.PI; }
+        else           { c.position.set(s*W*0.5, topY-H*0.62, t); c.rotation.y = s>0 ? -Math.PI/2 : Math.PI/2; }
+        g.add(c);
+      });
+    }
+  };
+  const label = (t,x,z,w,col)=>{ const m = silkLabel(t, w||mn*0.28, w||mn*0.28, col); m.position.set(x, topY+H*0.3, z); g.add(m); };
+
+  if(!four){
+    const rating = Math.max(10, Math.min(300, p.current_a || 35));
+    const nCans = Math.max(6, Math.min(12, Math.round(rating/9)*2));
+    for(let i=0;i<nCans/2;i++) for(let k=-1;k<=1;k+=2)
+      mkFetCan(W*0.08 + (i-(nCans/2-1)/2)*W*0.15, k*D*0.21, mn*0.26);
+    for(let i=0;i<4;i++) mkCapTan(-W*0.30, (i-1.5)*D*0.20, mn*0.15, mn*0.12, H*0.95);
+    mkIC(-W*0.17, D*0.28, mn*0.26);
+    mkCapCan(-W*0.17, -D*0.28, mn*0.09, H*1.5);
+    mkPassives(-W*0.04, -D*0.36, 3, 1, mn*0.11);
+    mkPad(-W*0.43, -D*0.26, W*0.12, D*0.30);
+    mkPad(-W*0.43,  D*0.26, W*0.12, D*0.30);
+    [-1,0,1].forEach(k=> mkPad(W*0.43, k*D*0.30, W*0.085, D*0.26));
+    mkNode("P+", -W*0.43, -D*0.26, 0xc23b2e, mn*0.055);
+    mkNode("P-", -W*0.43,  D*0.26, 0x22262b, mn*0.055);
+    mkNode("A",  W*0.43, -D*0.30, 0xd8b93c, mn*0.05);
+    mkNode("B",  W*0.43,        0, 0xd8b93c, mn*0.05);
+    mkNode("C",  W*0.43,  D*0.30, 0xd8b93c, mn*0.05);
+    castellate(7, "x");
+    label("+", -W*0.43, -D*0.26, mn*0.30, "#e08a72"); label("−", -W*0.43, D*0.26, mn*0.30, "#c9d4cf");
+    label("A", W*0.43, -D*0.30, mn*0.24, "#e6cf7a"); label("B", W*0.43, 0, mn*0.24, "#e6cf7a"); label("C", W*0.43, D*0.30, mn*0.24, "#e6cf7a");
+  }else{
+    [-1,1].forEach(sx=>[-1,1].forEach(sz=>{
+      for(let i=0;i<3;i++){
+        mkFetDfn(sx*(W*0.10+i*W*0.075), sz*D*0.30, mn*0.068, false);
+        mkFetDfn(sx*W*0.30, sz*(D*0.09+i*D*0.075), mn*0.068, true);
+      }
+    }));
+    mkIC(-W*0.075, -D*0.055, mn*0.13, true);
+    mkIC( W*0.075,  D*0.055, mn*0.13, true);
+    for(let i=0;i<2;i++) mkCapCan(W*0.05+i*W*0.11, -D*0.19, mn*0.05, H*1.5);
+    mkPassives(-W*0.02, -D*0.02, 3, 2, mn*0.055);
+    [[0,-1],[0,1],[-1,0],[1,0]].forEach(ed=>{
+      const ax = ed[0], az = ed[1];
+      for(let i=0;i<3;i++){ const t = (i-1)*W*0.145;
+        mkPad(ax?ax*W*0.452:t, az?az*D*0.452:t, ax?W*0.05:W*0.085, ax?D*0.085:D*0.05); }
+    });
+    const tabW = W*0.15, tabD = D*0.36;
+    const tab = roundedBoard(tabW, tabD, H*0.95, mn*0.02, own(mat(maskCol,{roughness:.52,metalness:.12})));
+    tab.position.set(-W*0.545, 0, D*0.27); g.add(tab);
+    mkPad(-W*0.545, D*0.27-tabD*0.24, tabW*0.66, tabD*0.34);
+    mkPad(-W*0.545, D*0.27+tabD*0.24, tabW*0.66, tabD*0.34);
+    const hdrBlk = new THREE.Mesh(new THREE.BoxGeometry(W*0.13,H*0.5,D*0.24), own(mat(0x101216)));
+    hdrBlk.position.set(0, topY+H*0.25, 0); g.add(hdrBlk);
+    holes.forEach(hl=>{
+      const ring = new THREE.Mesh(new THREE.RingGeometry(hl[2]*1.02, hl[2]*1.34, 24), own(metalMat(PCB.goldLit,.32,.85)));
+      ring.rotation.x = -Math.PI/2; ring.position.set(hl[0], topY+H*0.04, hl[1]); g.add(ring);
+    });
+    mkNode("P+", -W*0.545, D*0.27-tabD*0.24, 0xc23b2e, mn*0.045);
+    mkNode("P-", -W*0.545, D*0.27+tabD*0.24, 0x22262b, mn*0.045);
+    mkNode("A",  W*0.452, -D*0.145, 0xd8b93c, mn*0.04);
+    mkNode("B",  W*0.452,        0, 0xd8b93c, mn*0.04);
+    mkNode("C",  W*0.452,  D*0.145, 0xd8b93c, mn*0.04);
+    castellate(9, "x"); castellate(9, "z");
+    [[-1,-1,"M3"],[-1,1,"M4"],[1,-1,"M2"],[1,1,"M1"]].forEach(c=> label(c[2], c[0]*W*0.27, c[1]*D*0.27, mn*0.15, "#9fb2bd"));
+  }
+  return g;
+}
+/* bench supply block the ESC is fed from — chassis, binding posts, ON lamp */
+function buildPowerFeed(){
+  const g = new THREE.Group(); g.userData.nodes = {};
+  const W = .72, Hc = .40, Dp = .5;
+  const body = new THREE.Mesh(new THREE.BoxGeometry(W,Hc,Dp), mat(0x2b3138,{roughness:.5,metalness:.4}));
+  body.position.y = Hc/2; g.add(body);
+  const face = new THREE.Mesh(new THREE.BoxGeometry(W*1.004,Hc*0.96,.012), mat(0x1b2026,{roughness:.6}));
+  face.position.set(0, Hc/2, Dp/2+.006); g.add(face);
+  const lamp = new THREE.Mesh(new THREE.CylinderGeometry(.026,.026,.016,14),
+    new THREE.MeshStandardMaterial({ color:0x2fa47c, emissive:0x2fa47c, emissiveIntensity:.9, roughness:.4 }));
+  lamp.rotation.x = Math.PI/2; lamp.position.set(-W*0.34, Hc*0.74, Dp/2+.014); g.add(lamp);
+  [[-1,0xc23b2e,"P+"],[1,0x22262b,"P-"]].forEach(pp=>{
+    const post = new THREE.Mesh(new THREE.CylinderGeometry(.036,.036,.07,16), mat(pp[1],{metalness:.6,roughness:.35}));
+    post.rotation.x = Math.PI/2; post.position.set(pp[0]*W*0.22, Hc*0.30, Dp/2+.04); g.add(post);
+    g.userData.nodes[pp[2]] = post;
+  });
+  // silkLabel lies flat by default (rotation.x = -90°); stand it upright so it
+  // reads on the front panel rather than facing the ceiling.
+  const tag = silkLabel("DC FEED", .3, .1, "#8fa0ab");
+  tag.rotation.set(0, 0, 0);
+  tag.position.set(W*0.10, Hc*0.76, Dp/2+.015);
+  g.add(tag);
+  return g;
+}
+/* 2-channel thermocouple meter — the instrument that "reads" the bench.
+   userData.setReadout(motorT, escT, limit) redraws its display texture. */
+function buildThermoMeter(){
+  const g = new THREE.Group();
+  const W = .96, Hc = .58, Dp = .46;
+  const chassis = new THREE.Mesh(new THREE.BoxGeometry(W,Hc,Dp), mat(0x2f363d,{roughness:.52,metalness:.35}));
+  chassis.position.set(0, Hc/2, 0); g.add(chassis);
+  const cv = document.createElement("canvas"); cv.width = 256; cv.height = 128;
+  const tex = new THREE.CanvasTexture(cv);
+  // The renderer outputs sRGB, so a canvas texture left at linear encoding is
+  // gamma-crushed to near-black — which is what made this display read as a dead
+  // panel rather than a lit readout.
+  if(THREE.sRGBEncoding !== undefined) tex.encoding = THREE.sRGBEncoding;
+  // Bezel FIRST and behind: at +.001 with a .02-deep box its front face sat at
+  // +.011, in front of a screen at +.008, so the dark bezel was covering the
+  // display entirely. The screen now clears it.
+  const bezel = new THREE.Mesh(new THREE.BoxGeometry(W*0.86, Hc*0.62, .02), mat(0x14181c,{roughness:.7}));
+  bezel.position.set(0, Hc*0.60, Dp/2 - .002); g.add(bezel);
+  const screen = new THREE.Mesh(new THREE.PlaneGeometry(W*0.8, Hc*0.56),
+    new THREE.MeshBasicMaterial({ map:tex, toneMapped:false }));
+  screen.position.set(0, Hc*0.60, Dp/2 + .010); g.add(screen);
+  [-1,1].forEach(s=>{
+    const jack = new THREE.Mesh(new THREE.CylinderGeometry(.03,.03,.03,14), mat(s<0?0xc23b2e:0x22262b,{metalness:.5,roughness:.4}));
+    jack.rotation.x = Math.PI/2; jack.position.set(s*W*0.24, Hc*0.16, Dp/2+.015); g.add(jack);
+  });
+  /* Sized and contrasted to stay readable at the distance the bench is framed
+     from: two big stacked digit rows, one label column, nothing else. */
+  const draw = (mT, eT, limit)=>{
+    const x = cv.getContext("2d");
+    x.fillStyle = "#0e2b24"; x.fillRect(0,0,256,128);
+    x.strokeStyle = "#1f5c4d"; x.lineWidth = 4; x.strokeRect(2,2,252,124);
+    x.textBaseline = "middle";
+    x.fillStyle = "#8fd8c4"; x.font = "700 17px 'IBM Plex Mono', monospace";
+    x.fillText("MOTOR", 12, 34); x.fillText("ESC", 12, 94);
+    x.textAlign = "right";
+    x.font = "700 44px 'IBM Plex Mono', monospace";
+    x.fillStyle = mT >= 100 ? "#ff8a63" : mT >= 70 ? "#ffd257" : "#5affb0";
+    x.fillText(mT.toFixed(0) + "°", 246, 34);
+    x.fillStyle = eT >= limit ? "#ff8a63" : eT >= limit*0.8 ? "#ffd257" : "#5affb0";
+    x.fillText(eT.toFixed(0) + "°", 246, 94);
+    x.textAlign = "left";
+    x.strokeStyle = "#1f5c4d"; x.lineWidth = 3;
+    x.beginPath(); x.moveTo(10,64); x.lineTo(246,64); x.stroke();
+    tex.needsUpdate = true;
+  };
+  draw(T_AMB, T_AMB, ESC_TLIMIT);
+  g.userData.setReadout = draw;
+  return g;
+}
+
 /* ════════════ 7 · PREVIEW ENGINE ════════════ */
 let previewRenderer = null;
 const previews = new Map();
+/* Supersample factor for every preview render. The canvas backing store is sized
+   to its ON-SCREEN size x this, so on a retina panel the component is rendered at
+   the display's real pixel density instead of half of it. Capped at 3 so a 4K
+   display doesn't quietly cost 16x the fill rate. */
+const PREVIEW_DPR = Math.max(2, Math.min(window.devicePixelRatio || 1, 3));
+/* A tiny sky/ground gradient, prefiltered through PMREM. Without an environment
+   map three.js MeshStandardMaterial metals have nothing to reflect and read as
+   flat grey plastic — this is what makes the motor bell and prop hub look
+   machined rather than painted. */
+/* A PMREM render target belongs to the GL context that produced it, so the main
+   viewport renderer and the preview renderer each need their own copy — sharing
+   one silently breaks reflections (or the whole draw) on the second context. */
+const ENV_BY_RENDERER = new WeakMap();
+function ensureEnv(rnd){
+  if(!rnd || !THREE.PMREMGenerator) return null;
+  if(ENV_BY_RENDERER.has(rnd)) return ENV_BY_RENDERER.get(rnd);
+  let tex = null;
+  try{
+    const c = document.createElement("canvas"); c.width = 64; c.height = 32;
+    const x = c.getContext("2d"), grd = x.createLinearGradient(0,0,0,32);
+    grd.addColorStop(0,"#eef2f6"); grd.addColorStop(.45,"#b9c2cc");
+    grd.addColorStop(.58,"#6e7681"); grd.addColorStop(1,"#2b3036");
+    x.fillStyle = grd; x.fillRect(0,0,64,32);
+    const src = new THREE.CanvasTexture(c);
+    src.mapping = THREE.EquirectangularReflectionMapping;
+    const pm = new THREE.PMREMGenerator(rnd); pm.compileEquirectangularShader();
+    tex = pm.fromEquirectangular(src).texture; src.dispose();
+  }catch(e){ tex = null; }
+  ENV_BY_RENDERER.set(rnd, tex);
+  return tex;
+}
 function initPreviewEngine(){
-  previewRenderer = new THREE.WebGLRenderer({antialias:true, alpha:true});
-  previewRenderer.setSize(220,150);
-  previewRenderer.setPixelRatio(1);
+  previewRenderer = new THREE.WebGLRenderer({ antialias:true, alpha:true,
+                                              powerPreference:"high-performance" });
+  previewRenderer.setPixelRatio(1);          // sizes below are already device pixels
+  if(THREE.sRGBEncoding !== undefined) previewRenderer.outputEncoding = THREE.sRGBEncoding;
+  if(THREE.ACESFilmicToneMapping !== undefined){
+    previewRenderer.toneMapping = THREE.ACESFilmicToneMapping;
+    previewRenderer.toneMappingExposure = 0.82;   // calibrated against the env map below
+  }
+  previewRenderer.setSize(320,220,false);
+}
+/* The environment map is a full-strength reflection by default, which blows the
+   pale plastics out. Dial it back per material and keep a floor on roughness so
+   nothing turns into a mirror. */
+function tunePreviewMaterials(root){
+  if(!root || !root.traverse) return;
+  root.traverse(function(m){
+    if(!m.isMesh || !m.material) return;
+    (Array.isArray(m.material) ? m.material : [m.material]).forEach(function(mat){
+      if(mat.envMapIntensity !== undefined) mat.envMapIntensity = 0.38;
+      if(mat.roughness !== undefined) mat.roughness = Math.max(mat.roughness, 0.32);
+      mat.needsUpdate = true;
+    });
+  });
 }
 function registerPreview(canvas, o){
   if(!canvas || !o || !previewRenderer) return;
   const scene = new THREE.Scene();
-  scene.add(new THREE.AmbientLight(0xffffff,.85));
-  const d = new THREE.DirectionalLight(0xffffff,.9); d.position.set(2,3,2); scene.add(d);
-  const d2 = new THREE.DirectionalLight(0xdce3f2,.35); d2.position.set(-2,-1,-2); scene.add(d2);
-  const group = modelFor(o); scene.add(group);
-  const camera = new THREE.PerspectiveCamera(34, 220/150, .1, 50);
+  scene.environment = ensureEnv(previewRenderer);   // reflections for metal parts
+  // Studio 3-point rig. Ambient is dialled back from .85 because the environment
+  // map now supplies the fill — leaving it high washed every material out flat.
+  scene.add(new THREE.AmbientLight(0xffffff,.20));
+  const d = new THREE.DirectionalLight(0xffffff,.62); d.position.set(2.4,3.2,2.2); scene.add(d);
+  const d2 = new THREE.DirectionalLight(0xdce3f2,.26); d2.position.set(-2.6,-.6,-1.8); scene.add(d2);
+  const d3 = new THREE.DirectionalLight(0xffffff,.18); d3.position.set(-1.4,2.0,-2.6); scene.add(d3);
+  const group = modelFor(o, undefined, function(g){ tunePreviewMaterials(g); }, previewOrient(o));
+  tunePreviewMaterials(group);
+  scene.add(group);
+  const aspect = (canvas.width && canvas.height) ? canvas.width/canvas.height : 220/150;
+  const camera = new THREE.PerspectiveCamera(34, aspect, .1, 50);
   camera.position.set(1.9,1.35,1.9); camera.lookAt(0,0,0);
   previews.set(canvas, {scene, camera, group});
 }
 let frameNo = 0;
+let previewW = 0, previewH = 0;
 function blitPreviews(){
   if(!previewRenderer) return;
   let i = 0;
@@ -1018,19 +1629,35 @@ function blitPreviews(){
     if(!cv.isConnected){ previews.delete(cv); continue; }
     if((i++ + frameNo) % 2 !== 0) continue;
     p.group.rotation.y += .022;
+    // Size the backing store to the canvas's ON-SCREEN box x PREVIEW_DPR. The
+    // markup ships a fixed width/height (280x190 for the reward card) while CSS
+    // stretches the element to fill its panel, so the old fixed buffer was both
+    // upscaled and rendered at half density on a retina display — that is what
+    // made the parts look jagged and soft.
+    const r = cv.getBoundingClientRect();
+    if(!r.width || !r.height) continue;
+    const w = Math.max(2, Math.round(r.width  * PREVIEW_DPR));
+    const h = Math.max(2, Math.round(r.height * PREVIEW_DPR));
+    if(cv.width !== w || cv.height !== h){ cv.width = w; cv.height = h; }
+    if(previewW !== w || previewH !== h){
+      previewW = w; previewH = h;
+      previewRenderer.setSize(w, h, false);
+    }
+    if(p.camera.aspect !== w/h){ p.camera.aspect = w/h; p.camera.updateProjectionMatrix(); }
     previewRenderer.render(p.scene, p.camera);
     const ctx = cv.getContext("2d");
-    ctx.clearRect(0,0,cv.width,cv.height);
-    ctx.drawImage(previewRenderer.domElement, 0,0, cv.width, cv.height);
+    ctx.clearRect(0,0,w,h);
+    ctx.drawImage(previewRenderer.domElement, 0,0, w, h);
   }
 }
 
 /* ════════════ 8 · MAIN VIEWPORT / SCENES ════════════ */
-let renderer, scene, camera, controls, rig, propGroups = [];
+let renderer, scene, camera, controls, rig, propGroups = [], gridHelper = null;
 let hoverPhase = 0, benchGroup = null;
 // component emitter anchors, so failure smoke/sparks vent from the real part
 let rigParts = { motors: [], escs: [], battery: null };
 let benchParts = { motor: null, esc: null };
+let benchDeck = null, benchMeter = null, meterAcc = 0;
 function sceneModeType(){ return currentExp().exp.type || "assembly"; }   // assembly | bench | flight | thermbench | escbench | coolflow
 // Exp 09: all three thermal experiment types are motor-on-stand benches —
 // reuse the existing buildBenchRig() unchanged; the thermal visuals (colour
@@ -1140,14 +1767,23 @@ function initViewport(){
   renderer = new THREE.WebGLRenderer({antialias:true, alpha:true});
   renderer.setSize(w,h);
   renderer.setPixelRatio(Math.min(devicePixelRatio,2));
+  if(THREE.sRGBEncoding !== undefined) renderer.outputEncoding = THREE.sRGBEncoding;
+  if(THREE.ACESFilmicToneMapping !== undefined){
+    renderer.toneMapping = THREE.ACESFilmicToneMapping;
+    renderer.toneMappingExposure = 0.95;
+  }
   host.appendChild(renderer.domElement);
   scene = new THREE.Scene();
-  // Moderate lighting; brightness of the dark carbon/metal parts is handled on the
-  // components themselves (brightenModel in loadModelFile), not by flooding the scene.
-  scene.add(new THREE.AmbientLight(0xffffff,.62));
-  const key = new THREE.DirectionalLight(0xffffff,.9); key.position.set(4,6,3); scene.add(key);
-  const fill = new THREE.DirectionalLight(0xdde5f0,.4); fill.position.set(-4,2,-4); scene.add(fill);
-  scene.add(new THREE.GridHelper(14,28,0xc4d1cc,0xe1e9e6));
+  // The bench is machined aluminium, silver FET cans and gold pads — metals need
+  // something to REFLECT or they render near-black. One PMREM-filtered studio
+  // gradient supplies that; the lamps are then dialled back, because keeping them
+  // at the old flood levels on top of an environment map blows the pale parts out.
+  scene.environment = ensureEnv(renderer);
+  scene.add(new THREE.AmbientLight(0xffffff,.34));
+  const key = new THREE.DirectionalLight(0xffffff,.62); key.position.set(4,6,3); scene.add(key);
+  const fill = new THREE.DirectionalLight(0xdde5f0,.26); fill.position.set(-4,2,-4); scene.add(fill);
+  const rim = new THREE.DirectionalLight(0xffffff,.18); rim.position.set(-2,3.5,-5); scene.add(rim);
+  gridHelper = new THREE.GridHelper(14,28,0xc4d1cc,0xe1e9e6); scene.add(gridHelper);
   FX.init(scene);
   camera = new THREE.PerspectiveCamera(38, w/h, .1, 200);
   camera.position.set(4.2,3.0,4.6);
@@ -1166,22 +1802,37 @@ function resizeViewport(){
   camera.aspect = w/h; camera.updateProjectionMatrix();
 }
 function clearRig(){
+  camRestore();                       // never leave thermal-cam materials on a dead rig
   if(rig){ scene.remove(rig); rig = null; }
   if(benchGroup){ scene.remove(benchGroup); benchGroup = null; }
   propGroups = [];
   FX.clear();
   rigParts = { motors: [], escs: [], battery: null };
   benchParts = { motor: null, esc: null };
+  benchDeck = null; benchMeter = null;
 }
 function buildScene(){
   clearRig();
   if(isBench()) buildBenchRig(); else buildDrone();
   if(isThermalBench()) dressThermalBench();
   syncCamera();
+  if(state.camMode) applyCamMode(true);          // re-arm the IR render on the new rig
 }
 function syncCamera(){
-  if(!controls) return;
-  if(isBench()){ controls.target.set(0,1.2,0); }
+  if(!controls || !camera) return;
+  if(isBench()){
+    // The ESC experiment is about the board, so frame the board close in; the
+    // motor experiments pull back far enough to keep the whole deck AND the
+    // propeller disc (which is several times the motor's own width) in frame.
+    const escView = sceneModeType() === "escbench";
+    if(escView){
+      controls.target.set(BENCH.escX, 0.42, BENCH.escZ);
+      camera.position.set(BENCH.escX - 0.5, 1.5, BENCH.escZ + 2.1);
+    }else{
+      controls.target.set(0.35, 1.05, 0);
+      camera.position.set(3.4, 3.3, 5.6);
+    }
+  }
   else { controls.target.set(0, state.module==="m3" ? 1.2 : 1.1, 0); }
 }
 
@@ -1362,6 +2013,7 @@ function mountMotor(anchor, o, spanM, spinDir, propInfo){
         // sink the hub a hair into the bell so it visibly grips it (no float, no gap)
         g.position.y += (bellTop - pb.min.y) / s - propInfo.span * 0.02;
       });
+      prop.userData.isProp = true;             // tags the blade subtree for the IR classifier (§8d)
       spinner.add(prop);
     }
   }).catch(err => console.warn("motor load failed", err && (err.message || err)));
@@ -1540,48 +2192,91 @@ function buildDroneFromMounts(d, ch){
   });
 }
 
-/* single motor + prop clamped to the test stand — motor-relative true sizing */
+/* ── Thermal test bench ───────────────────────────────────────────────────────
+   Everything is procedural (§6b): an aluminium deck carrying a clamped motor
+   mount on the right, the real ESC board on an ESD mat on the left, a bench DC
+   feed behind it, a K-type thermocouple meter, and the phase / power wiring that
+   joins them.  The old imported motor_holder.glb stand is gone: it was the wrong
+   fixture for a thermal test and left the ESC with nowhere to sit, which is why
+   the ESC Thermal Check appeared to show only a motor. */
+const BENCH = { motorX:0.95, escX:-1.25, escZ:0.12, feedX:-2.15, feedZ:-0.72, meterX:1.95, meterZ:-0.70 };
 function buildBenchRig(){
   const g = new THREE.Group();
   propGroups = [];
-  const mo = opt("motor"), pr = opt("propeller");
+  const mo = opt("motor"), pr = opt("propeller"), esc = opt("esc");
   const motorMax = mo && mo.size ? Math.max.apply(null, mo.size) : 40;
-  const bu = 0.95 / motorMax;                  // world units per mm (motor ≈ 0.95 wide)
-  const stand = standModel(2.0, s=>{
-    const hm = measuredHeight(s);
-    s.position.y = -hm.min;                     // rest base on ground
-    placeBenchMotor(hm.max - hm.min);
-  });
-  g.add(stand);
-  benchGroup = g; scene.add(g);
-  rig = g;                         // the loop animates `rig`; bench branch spins motor/prop
-  // provisional placement until stand measures
-  placeBenchMotor(1.7);
+  const bu = 0.95 / motorMax;                  // world units per mm (motor ≈ 0.95 across)
 
-  function placeBenchMotor(standTopY){
-    // remove previous motor/prop
-    for(let k=g.children.length-1;k>=0;k--){ if(g.children[k].userData.benchPart) g.remove(g.children[k]); }
-    propGroups = [];
-    const motorH = mo && mo.size ? mo.size[1]*bu : 0.5;
-    const motorSpan = motorMax*bu;
-    const pDiaMm = pr ? (((pr.phys && pr.phys.diameter_in) || 5)*25.4) : 120;
-    const pSpan = pDiaMm*bu;                    // prop true size relative to this motor
-    if(mo){
-      // container sits at the motor location; mountMotor seats stator+rotor and
-      // splits the rotor into a spinner (pushed to propGroups) so it turns.
-      const mg = new THREE.Group();
-      // mountMotor seats the motor BASE at the anchor → anchor = stand top
-      mg.position.set(0, standTopY, 0); mg.userData.benchPart = true; g.add(mg);
-      // prop seated on the rotor top inside mountMotor (spins with the bell)
-      const propInfo = (pr && pr.files && pr.files.length) ? { opt: pr, span: pSpan } : null;
-      mountMotor(mg, mo, motorSpan, 1, propInfo);
-      benchParts.motor = mg; FX.setEmitter("benchmotor", mg, "motor");
-      // ESC vents from just below the motor on the stand head
-      const escMk = new THREE.Object3D(); escMk.position.set(0, standTopY - motorH*0.5, 0);
-      escMk.userData.benchPart = true; g.add(escMk);
-      benchParts.esc = escMk; FX.setEmitter("benchesc", escMk, "esc");
-    }
+  // ── deck ──
+  const deck = buildBenchPlatform(); g.add(deck);
+  const DY = deck.userData.topY;
+  benchDeck = deck;
+
+  // ── ESC on its ESD mat ──
+  const matPad = buildEsdMat(1.5, 1.05);
+  matPad.position.set(BENCH.escX, DY, BENCH.escZ); g.add(matPad);
+  const escGroup = buildEscBoard(esc);
+  // 4-in-1 boards are physically bigger; scale each to its real relative footprint
+  scaleToSpan(escGroup, escIs4in1(esc) ? 1.15 : 0.95);
+  escGroup.position.set(BENCH.escX, DY + matPad.userData.topY, BENCH.escZ);
+  g.add(escGroup);
+  benchParts.esc = escGroup; FX.setEmitter("benchesc", escGroup, "esc");
+
+  // ── bench DC feed + instrument ──
+  const feed = buildPowerFeed(); feed.position.set(BENCH.feedX, DY, BENCH.feedZ); g.add(feed);
+  benchMeter = buildThermoMeter(); benchMeter.position.set(BENCH.meterX, DY, BENCH.meterZ); g.add(benchMeter);
+
+  // ── motor mount + motor + prop ──
+  const mountH = 0.95;
+  const mount = buildMotorMount(mountH);
+  mount.position.set(BENCH.motorX, DY, 0); g.add(mount);
+  const motorTopY = DY + mount.userData.topY;
+
+  const motorSpan = motorMax*bu;
+  const pDiaMm = pr ? (((pr.phys && pr.phys.diameter_in) || 5)*25.4) : 120;
+  const pSpan = pDiaMm*bu;                      // prop true size relative to this motor
+  const mg = new THREE.Group();
+  mg.position.set(BENCH.motorX, motorTopY, 0); g.add(mg);
+  if(mo){
+    const propInfo = (pr && pr.files && pr.files.length) ? { opt: pr, span: pSpan } : null;
+    mountMotor(mg, mo, motorSpan, 1, propInfo);
   }
+  benchParts.motor = mg; FX.setEmitter("benchmotor", mg, "motor");
+
+  // motor phase terminals — three gold posts at the motor base, facing the viewer
+  const motorNodes = {};
+  ["A","B","C"].forEach((id,i)=>{
+    const post = new THREE.Mesh(new THREE.SphereGeometry(.035,14,10),
+      mat(0xd8b93c,{metalness:.7,roughness:.3,emissive:0xd8b93c,emissiveIntensity:.12}));
+    post.position.set(BENCH.motorX + (i-1)*.13, motorTopY + .05, .22);
+    g.add(post); motorNodes[id] = post;
+  });
+  // thermocouple bead taped to the motor case, wire running back to the meter
+  const bead = new THREE.Mesh(new THREE.SphereGeometry(.028,12,9), mat(0xb04a2e,{roughness:.6,metalness:.2}));
+  bead.position.set(BENCH.motorX - .13, motorTopY + motorSpan*0.45, .16); g.add(bead);
+
+  // ── wiring: three phases ESC→motor, power ESC→feed, two thermocouple leads ──
+  const wires = new THREE.Group(); g.add(wires);
+  g.updateMatrixWorld(true);
+  const wpos = o => o.getWorldPosition(new THREE.Vector3());
+  const local = v => g.worldToLocal(v.clone());
+  const PHASE_COL = [0xd8b93c, 0x1f8a5b, 0x4f6d9e];
+  ["A","B","C"].forEach((id,i)=>{
+    const a = escGroup.userData.nodes[id], b = motorNodes[id];
+    if(a && b) wires.add(wireTube(local(wpos(a)), local(wpos(b)), .026, PHASE_COL[i], .10 + i*.03));
+  });
+  [["P+",0xc23b2e],["P-",0x1a1d22]].forEach(pp=>{
+    const a = escGroup.userData.nodes[pp[0]], b = feed.userData.nodes[pp[0]];
+    if(a && b) wires.add(wireTube(local(wpos(a)), local(wpos(b)), .03, pp[1], .09));
+  });
+  wires.add(wireTube(local(wpos(bead)),
+    local(new THREE.Vector3(BENCH.meterX - .23, DY + .16, BENCH.meterZ + .25)), .014, 0xc23b2e, .16));
+  const escBead = new THREE.Vector3(BENCH.escX + .3, DY + matPad.userData.topY + .05, BENCH.escZ - .2);
+  wires.add(wireTube(local(escBead),
+    local(new THREE.Vector3(BENCH.meterX + .23, DY + .16, BENCH.meterZ + .25)), .014, 0x22262b, .22));
+
+  benchGroup = g; scene.add(g);
+  rig = g;                          // the loop animates `rig`; bench branch spins motor/prop
 }
 
 /* ════════════ 8c · THERMAL VISUALS (Exp 09, additive) ════════════
@@ -1603,67 +2298,65 @@ function thermalRampColor(T){
   return new THREE.Color(s[s.length-1].c);
 }
 let _hazeTex = null;
+/* Rising heat shimmer. The falloff has to reach zero on ALL FOUR edges: a purely
+   vertical gradient left the plane's left and right edges opaque, so the additive
+   quad read as a hard-edged white card floating beside the motor instead of a
+   soft plume. Vertical rise × horizontal bell, multiplied per pixel. */
 function hazeTexture(){
   if(_hazeTex) return _hazeTex;
-  const c = document.createElement("canvas"); c.width = 32; c.height = 64;
+  const W = 64, H = 128;
+  const c = document.createElement("canvas"); c.width = W; c.height = H;
   const g = c.getContext("2d");
-  const grd = g.createLinearGradient(0,64,0,0);
-  grd.addColorStop(0,"rgba(255,255,255,.6)"); grd.addColorStop(.55,"rgba(255,255,255,.16)"); grd.addColorStop(1,"rgba(255,255,255,0)");
-  g.fillStyle = grd; g.fillRect(0,0,32,64);
+  const img = g.createImageData(W, H);
+  for(let y=0;y<H;y++){
+    const v = 1 - y/(H-1);                        // 1 at the bottom (hot), 0 at the top
+    const rise = Math.pow(v, 1.5) * 0.62;
+    for(let x=0;x<W;x++){
+      const u = (x/(W-1) - 0.5)*2;                // −1 … 1 across the width
+      const bell = Math.max(0, 1 - u*u);          // zero at both edges
+      const i = (y*W + x)*4;
+      img.data[i] = img.data[i+1] = img.data[i+2] = 255;
+      img.data[i+3] = Math.round(255 * rise * bell * bell);
+    }
+  }
+  g.putImageData(img, 0, 0);
   _hazeTex = new THREE.CanvasTexture(c);
   _hazeTex.wrapS = _hazeTex.wrapT = THREE.RepeatWrapping;
   return _hazeTex;
 }
+/* Anchors are not all at world scale — the ESC board group is scaled by ~40 to
+   bring a 22 mm board up to bench size — so a span measured in WORLD units has to
+   be converted into the anchor's local units before it is used as a child's size.
+   Skipping this made the ESC's haze plane come out ~40x too big: a 30-unit
+   additive sheet washing across the whole bench as soon as the board warmed up. */
+function localSpan(anchor, worldSpan){
+  if(anchor) anchor.updateWorldMatrix(true, false);
+  const s = anchor ? (anchor.getWorldScale(new THREE.Vector3()).y || 1) : 1;
+  return worldSpan / s;
+}
 /* translucent emissive shell around the motor — colour tracks the ramp, opacity ∝ ΔT above ambient */
-function buildThermalSkin(anchor, span){
+function buildThermalSkin(anchor, worldSpan){
+  const span = localSpan(anchor, worldSpan);
   const geo = new THREE.CylinderGeometry(span*0.34, span*0.36, span*0.9, 22, 1, true);
   const m = new THREE.MeshBasicMaterial({ color:0x2f6fd6, transparent:true, opacity:0,
     side:THREE.DoubleSide, blending:THREE.AdditiveBlending, depthWrite:false });
   const mesh = new THREE.Mesh(geo, m);
   mesh.position.y = span*0.05;
+  mesh.userData.thermalOverlay = true;      // excluded from the IR render (§8d)
   anchor.add(mesh);
   return mesh;
 }
 /* soft upward-drifting haze plane, billboarded to the camera each frame */
-function buildHazePlane(anchor, span){
+function buildHazePlane(anchor, worldSpan){
+  const span = localSpan(anchor, worldSpan);
   const geo = new THREE.PlaneGeometry(span*0.7, span*1.5);
   const m = new THREE.MeshBasicMaterial({ map:hazeTexture(), transparent:true, opacity:0,
     depthWrite:false, side:THREE.DoubleSide, blending:THREE.AdditiveBlending });
   const mesh = new THREE.Mesh(geo, m);
   mesh.position.y = span*0.75;
+  mesh.userData.thermalOverlay = true;      // excluded from the IR render (§8d)
   anchor.add(mesh);
   return mesh;
-}
-/* NEW procedural ESC — FR4 board sized by current rating, MOSFETs, capacitor,
-   heatshrink wrap. Its own owned materials (never a shared GLB), so per-frame
-   emissive/colour changes are always safe. */
-function buildProceduralESC(currentRating){
-  const T = THREE, g = new T.Group();
-  const rating = Math.max(20, Math.min(300, currentRating||35));
-  const w = 0.55 + Math.min(rating,150)/150*0.55;
-  const boardMat = new T.MeshStandardMaterial({ color:0x1f6a3a, roughness:.7, metalness:.12, emissive:0x000000 });
-  const board = new T.Mesh(new T.BoxGeometry(w, 0.05, w*0.62), boardMat);
-  g.add(board);
-  const nFets = Math.max(4, Math.min(12, Math.round(rating/15)));
-  const perRow = Math.max(2, Math.ceil(nFets/2));
-  const fetMats = [];
-  for(let i=0;i<nFets;i++){
-    const fetMat = new T.MeshStandardMaterial({ color:0x24272b, roughness:.45, metalness:.5, emissive:0x000000 });
-    const fet = new T.Mesh(new T.BoxGeometry(w*0.11, 0.05, w*0.085), fetMat);
-    const col = i % perRow, row = Math.floor(i/perRow);
-    fet.position.set(-w*0.34 + col*(w*0.68/(perRow-1||1)), 0.05, -w*0.16 + row*(w*0.2));
-    g.add(fet); fetMats.push(fetMat);
-  }
-  const cap = new T.Mesh(new T.CylinderGeometry(w*0.09,w*0.09,w*0.17,16),
-    new T.MeshStandardMaterial({ color:0x2b2f33, metalness:.5, roughness:.35 }));
-  cap.position.set(w*0.36, 0.115, w*0.18);
-  g.add(cap);
-  const wrap = new T.Mesh(new T.BoxGeometry(w*1.05, 0.065, w*0.68),
-    new T.MeshStandardMaterial({ color:0x1b2430, transparent:true, opacity:.32, roughness:.6 }));
-  wrap.position.y = -0.012;
-  g.add(wrap);
-  g.userData.glowMats = [boardMat].concat(fetMats);
-  return g;
 }
 /* rotor-wash streamline particles — Forward: straight through; Static: swirl/recirculate */
 function buildStreamGroup(n){
@@ -1679,9 +2372,11 @@ function buildStreamGroup(n){
   return g;
 }
 /* current thermal dressing objects — rebuilt on every buildScene() */
-let thermalDress = { skin:null, haze:null, escGroup:null, escHaze:null, stream:null, motorSpan:0.5 };
+let thermalDress = { skin:null, haze:null, escGroup:null, escHaze:null, stream:null,
+                     motorSpan:0.5, escGlow:[] };
 function dressThermalBench(){
-  thermalDress = { skin:null, haze:null, escGroup:null, escHaze:null, stream:null, motorSpan:0.5 };
+  thermalDress = { skin:null, haze:null, escGroup:null, escHaze:null, stream:null,
+                   motorSpan:0.5, escGlow:[] };
   if(!benchParts.motor) return;
   const box = new THREE.Box3().setFromObject(benchParts.motor);
   const size = box.getSize(new THREE.Vector3());
@@ -1690,13 +2385,14 @@ function dressThermalBench(){
   thermalDress.skin = buildThermalSkin(benchParts.motor, span);
   thermalDress.haze = buildHazePlane(benchParts.motor, span);
   if(benchParts.esc){
-    const escOpt = opt("esc");
-    const rating = (escOpt && escOpt.phys && escOpt.phys.current_a) || 35;
-    const escGroup = buildProceduralESC(rating);
-    escGroup.scale.setScalar(span*0.85);
-    benchParts.esc.add(escGroup);
-    thermalDress.escGroup = escGroup;
-    thermalDress.escHaze = buildHazePlane(benchParts.esc, span*0.7);
+    // The ESC on the bench IS the real board (§6b) — glow its MOSFET packages,
+    // which are where the conduction loss actually appears, rather than tinting
+    // a stand-in block. Their materials are owned by buildEscBoard, so writing
+    // emissive per frame can't bleed into a cached GLB material.
+    thermalDress.escGroup = benchParts.esc;
+    thermalDress.escGlow = (benchParts.esc.userData.mosfets || []).map(m=>m.material);
+    const escBox = new THREE.Box3().setFromObject(benchParts.esc).getSize(new THREE.Vector3());
+    thermalDress.escHaze = buildHazePlane(benchParts.esc, Math.max(escBox.x, escBox.z)*0.9);
   }
   if(sceneModeType() === "coolflow"){
     thermalDress.stream = buildStreamGroup(16);
@@ -1718,10 +2414,10 @@ function tickThermalVisuals(dt, motorT, escT, ambientT){
     if(camera) d.haze.quaternion.copy(camera.quaternion);
     d.haze.material.map.offset.y = (d.haze.material.map.offset.y + dt*0.12) % 1;
   }
-  if(d.escGroup){
+  if(d.escGlow && d.escGlow.length && !state.camMode){
     const col = thermalRampColor(escT);
     const glow = Math.max(0, Math.min(1, (escT-40)/60));
-    d.escGroup.userData.glowMats.forEach(m=>{ m.emissive.copy(col); m.emissiveIntensity = glow; });
+    d.escGlow.forEach(m=>{ if(m.emissive){ m.emissive.copy(col); m.emissiveIntensity = glow; } });
   }
   if(d.escHaze){
     const dT = Math.max(0, escT-ambientT);
@@ -1750,12 +2446,163 @@ function updateEscBadgePosition(){
   const host = $("viewport"); if(!host) return;
   const v = new THREE.Vector3();
   benchParts.esc.getWorldPosition(v);
-  v.y += thermalDress.motorSpan*0.6 + 0.15;
+  // A small fixed clearance above the board's own origin. Measuring the group's
+  // bounding box instead would follow the haze overlay parented to it, floating
+  // the badge well above the hardware it is pointing at.
+  v.y += 0.30;
   v.project(camera);
   const w = host.clientWidth, h = host.clientHeight;
   badge.style.left = Math.round((v.x*0.5+0.5)*w) + "px";
   badge.style.top = Math.round((-v.y*0.5+0.5)*h) + "px";
 }
+/* ════════════ 8d · THERMAL CAMERA (real false-colour render) ════════════
+   The old implementation was a CSS filter over the viewport, which recoloured
+   the visible-light image and therefore showed hue, not temperature — a cold
+   deck and a 150 °C winding came out the same shade. This renders a genuine IR
+   image instead: every mesh on the bench is swapped to an unlit material whose
+   colour is looked up from an ironbow palette at THAT PART's temperature, so the
+   picture is the temperature field. Lights, reflections and the grid are removed
+   the way they are absent from a real thermographic frame.
+
+   Temperature assignment (all live, per frame):
+     rotor / stator / case  → housing T, blended toward the winding hotspot near
+                              the stator (where the copper actually is)
+     ESC MOSFET packages    → ESC T + a small junction-to-case offset
+     ESC substrate          → ESC T, minus the board's own spreading gradient
+     propeller              → ambient (moving air, negligible self-heating)
+     deck / mount / meter    → ambient, +1 °C for the metal touching the mount
+   IRONBOW is the standard palette: navy → purple → magenta → orange → white. */
+const IRONBOW = [
+  [0.00, 0x08051f], [0.18, 0x2b0f63], [0.36, 0x6a1f8c],
+  [0.54, 0xc3395f], [0.72, 0xf07c1f], [0.88, 0xffd23f], [1.00, 0xffffff]
+];
+function irColor(T, lo, hi){
+  const f = Math.max(0, Math.min(1, (T - lo) / Math.max(hi - lo, 1)));
+  for(let i=0;i<IRONBOW.length-1;i++){
+    if(f <= IRONBOW[i+1][0]){
+      const k = (f - IRONBOW[i][0]) / (IRONBOW[i+1][0] - IRONBOW[i][0] || 1);
+      return new THREE.Color(IRONBOW[i][1]).lerp(new THREE.Color(IRONBOW[i+1][1]), k);
+    }
+  }
+  return new THREE.Color(0xffffff);
+}
+/* meshes grouped by which temperature drives them, plus what to restore */
+let camState = { on:false, groups:{}, saved:[], hidden:[], bg:null };
+let _camMeshCheck = 0;
+function _camClassify(){
+  const groups = { motorHot:[], motorCase:[], escHot:[], escBoard:[], prop:[], amb:[], warm:[] };
+  if(!benchGroup) return groups;
+  const motorRoot = benchParts.motor, escRoot = benchParts.esc;
+  const mosfets = new Set((escRoot && escRoot.userData.mosfets) || []);
+  const inside = (o, root)=>{ let n = o; while(n){ if(n === root) return true; n = n.parent; } return false; };
+  const isProp = o => { let n = o; while(n){ if(n.userData && n.userData.isProp) return true; n = n.parent; } return false; };
+  const motorMeshes = [];
+  benchGroup.traverse(o=>{
+    if(!o.isMesh || !o.material) return;
+    if(o.userData.thermalOverlay) return;                        // skin / haze — hidden in IR
+    // the propeller lives inside the motor's spinner, so it must be tested first
+    if(isProp(o)){ groups.prop.push(o); return; }
+    if(escRoot && inside(o, escRoot)){ (mosfets.has(o) ? groups.escHot : groups.escBoard).push(o); return; }
+    if(motorRoot && inside(o, motorRoot)){ motorMeshes.push(o); return; }
+    // the mount and the deck field directly under the motor pick up conducted heat
+    const c = new THREE.Vector3(); o.getWorldPosition(c);
+    (Math.abs(c.x - BENCH.motorX) < .55 && c.y > 0.1 ? groups.warm : groups.amb).push(o);
+  });
+  /* Split the motor at the midpoint of the CAN — measured from the motor meshes
+     themselves, not from the anchor's bounding box (which contains the propeller
+     and so put every part below the midpoint, classing the whole motor as the
+     hotspot). Lower half = stator / winding region, upper half = the rotor bell. */
+  if(motorMeshes.length){
+    const c = new THREE.Vector3();
+    const ys = motorMeshes.map(m=>{ m.getWorldPosition(c); return c.y; });
+    const mid = (Math.min.apply(null, ys) + Math.max.apply(null, ys)) / 2;
+    motorMeshes.forEach((m,i)=>{ (ys[i] <= mid ? groups.motorHot : groups.motorCase).push(m); });
+  }
+  return groups;
+}
+function applyCamMode(on){
+  if(!on){ camRestore(); return; }
+  // Re-arming (a rig rebuild, or a component GLB that arrived late) restores first
+  // and then re-classifies. camRestore() also clears the frame class and hides the
+  // HUD, so both are switched on AFTER it runs — doing it before left every re-arm
+  // with the IR render active but no dark frame and no calibration bar.
+  if(camState.on) camRestore();
+  if(!benchGroup){ camState.on = false; return; }
+  camState = { on:true, groups:_camClassify(), saved:[], hidden:[], bg:scene.background };
+  Object.keys(camState.groups).forEach(k=>{
+    camState.groups[k].forEach(mesh=>{
+      camState.saved.push({ mesh, material:mesh.material });
+      mesh.material = new THREE.MeshBasicMaterial({ color:0x101018 });
+      mesh.userData.__ir = true;
+    });
+  });
+  // additive glow overlays and the reference grid have no place in an IR frame
+  [thermalDress.skin, thermalDress.haze, thermalDress.escHaze, gridHelper].forEach(o=>{
+    if(o && o.visible){ o.visible = false; camState.hidden.push(o); }
+  });
+  scene.background = new THREE.Color(0x05070a);
+  const vf = $("vpFrame"), hud = $("camHud");
+  if(vf) vf.classList.add("thermal-cam-mode");
+  if(hud) hud.hidden = false;
+}
+function camRestore(){
+  if(!camState.on) return;
+  camState.saved.forEach(s=>{ if(s.mesh.material && s.mesh.material.dispose) s.mesh.material.dispose();
+                              s.mesh.material = s.material; delete s.mesh.userData.__ir; });
+  camState.hidden.forEach(o=>{ o.visible = true; });
+  if(scene) scene.background = camState.bg || null;
+  camState = { on:false, groups:{}, saved:[], hidden:[], bg:null };
+  const vf = $("vpFrame"); if(vf) vf.classList.remove("thermal-cam-mode");
+  const hud = $("camHud"); if(hud) hud.hidden = true;
+}
+/* per-frame recolour + HUD refresh. lo/hi auto-range so the palette always
+   spans the actual scene, like a camera on auto-span. */
+/* True when some mesh on the bench is not currently carrying an IR material —
+   i.e. the classification is stale. A plain mesh COUNT is not enough: a
+   component GLB replaces its placeholder mesh one-for-one, so the count is
+   unchanged while the object that is actually on screen is a different one. */
+function camNeedsRearm(){
+  if(!benchGroup) return false;
+  let stale = false;
+  benchGroup.traverse(o=>{
+    if(stale || !o.isMesh || o.userData.thermalOverlay) return;
+    if(!o.userData.__ir) stale = true;
+  });
+  return stale;
+}
+function tickCamMode(motorT, escT, ambT, windT){
+  if(!camState.on) return;
+  // Component GLBs (motor, propeller) finish loading AFTER buildScene returns, so a
+  // classification taken at toggle time can miss them — they would then render with
+  // their normal lit materials inside the IR frame. Re-arm whenever the mesh count
+  // changes; checked every 20 frames, so it costs nothing in the steady state.
+  if(++_camMeshCheck % 20 === 0 && camNeedsRearm()){ applyCamMode(true); return; }
+  const hottest = Math.max(motorT, escT, windT, ambT + 5);
+  const lo = Math.max(0, Math.floor((ambT - 3)/5)*5);
+  const hi = Math.max(lo + 25, Math.ceil((hottest + 6)/10)*10);
+  const paint = (arr, T)=>{ const c = irColor(T, lo, hi); arr.forEach(m=>m.material.color.copy(c)); };
+  const gr = camState.groups;
+  paint(gr.motorHot,  motorT + (windT - motorT)*0.62);           // copper reads through the can
+  paint(gr.motorCase, motorT);
+  paint(gr.escHot,    escT + 6);                                 // junction-to-case offset
+  paint(gr.escBoard,  escT - 7);                                 // FR4 spreads poorly
+  paint(gr.prop,      ambT + 1);
+  paint(gr.warm,      ambT + (motorT - ambT)*0.16);              // conducted into the mount
+  paint(gr.amb,       ambT);
+  updateCamHud(lo, hi, motorT, escT, windT, ambT);
+}
+let _camHudAcc = 0;
+function updateCamHud(lo, hi, motorT, escT, windT, ambT){
+  _camHudAcc++; if(_camHudAcc % 6 !== 0) return;                 // 10 Hz is plenty for text
+  const ticks = $("camTicks"), spots = $("camSpots");
+  if(ticks) ticks.innerHTML = [hi, Math.round((hi+lo)/2), lo].map(v=>"<span>"+v+"°</span>").join("");
+  if(spots) spots.innerHTML =
+    '<div><span>MOTOR</span><b>'+motorT.toFixed(1)+'°</b></div>'+
+    '<div class="hot"><span>WINDING</span><b>'+windT.toFixed(1)+'°</b></div>'+
+    '<div><span>ESC</span><b>'+escT.toFixed(1)+'°</b></div>'+
+    '<div><span>AMBIENT</span><b>'+ambT.toFixed(0)+'°</b></div>';
+}
+
 /* Reality-probe chip — reveals the winding-vs-housing gap the lumped R_wh layer
    predicts (the "reality-check" hotspot hidden inside a single-node model). */
 function updateProbeReadout(motorT, ambT){
@@ -1874,12 +2721,32 @@ function renderProgress(){
 /* Exp 09 — one shared call site for "what does thermalCalc say about the rig
    right now", built from the live manual controls. Used by the calc chips, the
    idle 3D/telemetry preview, and applyThermalState(). */
+/* Memoised: twoNodeSteady() runs a 24-step fixed point, each step solving the
+   motor operating point, so one call is not free — and the calc chips, the log,
+   the charts, the telemetry and the per-frame 3D recolour all want the same
+   answer for the same controls. The cache is keyed on everything thermalCalc
+   reads, so it self-invalidates the instant a slider, a chip or a component
+   changes; there is no stale-value path. */
+const _thermCache = new Map();
+let _thermSig = "";
+function thermalSignature(){
+  const cm = state.cooling.motor, ce = state.cooling.esc;
+  return [state.ambientT, state.coolAirflow, state.airForward?1:0, state.altitude,
+          cm.heatsink?1:0, cm.pad?1:0, cm.fan?1:0, ce.heatsink?1:0, ce.pad?1:0, ce.fan?1:0,
+          JSON.stringify(state.sel)].join("|");
+}
 function liveThermalCalc(duty){
-  return thermalCalc({
-    throttle: duty != null ? duty : Math.max(0, Math.min(1, (state.manualThrottle||0)/100)),
-    ambient: state.ambientT, coolFactor: (state.coolAirflow||0)/100, forward: !!state.airForward,
-    motorParts: state.cooling.motor, escParts: state.cooling.esc
-  });
+  const d = duty != null ? duty : Math.max(0, Math.min(1, (state.manualThrottle||0)/100));
+  const sig = thermalSignature();
+  if(sig !== _thermSig){ _thermSig = sig; _thermCache.clear(); }
+  const key = d.toFixed(4);
+  let v = _thermCache.get(key);
+  if(v) return v;
+  v = thermalCalc({ throttle:d, ambient:state.ambientT, coolFactor:(state.coolAirflow||0)/100,
+                    forward:!!state.airForward, motorParts:state.cooling.motor, escParts:state.cooling.esc });
+  if(_thermCache.size > 64) _thermCache.clear();
+  _thermCache.set(key, v);
+  return v;
 }
 function renderCalcChips(){
   if(isThermalBench()){
@@ -1924,7 +2791,7 @@ function renderLog(){
     const d = el("div","log-item "+it.sev);
     d.innerHTML = '<span class="ic">'+icon(it.sev)+'</span>'+
       '<div class="body"><span class="msg">'+txt(it.msg)+'</span>'+
-      (it.fix ? '<span class="fix">→ '+txt(it.fix)+'</span>' : '')+'</div>';
+      (it.fix ? '<span class="fix">Fix: '+txt(it.fix)+'</span>' : '')+'</div>';
     list.appendChild(d);
   });
   const badge = $("logBadge"), sum = $("logSummary");
@@ -1939,22 +2806,71 @@ function renderLog(){
   else { rb.classList.remove("blocked"); }
   return dg;
 }
+/* local mass formatter — exp-04 has no fmtMass() of its own */
+function rwMass(g){
+  if(typeof fmtMass === "function") return fmtMass(g);
+  return g >= 1000 ? (g/1000).toFixed(2)+" kg" : (g<10 && g>0 ? g.toFixed(1) : Math.round(g))+" g";
+}
+/* Draw a random component from the reward category and REMEMBER the draw, so the
+   card doesn't reshuffle on every re-render. Kept in localStorage under its own
+   key (not the experiment's state schema, which differs per experiment) so a
+   fresh play-through can award a different part. */
+let _rewardPick = null;
+function rewardPick(r){
+  if(!r || !r.pool || !r.pool.length) return null;
+  if(_rewardPick && r.pool.indexOf(_rewardPick) !== -1) return _rewardPick;
+  const KEY = "dtl-reward-" + (r.category || "x");
+  let id = null; try{ id = localStorage.getItem(KEY); }catch(e){}
+  let p = id ? r.pool.filter(function(o){ return o.id === id; })[0] : null;
+  if(!p){
+    p = r.pool[Math.floor(Math.random()*r.pool.length)];
+    try{ localStorage.setItem(KEY, p.id); }catch(e){}
+  }
+  _rewardPick = p;
+  return p;
+}
 function renderReward(){
-  const body = $("rewardBody");
+  const body = $("rewardBody"); if(!body) return;
+  const DB = (typeof DRONE_DB !== "undefined" && DRONE_DB) ? DRONE_DB
+           : (typeof ESC_DB   !== "undefined" && ESC_DB)   ? ESC_DB : null;
+  const r = (DB && DB.reward) || { pool: [] };
   const unlocked = allDone();
-  $("rewardBadge").textContent = (unlocked?1:0)+" / 1";
+  const badge = $("rewardBadge");
   body.innerHTML = "";
-  if(unlocked){
-    const r = DRONE_DB.reward;
-    const d = el("div","reward-open");
-    d.innerHTML = '<div class="view"><canvas width="280" height="190"></canvas></div>'+
-      '<div class="meta"><b>★ '+txt(r.name)+'</b><p>'+txt(r.desc)+'</p></div>';
+  // capstone: the experiment IS the showdown, so there is nothing to unlock
+  if(!r.category){
+    if(badge) badge.textContent = unlocked ? "PASS" : "—";
+    const d = el("div","reward-locked"+(unlocked?" reward-final":""));
+    d.innerHTML = '<div class="lock">'+(unlocked?"🏆":"🔒")+'</div><p>'+
+      (unlocked ? "Full system verified — the build flies."
+                : txt(r.desc || "Complete every check to clear the flight test."))+'</p>';
     body.appendChild(d);
-    registerPreview(d.querySelector("canvas"), r);
+    return;
+  }
+  if(badge) badge.textContent = (unlocked?1:0)+" / 1";
+  if(unlocked){
+    const pick = rewardPick(r);
+    const d = el("div","reward-open");
+    const specs = (pick && pick.specs && pick.specs.length)
+      ? pick.specs.slice(0,3).map(function(s){ return '<span><i>'+txt(s[0])+'</i>'+txt(s[1])+'</span>'; }).join("")
+      : "";
+    d.innerHTML =
+      '<div class="view"><canvas width="280" height="190"></canvas></div>'+
+      '<div class="meta"><span class="rw-kind">'+txt(r.name)+' unlocked</span>'+
+      '<b>'+txt(pick ? pick.name : r.name)+'</b>'+
+      (specs ? '<div class="rw-specs mono">'+specs+'</div>' : '')+
+      (pick && pick.mass ? '<div class="rw-specs mono"><span><i>Mass</i>'+rwMass(pick.mass)+
+        (pick.qty>1?" × "+pick.qty:"")+'</span></div>' : '')+
+      '</div>';
+    body.appendChild(d);
+    // pick is a REAL catalogue option, so it carries catKey → fitUnit applies the
+    // same orientation rule this component uses everywhere else in the lab.
+    registerPreview(d.querySelector("canvas"), pick || { fallback:r.fallback });
   }else{
     const total = allExperiments().length;
     const d = el("div","reward-locked");
-    d.innerHTML = '<div class="lock">🔒</div><p>Complete all '+total+' experiments<br>to unlock a reward component</p>';
+    d.innerHTML = '<div class="lock">🔒</div><p>Complete all '+total+' experiments<br>to unlock a '+
+      txt((r.name||"reward component").toLowerCase())+'</p>';
     body.appendChild(d);
   }
 }
@@ -1966,8 +2882,12 @@ function updateTelemetry(t){
   $("telPwr").textContent = Math.round(t.pwr||0)+" W";
   $("telTemp").textContent = Math.round(t.temp!=null?t.temp:T_AMB)+" °C";
   $("telEsc").textContent = Math.round(t.esc!=null?t.esc:T_AMB)+" °C";
-  $("telBat").textContent = Math.round((t.soc!=null?t.soc:sim.soc!=null?sim.soc:1)*100)+" %";
-  $("telAlt").textContent = (t.alt||0).toFixed(2)+" m";
+  // A bench has no altitude and no pack discharge to report, so the last two rows
+  // carry the figures this experiment is actually about: the winding hotspot the
+  // case sensor hides, and the effective housing→ambient thermal resistance.
+  const wind = $("telWind"), rth = $("telRth");
+  if(wind) wind.textContent = Math.round(t.wind!=null?t.wind:(t.temp!=null?t.temp:T_AMB))+" °C";
+  if(rth) rth.textContent = t.rth!=null ? t.rth.toFixed(2)+" °C/W" : "— °C/W";
   const ph = $("telPhase");
   ph.textContent = t.phase || "STANDBY";
   ph.className = "tel-phase mono"+(t.phaseCls?" "+t.phaseCls:"");
@@ -2125,7 +3045,22 @@ function massChartConfig(mini){
         title:{ display:true, text:(total/1000).toFixed(2)+" kg all-up", font:{size:mini?11:13}, color:"#1e2a29" } },
       plugins_center:true } };
 }
-function drawMassChart(){ const c = ChartHub.put("massChart", massChartConfig(true)); if(c) c._metric = "mass"; }
+/* The Charts card's mini plot. A mass doughnut is the platform default, but in a
+   thermal lab the one number that belongs on a permanently-visible tile is what
+   cooling is buying you — so this shows the still-air / current / full-wash
+   comparison, live, and the mass doughnut stays available inside the modal. */
+function drawMassChart(){
+  const cfg = isThermalBench() ? cfgCoolingComparison() : massChartConfig(true);
+  if(isThermalBench()){
+    cfg.options.plugins = cfg.options.plugins || {};
+    cfg.options.plugins.legend = { display:false };
+    cfg.options.scales.x.title.display = false;
+    cfg.options.scales.y.title.display = false;
+    if(cfg.options.scales.y1) cfg.options.scales.y1.display = false;
+  }
+  const c = ChartHub.put("massChart", cfg);
+  if(c) c._metric = isThermalBench() ? "cool" : "mass";
+}
 /* generic XY plotter for the charts modal */
 /* ── analysis-chart builders (each returns a Chart.js config, computed live) ── */
 function throttleSweep(){
@@ -2291,7 +3226,6 @@ function cfgEscVsThrottle(){
 }
 /* 4 · cooling comparison — still-air vs rotor-wash bars + Q_required vs available */
 function cfgCoolingComparison(){
-  const still = liveThermalCalc(1.0);
   const stillCalc = thermalCalc({ throttle:1, ambient:state.ambientT, coolFactor:0, forward:false,
     motorParts:state.cooling.motor, escParts:state.cooling.esc });
   const forcedCalc = thermalCalc({ throttle:1, ambient:state.ambientT, coolFactor:1, forward:true,
@@ -2313,21 +3247,129 @@ function cfgWindingVsHousing(){
     { label:"Housing / case T_ss (°C)", data:house, borderColor:C_COL.orange, backgroundColor:C_COL.orange+"1f", borderWidth:2, pointRadius:0, tension:.3, fill:true, borderDash:[5,4], yAxisID:"y" } ] },
     options: baseXY("Throttle (%)", {y:"Temperature (°C)"}) };
 }
-function chartDefs(){
+/* 6 · where the R_th reduction comes from — the airflow setting vs each mounted
+   part, as the °C/W each one removes from the baseline housing→ambient path.
+   Bars, so it lands on the Charts card rather than the Graphs card. */
+function cfgRthBreakdown(){
+  const p = propulsionParams();
+  const base = p.rThCw;
+  const cur = liveThermalCalc(1);
+  const selfOnly = coolingRth(base, 0, !!state.airForward, cur.vWash);
+  const afterAir = coolingRth(base, (state.coolAirflow||0)/100, !!state.airForward, cur.vWash);
+  const parts = state.cooling.motor;
+  const labels = ["Still air (base)"], vals = [+base.toFixed(3)], cols = [C_COL.red];
+  labels.push("+ rotor wash"); vals.push(+selfOnly.toFixed(3)); cols.push(C_COL.orange);
+  labels.push("+ fan " + (state.coolAirflow||0) + "%"); vals.push(+afterAir.toFixed(3)); cols.push(C_COL.slate);
+  let running = afterAir;
+  Object.keys(COOLING_PART_FRAC).forEach(k=>{
+    if(!parts[k]) return;
+    running *= (1 - COOLING_PART_FRAC[k]);
+    labels.push("+ " + COOL_PART_LABEL[k]); vals.push(+running.toFixed(3)); cols.push(C_COL.green);
+  });
+  return { type:"bar", data:{ labels, datasets:[
+    { label:"Effective R_th (°C/W)", data:vals, backgroundColor:cols, borderWidth:0 } ] },
+    options: baseXY("Cooling stage", {y:"R_th (°C/W)"}) };
+}
+/* 7 · power balance at full throttle — where the watts actually go. Doughnut. */
+function cfgHeatBalance(){
+  const cur = liveThermalCalc(1.0);
+  const op = solveBench(1, 1, Math.min(cur.Twind, TW_BURNOUT));
+  const pCu = cur.I*cur.I*cur.Rm;
+  const pEsc = cur.I*cur.I*cur.Resc;
+  const pMech = Math.max(op.Pmech, 0);
+  const pOther = Math.max(op.P - pCu - pEsc - pMech, 0);
+  return { type:"doughnut",
+    data:{ labels:["Mechanical (prop)","Copper loss I²R_m","ESC conduction I²R_ds","Iron / windage"],
+      datasets:[{ data:[pMech, pCu, pEsc, pOther].map(v=>+v.toFixed(1)),
+        backgroundColor:[C_COL.green, C_COL.red, C_COL.orange, C_COL.slate], borderWidth:0, hoverOffset:6 }] },
+    options:{ responsive:true, maintainAspectRatio:false, cutout:"56%",
+      plugins:{ legend:{ position:"right", labels:{boxWidth:11} },
+        tooltip:{ callbacks:{ label:cx=>" "+cx.label+": "+cx.raw.toFixed(1)+" W" } },
+        title:{ display:true, text:op.P.toFixed(0)+" W electrical in @ 100% throttle", font:{size:12}, color:C_COL.ink } } } };
+}
+/* 8 · thermal margin radar — how much headroom each limit has left, 0…100%.
+   One glance answers "what will fail first on this build". */
+function cfgMarginRadar(){
+  const cur = liveThermalCalc(1.0);
+  const amb = state.ambientT;
+  const pct = (v, limit)=> Math.max(0, Math.min(100, (1 - (v - amb)/Math.max(limit - amb, 1))*100));
+  const data = [
+    pct(cur.Tss,   QCOOL_SAFE_T),          // case vs safe-operating ceiling
+    pct(cur.Twind, TW_BURNOUT),            // winding vs insulation limit
+    pct(cur.Tesc,  ESC_TLIMIT),            // ESC vs 80 °C
+    Math.max(0, Math.min(100, (1 - cur.Rth/Math.max(cur.RthBase,0.01))*400)),   // cooling applied
+    Math.max(0, Math.min(100, 100 - (cur.Twind - cur.Tss)/40*100))              // hotspot tightness
+  ].map(v=>+v.toFixed(1));
+  return { type:"radar",
+    data:{ labels:["Case margin","Winding margin","ESC margin","Cooling applied","Hotspot tightness"],
+      datasets:[{ label:"Headroom at full throttle (%)", data,
+        borderColor:C_COL.blue, backgroundColor:C_COL.blue+"29", borderWidth:2, pointRadius:3 }] },
+    options:{ responsive:true, maintainAspectRatio:false,
+      scales:{ r:{ min:0, max:100, ticks:{ stepSize:25, font:{family:"'IBM Plex Mono'", size:9} },
+                   grid:{color:C_COL.grid}, pointLabels:{font:{size:10}} } },
+      plugins:{ legend:{ position:"bottom" } } } };
+}
+function plotDefsAll(){
   return [
     { id:"tssfit", title:"T_ss vs I² · linear fit (signature chart)", cfg:cfgTssFit,
       empty:"Arm the Steady-State Temp Sweep and sweep the throttle — the T_ss(I²) locus auto-logs as it settles." },
     { id:"heat",   title:"Heating curves T(t) · 50% / 100% throttle", cfg:cfgHeatingCurves },
     { id:"escthr", title:"ESC temperature vs throttle · 80 °C limit", cfg:cfgEscVsThrottle },
-    { id:"cool",   title:"Cooling comparison · still-air vs rotor-wash", cfg:cfgCoolingComparison },
     { id:"windh",  title:"Winding hotspot vs housing temperature",    cfg:cfgWindingVsHousing },
+    { id:"cool",   title:"Cooling comparison · still-air vs rotor-wash", cfg:cfgCoolingComparison },
+    { id:"rthbd",  title:"R_th reduction breakdown · airflow + mounted parts", cfg:cfgRthBreakdown },
+    { id:"balance",title:"Power balance @ 100% throttle · where the watts go", cfg:cfgHeatBalance },
+    { id:"margin", title:"Thermal margin radar · what fails first",   cfg:cfgMarginRadar },
     { id:"mass",   title:"Mass distribution",                        cfg:()=>massChartConfig(false) }
   ];
 }
 /* single-chart floating detail — reached by clicking any chart's expand button */
-function openSingleChart(def){
+/* ── Graphs vs Charts split ───────────────────────────────────────────────────
+   A plot belongs on the Graphs card when it is drawn as a CURVE — a line chart,
+   or a scatter with showLine (the sweep / CDF style). Everything else — bars,
+   radars, doughnuts, clouds, histograms — stays in Charts. The kind is read off
+   the built config, so a new plot lands in the right panel without a flag. A def
+   with an `empty` fallback is a recorded-run plot: it is a line too, and the
+   Graphs modal shows it as the full-width live block instead of a tile. */
+function plotIsLine(def){
+  if(def.dom) return false;
+  if(def.empty) return true;
+  try{
+    const c = def.cfg();
+    if(!c) return true;
+    if(c.type === "line") return true;
+    return c.type === "scatter" && (c.data.datasets||[]).some(d=>d.showLine);
+  }catch(e){ return false; }
+}
+function graphDefs(){ return plotDefsAll().filter(plotIsLine); }
+function chartDefs(){
+  const out = plotDefsAll().filter(d=>!plotIsLine(d));
+  // Some experiments plot nothing but curves — say so instead of an empty panel.
+  return out.length ? out : [{ id:"nocharts", title:"No non-line charts in this experiment",
+    cfg:()=>null, empty:"Every plot here is a curve — they are all on the Graphs card." }];
+}
+/* gallery body shared by the Graphs modal: one block per def + expand button */
+function renderGraphBlocks(wrap, defs){
+  const pending = [];
+  defs.forEach(def=>{
+    const block = el("div","calc-block gchart");
+    const head = el("div","gchart-head");
+    head.innerHTML = '<h3>'+txt(def.title)+'</h3><button type="button" class="gchart-expand" title="Expand">⤢</button>';
+    head.querySelector("button").addEventListener("click", ()=>openSingleChart(def, "graphs"));
+    block.appendChild(head);
+    const cfg = def.cfg();
+    if(cfg){ const box = el("div","chart-box-lg");
+      box.innerHTML = '<canvas id="gc_'+def.id+'"></canvas>'; block.appendChild(box);
+      pending.push({ id:"gc_"+def.id, cfg }); }
+    else block.appendChild(el("div","runs-empty", txt(def.empty||"No data yet.")));
+    if(def.note) block.appendChild(el("p","chart-footnote", txt(def.note())));
+    wrap.appendChild(block);
+  });
+  return pending;
+}
+function openSingleChart(def, backTo){
   const body = openModal(txt(def.title)+' <em>· detail</em>', "#c65d3b",
-    '<button type="button" class="modal-back" id="chartBack">‹ all charts</button>');
+    '<button type="button" class="modal-back" id="chartBack">‹ all '+(backTo==="graphs"?"graphs":"charts")+'</button>');
   const wrap = el("div"); wrap.style.cssText = "height:62vh;min-height:340px;position:relative";
   if(def.dom){ wrap.style.height="auto"; def.dom(wrap); }
   else{ wrap.innerHTML = '<canvas id="gc_single"></canvas>'; }
@@ -2335,20 +3377,35 @@ function openSingleChart(def){
   if(def.cfg){ const c = def.cfg(); if(c) ChartHub.put("gc_single", c);
     else wrap.innerHTML = '<div class="runs-empty">'+txt(def.empty||"No data yet.")+'</div>'; }
   if(def.note) body.appendChild(el("p","chart-footnote", txt(def.note())));
-  const back = $("chartBack"); if(back) back.addEventListener("click", openChartsDetail);
+  const back = $("chartBack"); if(back) back.addEventListener("click", backTo==="graphs"?openGraphDetail:openChartsDetail);
 }
 /* live telemetry graph detail — reached by clicking the Graphs card */
 function openGraphDetail(){
+  ChartHub.killPrefix("gc_");
   const { mod, exp } = currentExp();
-  const key = mod.id+":"+exp.id, metric = exp.metric;
-  const body = openModal('Live Graph <em>· '+txt(exp.name)+'</em>', "#4f6d9e");
+  const key = mod.id+":"+exp.id;
+  const body = openModal('Graphs <em>· live run + parameter sweeps</em>', "#4f6d9e");
+  const wrap = el("div","calc-blocks");
   let data, data2, flightT;
   if(simActive && sim.data.length>1){ data=sim.data; data2=sim.data2; flightT=sim.flightT||0; }
   else if(lastRun.key===key && lastRun.data.length>1){ data=lastRun.data; data2=lastRun.data2; flightT=lastRun.flightT; }
-  if(!data){ body.appendChild(el("div","runs-empty","No data yet for <b>"+txt(exp.name)+"</b>.<br>Press <b>▶ Run Sim</b> to plot this experiment.")); return; }
-  const wrap = el("div"); wrap.style.cssText = "height:62vh;min-height:340px;position:relative";
-  wrap.innerHTML = '<canvas id="gc_single"></canvas>'; body.appendChild(wrap);
-  ChartHub.put("gc_single", telemetryConfig(metric, data, data2, flightT, {mini:false}));
+  const live = el("div","calc-block gchart");
+  live.innerHTML = '<div class="gchart-head"><h3>Live run · '+txt(exp.name)+'</h3></div>';
+  if(data){ const box = el("div","chart-box-lg");
+    box.innerHTML = '<canvas id="gc_live"></canvas>'; live.appendChild(box); }
+  else live.appendChild(el("div","runs-empty",
+    "No data yet for <b>"+txt(exp.name)+"</b>.<br>Press <b>▶ Run Sim</b> to plot this experiment."));
+  wrap.appendChild(live);
+  // Every line plot goes in the gallery. The old `!d.empty` filter was inherited
+  // from the platform's run-history plots and silently dropped the T_ss-vs-I²
+  // signature chart — the single most important plot in this experiment — from
+  // both panels, because it is a line (so Charts skipped it) AND carries an
+  // `empty` hint (so Graphs skipped it too). renderGraphBlocks already falls back
+  // to that hint text when a config can't be built.
+  const pending = renderGraphBlocks(wrap, graphDefs());
+  body.appendChild(wrap);
+  if(data) ChartHub.put("gc_live", telemetryConfig(exp.metric, data, data2, flightT, {mini:false}));
+  pending.forEach(p=>ChartHub.put(p.id, p.cfg));
 }
 
 /* ════════════ 10 · FLOATING WINDOWS ════════════ */
@@ -2432,17 +3489,30 @@ function openChartsDetail(){
   const c = calc();
   const wrap = el("div","calc-blocks");
 
-  // metric summary tiles
-  const geom = propGeometry();
+  // metric summary tiles — thermal figures on a thermal bench, not thrust/hover
   const tiles = el("div","metric-tiles");
   const mt = (k,v,cls)=>'<div class="metric-tile"><span class="mk">'+k+'</span><span class="mv '+(cls||"")+'">'+v+'</span></div>';
-  tiles.innerHTML =
-    mt("Max thrust", c.Tmax.toFixed(1)+" N") +
-    mt("T / W", c.tw.toFixed(2), c.tw>=1.8?"good":c.tw>=1.2?"":"warn") +
-    mt("Hover throttle", c.tw>1?Math.round(c.hoverPct)+" %":"—", c.tw>1?"":"warn") +
-    mt("Peak motor eff.", (motorEffPeak(c)*100).toFixed(0)+" %", "") +
-    mt("Thrust eff.", c.gPerW.toFixed(1)+" g/W", c.gPerW>=6?"good":"") +
-    mt("Prop clearance", geom.clearanceMm.toFixed(0)+" mm", geom.collide?"warn":"");
+  if(isThermalBench()){
+    const cur = liveThermalCalc(1.0);
+    tiles.innerHTML =
+      mt("Case T_ss @100%", cur.Tss.toFixed(1)+" °C", cur.Tss<QCOOL_SAFE_T?"good":"warn") +
+      mt("Winding hotspot", cur.Twind.toFixed(1)+" °C", cur.Twind<TW_BURNOUT*0.6?"good":"warn") +
+      mt("ESC T @100%", cur.Tesc.toFixed(1)+" °C", cur.escOver?"warn":"good") +
+      mt("τ (observable)", cur.tau.toFixed(0)+" s") +
+      mt("R_th effective", cur.Rth.toFixed(2)+" °C/W", cur.Rth<cur.RthBase*0.9?"good":"") +
+      mt("Heat to dump", cur.Pheat.toFixed(1)+" W") +
+      mt("Q required", (cur.Qreq*1000).toFixed(1)+" L/s") +
+      mt("Slope R_m·R_th", (cur.Rm*cur.Rth).toFixed(3)+" °C/A²");
+  }else{
+    const geom = propGeometry();
+    tiles.innerHTML =
+      mt("Max thrust", c.Tmax.toFixed(1)+" N") +
+      mt("T / W", c.tw.toFixed(2), c.tw>=1.8?"good":c.tw>=1.2?"":"warn") +
+      mt("Hover throttle", c.tw>1?Math.round(c.hoverPct)+" %":"—", c.tw>1?"":"warn") +
+      mt("Peak motor eff.", (motorEffPeak(c)*100).toFixed(0)+" %", "") +
+      mt("Thrust eff.", c.gPerW.toFixed(1)+" g/W", c.gPerW>=6?"good":"") +
+      mt("Prop clearance", geom.clearanceMm.toFixed(0)+" mm", geom.collide?"warn":"");
+  }
   wrap.appendChild(tiles);
 
   // gallery — one block per chart def; Chart.js charts get a sized chart-box,
@@ -2495,7 +3565,85 @@ function simulateThermal(duty, seconds, dt){
   }
   return { t, temp, escTemp, rpm };
 }
+/* Thermal derivations — the eight steps this experiment is actually built on.
+   Every number recomputes from the selected components plus the live Environment
+   & Cooling controls, so the panel is a worked example of the current rig rather
+   than the propulsion lab's thrust/hover chain. */
+function thermalCalcBlocks(){
+  const p = propulsionParams();
+  const duty = Math.max(0, Math.min(1, (state.manualThrottle||0)/100));
+  const cur = liveThermalCalc(duty || 1);
+  const full = liveThermalCalc(1);
+  const amb = state.ambientT;
+  const parts = k => Object.keys(COOLING_PART_FRAC).filter(x=>state.cooling[k][x]).map(x=>COOL_PART_LABEL[x]);
+  const mParts = parts("motor"), eParts = parts("esc");
+  const frac = ((1 - cur.Rth/Math.max(cur.RthBase,1e-6))*100);
+  return [
+    { t:"1 · Heat source — copper loss",
+      b:"P_cu = I²·R_m(T_w),  R_m(T) = R_20·(1 + α·(T − 20)),  α = 0.00393 /°C\n"+
+        "I = "+cur.I.toFixed(2)+" A at "+Math.round((duty||1)*100)+" % throttle · R_20 = "+p.rm20.toFixed(4)+" Ω\n"+
+        "R_m at "+cur.Twind.toFixed(0)+" °C = "+cur.Rm.toFixed(4)+" Ω (hot copper carries more loss for the same current)",
+      r:"P_cu = "+cur.Pheat.toFixed(2)+" W" },
+    { t:"2 · Thermal path — R_th and C_th",
+      b:"housing → ambient (still air): R_th_base = "+cur.RthBase.toFixed(2)+" °C/W (from spec.json, or scaled by motor mass)\n"+
+        "lumped capacitance C_th = "+cur.Cth.toFixed(1)+" J/°C, split C_w = "+cur.Cw.toFixed(1)+" (winding) + C_h = "+cur.Ch.toFixed(1)+" (housing)\n"+
+        "winding → housing conduction R_wh = "+R_WH_FRAC+"·R_th_base = "+cur.Rwh.toFixed(2)+" °C/W — a potted, bolted solid path, so much lower than the convective one after it",
+      r:"two-node RC network, not a single lump" },
+    { t:"3 · Convection — effective R_th",
+      b:"the motor cools in its own downwash: v_i = √(T / 2ρA) = "+cur.vWash.toFixed(1)+" m/s at this throttle\n"+
+        "ducted fan adds "+((state.coolAirflow||0)/100*FAN_VEL_MAX).toFixed(1)+" m/s · "+
+        (state.airForward ? "FORWARD flight — clean air, all of the flow counts"
+                          : "STATIC hover — the case re-ingests its own exhaust, only "+Math.round(RECIRC_STATIC*100)+" % of the flow is effective")+"\n"+
+        "R_th_eff = R_th_base / (1 + "+WASH_K+"·v^"+WASH_EXP+") · Π(1 − f_part)\n"+
+        "mounted on the motor: "+(mParts.length?mParts.join(" + "):"nothing")+
+        "   (heatsink −30 %, pad −15 %, fan −20 %, stacking multiplicatively)",
+      r:"R_th_eff = "+cur.Rth.toFixed(2)+" °C/W  ("+frac.toFixed(0)+" % below the still-air "+cur.RthBase.toFixed(2)+")" },
+    { t:"4 · Steady state — the signature relation",
+      b:"case: T_ss = T_amb + P_cu·R_th_eff  →  a straight line in I², slope R_m·R_th_eff\n"+
+        "slope = "+cur.Rm.toFixed(4)+" × "+cur.Rth.toFixed(2)+" = "+(cur.Rm*cur.Rth).toFixed(4)+" °C/A²\n"+
+        "T_amb = "+amb+" °C",
+      r:"T_ss = "+cur.Tss.toFixed(1)+" °C" },
+    { t:"5 · Winding hotspot (the reality layer)",
+      b:"T_w = T_h + P_cu·R_wh — the copper is hotter than any case sensor can see\n"+
+        "textbook single-node estimate: "+cur.TssTextbook.toFixed(1)+" °C (agrees on the case, hides the copper)\n"+
+        "insulation ceiling = "+TW_BURNOUT+" °C",
+      r:"T_w = "+cur.Twind.toFixed(1)+" °C  (Δ "+cur.TwindTextbookGap.toFixed(0)+" °C hidden)"+(cur.runaway?"  — RUNAWAY":"") },
+    { t:"6 · Time constant",
+      b:"first-order: τ = R_th_eff·C_th = "+cur.Rth.toFixed(2)+" × "+p.cThJc.toFixed(1)+" = "+cur.tauFirstOrder.toFixed(0)+" s\n"+
+        "observable τ = the 63.2 % crossing of the two-node case-temperature rise\n"+
+        "τ is independent of load: raising the throttle moves T_ss, not τ",
+      r:"τ = "+cur.tau.toFixed(0)+" s  ·  63.2 % point = "+tau632Temp(amb, cur.Tss).toFixed(1)+" °C" },
+    { t:"7 · ESC survivability",
+      b:"P_esc = I²·R_ds_on = "+cur.I.toFixed(2)+"² × "+cur.Resc.toFixed(4)+" Ω = "+(cur.I*cur.I*cur.Resc).toFixed(2)+" W\n"+
+        "the board sits beside the motor, not under the disc — it sees the fan, never the rotor wash\n"+
+        "T_esc = T_amb + P_esc·R_th_esc,  R_th_esc = "+cur.RthEsc.toFixed(1)+" °C/W (still-air "+cur.RthEscBase.toFixed(1)+")"+
+        (eParts.length?"  (after "+eParts.join(" + ")+")":"")+"\n"+
+        "limit = "+ESC_TLIMIT+" °C — set by solder, capacitors and wire insulation, not by the silicon",
+      r:"T_esc = "+cur.Tesc.toFixed(1)+" °C  — "+(cur.escOver?"OVER LIMIT":(ESC_TLIMIT-cur.Tesc).toFixed(0)+" °C margin") },
+    { t:"8 · Required cooling airflow",
+      b:"a mass flow ṁ of air carries Q̇ = ṁ·c_p·ΔT,  c_p = "+CP_AIR+" J/kg·°C\n"+
+        "volumetric: Q = P_heat / (ρ·c_p·ΔT_air),  ρ = "+rhoNow().toFixed(3)+" kg/m³, ΔT_air = "+cur.dTair+" °C\n"+
+        "at full throttle P_heat = "+full.Pheat.toFixed(1)+" W",
+      r:"Q = "+(cur.Qreq*1000).toFixed(1)+" L/s  (full throttle: "+(full.Qreq*1000).toFixed(1)+" L/s)" }
+  ];
+}
 function openCalcDetail(){
+  if(isThermalBench()){
+    const body = openModal("Detailed Calculations <em>· thermal chain</em>", "#c65d3b");
+    const wrap = el("div","calc-blocks");
+    thermalCalcBlocks().forEach(bl=>{
+      const d = el("div","calc-block");
+      d.innerHTML = '<h3>'+bl.t+'</h3><pre>'+txt(bl.b)+'</pre><div class="res">'+txt(bl.r)+'</div>';
+      wrap.appendChild(d);
+    });
+    wrap.appendChild(el("p","calc-footnote",
+      "Every value recomputes live from the selected motor / ESC / propeller / battery spec.json physics, the "+
+      "density-altitude slider and the Environment & Cooling controls. The steady state is solved as a two-node "+
+      "RC network (winding → housing → ambient) with temperature-dependent copper resistance, so the winding "+
+      "hotspot and thermal runaway fall out of the model rather than being added on top of it."));
+    body.appendChild(wrap);
+    return;
+  }
   const body = openModal("Detailed Calculations", "#c65d3b");
   const c = calc(); const p = c.p; const canHover = c.tw > 1;
   const blocks = [
@@ -2529,7 +3677,8 @@ const sim = { t:0, data:[], data2:[], key:null, exp:null, mod:null,
               reachedTarget:false, eRem:0, eTot:0,
               // Exp 09 Thermal Management — elapsed ARMED time (scaled by sim-speed) driving
               // the analytic Tt(t) heating curve, plus sustained-state accumulators
-              thermT:0, settleAcc:0, faultAcc:0 };
+              thermT:0, settleAcc:0, faultAcc:0, burnAcc:0,
+              lastCur:0, lastPwr:0 };
 let calcCache = null, calcCacheAge = 0;
 function calcCached(){
   if(!calcCache || (performance.now()-calcCacheAge) > 500){ calcCache = calc(); calcCacheAge = performance.now(); }
@@ -2559,9 +3708,14 @@ function runSim(){
   sim.isStall = c.full.stalled; sim.isDeficit = !sim.isStall && c.Tmax < c.W;
   sim.eTot = (c.p.cap/1000) * (c.p.cells*3.7) * 3600;   // J — nominal 3.7 V/cell pack energy
   sim.eRem = sim.eTot;
-  sim.thermT = 0; sim.settleAcc = 0; sim.faultAcc = 0; sim.verdictOk = null;
+  sim.thermT = 0; sim.settleAcc = 0; sim.faultAcc = 0; sim.burnAcc = 0; sim.verdictOk = null;
   syncRunControls();
-  audioStart();
+  // No audioStart() here — audioUpdate() brings the engine in when rpm rises.
+  // Arm IS a real user gesture though, so unlock/resume the AudioContext now:
+  // browsers refuse to start one outside a gesture, and without this the engine
+  // silently failed to build on the first throttle input of a fresh page.
+  try{ ac(); }catch(e){}
+  setMasterVol();
   $("runBtn").textContent = isThermalBench() ? "❚❚ Pause" : "■ Stop";
   $("runBtn").classList.add("running");
   $("telDot").classList.add("on");
@@ -2569,6 +3723,11 @@ function runSim(){
 }
 function stopSim(completed){
   simActive = false; state.simRunning = false;
+  // Zero the shaft state on stop. audioUpdate() decides whether the engine sound
+  // exists purely from sim.lastRpm, so leaving a stale non-zero rpm behind lets
+  // the motor drone be resurrected by any later call — and the prop would keep a
+  // non-zero spin rate too.
+  sim.lastRpm = 0; sim.lastThr = 0;
   $("runBtn").textContent = isThermalBench() ? "▶ Arm" : "▶ Run Sim";
   $("runBtn").classList.remove("running");
   $("telDot").classList.remove("on");
@@ -2593,7 +3752,7 @@ function stopSim(completed){
 function resetSim(){
   if(simActive) stopSim(false);
   sim.data = []; sim.data2 = []; sim.temp = T_AMB; sim.escTemp = T_AMB; sim.soc = 1;
-  sim.thermT = 0; sim.settleAcc = 0; sim.faultAcc = 0;
+  sim.thermT = 0; sim.settleAcc = 0; sim.faultAcc = 0; sim.burnAcc = 0;
   if(isThermalBench()){                     // Reset clears this experiment's recorded measurements too
     state.tssPoints = []; state.tauAttempts = []; saveState();
     escBadgeShow(false);
@@ -2655,6 +3814,30 @@ function escBadgeShow(show){
   b.hidden = !show;
   if(show) updateEscBadgePosition();
 }
+/* Live winding hotspot while a run is in progress. The integrated curve tracks the
+   CASE, and the winding sits a fixed conduction drop (P·R_wh) above it at this
+   operating point — so shift the live case reading by the steady-state gap. */
+function liveWind(cur){ return sim.temp + (cur.Twind - cur.Tss); }
+/* A cooking winding is a hard fail in every experiment, not just a red label:
+   past TW_BURNOUT the enamel insulation is gone and the motor is scrap. Latched
+   after FAULT_HOLD sustained seconds so a brief transient doesn't end the run. */
+function checkRunaway(cur, dt){
+  // Latch on the MEASURED curve crossing the limit, not on the prediction that it
+  // eventually would. Otherwise the run dies within seconds of arming, before the
+  // student has seen anything — the whole point is to watch the curve climb past
+  // the line. The predicted runaway still shows up immediately as a red phase
+  // label and a Diagnostics error.
+  const live = liveWind(cur);
+  if(!(cur.runaway && live >= TW_BURNOUT)){ sim.burnAcc = Math.max(0, (sim.burnAcc||0) - dt*2); return false; }
+  sim.burnAcc = (sim.burnAcc||0) + dt;
+  if(sim.burnAcc < FAULT_HOLD) return false;
+  sim.verdictOk = false;
+  sim.verdict = "Thermal runaway — winding reaches "+cur.Twind.toFixed(0)+" °C, past the "+
+                TW_BURNOUT+" °C insulation limit; de-rate or add cooling";
+  FX.burstKind("motor", 8);
+  stopSim(true);
+  return true;
+}
 function thermalSimStep(dt){
   const dtw = dt * (state.simSpeed||1);
   sim.thermT += dtw;
@@ -2667,7 +3850,17 @@ function thermalSimStep(dt){
   // smaller) R_th_ESC — reuses the identical ambient-anchored closure shape.
   const tauEsc = Math.max(cur.Cth * cur.RthEsc * 0.35, 4);
   sim.escTemp = state.ambientT + (cur.Tesc - state.ambientT) * (1 - Math.exp(-sim.thermT/tauEsc));
-  sim.lastRpm = 0; sim.lastThr = cur.I;
+  // Live shaft speed and thrust at THIS operating point, with the winding at its
+  // current temperature (hot copper = more resistance = fewer rpm for the same
+  // throttle, which is the loss this lab is about). These drive the rotor/prop
+  // animation, the engine-noise synthesis and the telemetry card — the previous
+  // hard `sim.lastRpm = 0` here ran after the animation block had already read it,
+  // so the motor never turned no matter how much throttle was applied.
+  const op = solveBench(duty, 1, Math.min(cur.Twind, TW_BURNOUT));
+  sim.lastRpm = cur.runaway ? op.rpm*0.35 : op.rpm;      // a cooking motor loses speed badly
+  sim.lastThr = op.T;
+  sim.lastCur = cur.I; sim.lastPwr = op.P;
+  if(checkRunaway(cur, dt)) return;
 
   if(metric === "tss"){
     sim.data.push(+sim.temp.toFixed(2)); sim.data2.push(+(cur.I*cur.I).toFixed(2));
@@ -2679,7 +3872,8 @@ function thermalSimStep(dt){
     const settled = duty > 0.02 && !cur.runaway && Math.abs(sim.temp - cur.Tss) < SETTLE_EPS*3;
     if(settled) autoCaptureTssPoint(cur, duty);
     const n = (state.tssPoints||[]).length;
-    updateTelemetry({ thrust:0, rpm:0, cur:cur.I, pwr:cur.Pheat, temp:sim.temp, esc:sim.escTemp, alt:0,
+    updateTelemetry({ thrust:sim.lastThr, rpm:sim.lastRpm, cur:cur.I, pwr:cur.Pheat,
+      temp:sim.temp, esc:sim.escTemp, wind:liveWind(cur), rth:cur.Rth,
       phase: cur.runaway ? "OVERHEATING — DE-RATE OR COOL"
            : settled ? ("LOGGED "+n+" PT"+(n===1?"":"S")+" — SWEEP THROTTLE") : "SETTLING…",
       phaseCls: cur.runaway ? "danger" : settled ? "good" : "" });
@@ -2689,9 +3883,10 @@ function thermalSimStep(dt){
   if(metric === "tau"){
     sim.data.push(+sim.temp.toFixed(2)); sim.data2.push(+tau632Temp(state.ambientT, cur.Tss).toFixed(2));
     sim.flightT = sim.thermT;            // reuse the xtime plumbing in telemetryConfig/drawLiveGraph
-    updateTelemetry({ thrust:0, rpm:0, cur:cur.I, pwr:cur.Pheat, temp:sim.temp, esc:sim.escTemp, alt:0,
+    updateTelemetry({ thrust:sim.lastThr, rpm:sim.lastRpm, cur:cur.I, pwr:cur.Pheat,
+      temp:sim.temp, esc:sim.escTemp, wind:liveWind(cur), rth:cur.Rth,
       phase:"τ = "+cur.tau.toFixed(0)+" s (drag the chart cursor to read it)", phaseCls:"" });
-    evalTauVerdict(cur);
+    evalTauVerdict();
     return;
   }
   if(metric === "tesc"){
@@ -2701,7 +3896,8 @@ function thermalSimStep(dt){
     const settledEsc = Math.abs(sim.escTemp - cur.Tesc) < SETTLE_EPS;
     if(cur.escOver && settledEsc) sim.faultAcc += dt; else sim.faultAcc = Math.max(0, sim.faultAcc-dt*2);
     if(!cur.escOver && nearFull && settledEsc) sim.settleAcc += dt; else sim.settleAcc = Math.max(0, sim.settleAcc-dt*2);
-    updateTelemetry({ thrust:0, rpm:0, cur:cur.I, pwr:cur.Pheat, temp:sim.temp, esc:sim.escTemp, alt:0,
+    updateTelemetry({ thrust:sim.lastThr, rpm:sim.lastRpm, cur:cur.I, pwr:cur.Pheat,
+      temp:sim.temp, esc:sim.escTemp, wind:liveWind(cur), rth:cur.RthEsc,
       phase: cur.escOver ? "ESC OVER-TEMP" : nearFull ? (settledEsc?"SETTLED":"HEATING…") : "SET THROTTLE TO 100%",
       phaseCls: cur.escOver ? "danger" : nearFull&&settledEsc ? "good" : "" });
     if(sim.faultAcc >= FAULT_HOLD){
@@ -2723,7 +3919,8 @@ function thermalSimStep(dt){
     const safe = cur.Tss < QCOOL_SAFE_T;
     if(!safe && settledM && nearFull) sim.faultAcc += dt; else sim.faultAcc = Math.max(0, sim.faultAcc-dt*2);
     if(safe && settledM && nearFull) sim.settleAcc += dt; else sim.settleAcc = Math.max(0, sim.settleAcc-dt*2);
-    updateTelemetry({ thrust:0, rpm:0, cur:cur.I, pwr:cur.Pheat, temp:sim.temp, esc:sim.escTemp, alt:0,
+    updateTelemetry({ thrust:sim.lastThr, rpm:sim.lastRpm, cur:cur.I, pwr:cur.Pheat,
+      temp:sim.temp, esc:sim.escTemp, wind:liveWind(cur), rth:cur.Rth,
       phase: !nearFull ? "SET THROTTLE HIGH" : !safe ? (state.airForward?"COOLING…":"RECIRCULATING — TRY FORWARD") : (settledM?"SETTLED — SAFE":"COOLING…"),
       phaseCls: !nearFull ? "" : !safe ? "danger" : settledM ? "good" : "warn" });
     if(sim.faultAcc >= FAULT_HOLD){
@@ -2750,16 +3947,29 @@ function evalTssVerdict(){
     stopSim(true);
   }
 }
-/* tau: PASS once ≥2 cursor-read attempts, spanning a low and a high throttle,
-   both land within TAU_TOL of the analytic (load-independent) τ */
-function evalTauVerdict(cur){
+/* tau: PASS once ≥2 cursor reads — one at a low throttle, one at a high one —
+   each land within TAU_TOL of the analytic τ FOR THAT THROTTLE.
+   Each attempt is judged against its own expectation rather than against one
+   shared number, because τ is not perfectly load-independent on an open bench:
+   the motor cools in its own downwash, so more throttle means more airflow, a
+   lower R_th and therefore a slightly shorter τ. The lesson is quantitative and
+   stronger for it — across the throttle range the settled RISE changes by well
+   over an order of magnitude while τ moves by about a fifth, because τ is set by
+   the thermal path and the mass of metal, not by how hard the motor is driven. */
+function evalTauVerdict(){
   const atts = state.tauAttempts||[];
   if(atts.length < 2) return;
-  const within = atts.filter(a=>Math.abs(a.read-cur.tau)/Math.max(cur.tau,1) <= TAU_TOL);
-  const lo = within.some(a=>a.duty <= 0.65), hi = within.some(a=>a.duty >= 0.85);
+  const ok = a => Math.abs(a.read - a.expect)/Math.max(a.expect,1) <= TAU_TOL;
+  const lo = atts.filter(a=>a.duty <= 0.65 && ok(a)).pop();
+  const hi = atts.filter(a=>a.duty >= 0.85 && ok(a)).pop();
   if(lo && hi){
+    const cLo = liveThermalCalc(lo.duty), cHi = liveThermalCalc(hi.duty);
+    const riseLo = Math.max(cLo.Tss - state.ambientT, 0.1), riseHi = Math.max(cHi.Tss - state.ambientT, 0.1);
+    const tauSpread = Math.abs(cHi.tau - cLo.tau)/Math.max(cLo.tau,1)*100;
     sim.verdictOk = true;
-    sim.verdict = "τ confirmed load-independent — reads ≈"+cur.tau.toFixed(0)+" s at both throttle settings";
+    sim.verdict = "τ is set by the thermal path — the settled rise grew "+(riseHi/riseLo).toFixed(1)+
+                  "× between the two throttles while τ moved only "+tauSpread.toFixed(0)+" %"+
+                  " ("+cLo.tau.toFixed(0)+" s → "+cHi.tau.toFixed(0)+" s)";
     stopSim(true);
   }
 }
@@ -2780,14 +3990,15 @@ function autoCaptureTssPoint(cur, duty){
   evalTssVerdict();
   drawLiveGraph();
 }
-/* τ-cursor drag release (E2) — records one attempt {duty, read} */
+/* τ-cursor drag release (E2) — records one attempt {duty, read, expect}.
+   The expected τ is stamped in at read time so the check survives the student
+   moving the throttle afterwards. */
 function recordTauAttempt(readSeconds){
   const duty = Math.max(0, Math.min(1, (state.manualThrottle||0)/100));
-  state.tauAttempts.push({ duty, read:readSeconds });
+  state.tauAttempts.push({ duty, read:readSeconds, expect:liveThermalCalc(duty).tau });
   if(state.tauAttempts.length > 6) state.tauAttempts.shift();
   saveState();
-  const cur = liveThermalCalc(duty);
-  evalTauVerdict(cur);
+  evalTauVerdict();
 }
 
 /* Single recompute point for the thermal rig (PLAN §3 "feedback contract"):
@@ -2803,10 +4014,14 @@ function applyThermalState(){
     const duty = Math.max(0, Math.min(1, (state.manualThrottle||0)/100));
     const cur = liveThermalCalc(duty);
     escBadgeShow(cur.escOver);
-    updateTelemetry({ thrust:0, rpm:0, cur:cur.I, pwr:cur.Pheat, temp:cur.Tss, esc:cur.Tesc, alt:0,
-      phase:"IDLE PREVIEW", phaseCls:"" });
+    const op = solveBench(duty, 1, Math.min(cur.Twind, TW_BURNOUT));
+    updateTelemetry({ thrust:op.T, rpm:op.rpm, cur:cur.I, pwr:cur.Pheat,
+      temp:cur.Tss, esc:cur.Tesc, wind:cur.Twind, rth:cur.Rth,
+      phase: cur.runaway ? "PREVIEW — THIS POINT COOKS THE WINDING" : "IDLE PREVIEW",
+      phaseCls: cur.runaway ? "danger" : "" });
   }
   drawLiveGraph();
+  drawMassChart();          // the Charts tile is the live cooling comparison here
   saveState();
 }
 
@@ -2829,7 +4044,20 @@ function ac(){
   if(actx.state === "suspended") actx.resume();
   return actx;
 }
-function setMasterVol(){ if(aMaster) aMaster.gain.value = state.sfxVol/100; }
+function setMasterVol(){
+  // aMaster only exists once something has used Web Audio; the file-based one-shot
+  // SFX never do, so on a fresh page this used to be a silent no-op — which is why
+  // the SFX slider appeared dead. Nothing to scale yet is fine (the one-shots read
+  // state.sfxVol at play time), but a running engine must follow the slider.
+  if(!aMaster){ if(engine) audioStop(); return; }
+  const v = Math.max(0, Math.min(state.sfxVol/100, 1));
+  // A short ramp rather than a raw .value poke: it is click-free and it still
+  // takes effect if anything ever schedules automation on this node.
+  try{ aMaster.gain.cancelScheduledValues(actx.currentTime);
+       aMaster.gain.setTargetAtTime(v, actx.currentTime, .03); }
+  catch(e){ aMaster.gain.value = v; }
+  if(v <= 0) audioStop();                 // mute means silent now, not next frame
+}
 /* short confirmation chirp on the VOICE bus — bypasses aMaster so it reflects the
    speaker level regardless of the SFX gain (used as feedback when the user drags
    the speaker slider). */
@@ -2881,24 +4109,26 @@ function toneFallback(kind){
     else if(kind==="unlock"){ [523,659,784,1047].forEach((f,i)=>tone(f,i*.13,.22,v)); }
   }catch(e){}
 }
-/* fault / result voice-over — plays the matching real clip against the verdict text */
+/* Fault / result voice-over — plays the matching clip against the verdict text.
+   These are THIS lab's clips (audio_gen/gen_thermal_lab.py): the file set that
+   shipped before was inherited from the propulsion lab, so a thermal verdict
+   either fell through to silence or spoke about hover and stalls that this
+   experiment never simulates. */
 const VOICE_FILES = {
-  overcurrent:"assets/audio/voice/fault_overcurrent.mp3",
-  esc_burnt:"assets/audio/voice/fault_esc_burnt.mp3",
-  winding_overheat:"assets/audio/voice/fault_winding_overheat.mp3",
-  motor_stall:"assets/audio/voice/fault_motor_stall.mp3",
-  thrust_deficit:"assets/audio/voice/fault_thrust_deficit.mp3",
-  critical:"assets/audio/voice/fault_critical.mp3",
-  actuator_stall:"assets/audio/voice/fault_actuator_stall.mp3",
-  hover_reached:"assets/audio/voice/done_hover_reached.mp3",
-  landed_safely:"assets/audio/voice/done_landed_safely.mp3",
-  profiling_complete:"assets/audio/voice/done_profiling_complete.mp3"
+  tss_fit:"assets/audio/voice/v_tss_fit.mp3",
+  tau_confirmed:"assets/audio/voice/v_tau_confirmed.mp3",
+  esc_survives:"assets/audio/voice/v_esc_survives.mp3",
+  esc_overtemp:"assets/audio/voice/v_esc_overtemp.mp3",
+  cooled:"assets/audio/voice/v_cooled.mp3",
+  recirculation:"assets/audio/voice/v_recirculation.mp3",
+  still_hot:"assets/audio/voice/v_still_hot.mp3",
+  runaway:"assets/audio/voice/v_runaway.mp3"
 };
 const INTRO_FILES = {
-  "m1:tss":"assets/audio/voice/intro_bench.mp3",
-  "m1:tau":"assets/audio/voice/intro_bench.mp3",
-  "m2:tesc":"assets/audio/voice/intro_kv_profiling.mp3",
-  "m3:qcool":"assets/audio/voice/intro_hover.mp3"
+  "m1:tss":"assets/audio/voice/intro_tss.mp3",
+  "m1:tau":"assets/audio/voice/intro_tau.mp3",
+  "m2:tesc":"assets/audio/voice/intro_tesc.mp3",
+  "m3:qcool":"assets/audio/voice/intro_qcool.mp3"
 };
 // Single voice channel: only one clip plays at a time, so swiftly switching
 // tabs never overlaps. `lastVoiceUrl` lets the instructor's Replay button
@@ -2922,21 +4152,27 @@ function playVoiceFile(url){
 }
 function playIntroVoice(key){ if(INTRO_FILES[key]) playVoiceFile(INTRO_FILES[key]); }
 function currentIntroKey(){ return state.module + ":" + state.exp[state.module]; }
+/* Keyed to the exact verdict strings thermalSimStep() / evalTssVerdict() /
+   evalTauVerdict() / checkRunaway() emit — keep the two in step when a verdict
+   line is reworded. */
 function playFaultVoice(text, ok){
   const t = (text||"").toLowerCase();
   let tag = null;
-  if(ok){ if(t.includes("hover")||t.includes("flight verified")) tag="hover_reached";
-    else if(t.includes("landed")) tag="landed_safely";
-    else if(t.includes("stable")||t.includes("efficient")||t.includes("assembly ok")) tag="profiling_complete"; }
-  else{ if(t.includes("esc burnt")) tag="esc_burnt";
-    else if(t.includes("runaway")||t.includes("overheat")) tag="winding_overheat";
-    else if(t.includes("overcurrent")) tag="overcurrent";
-    else if(t.includes("stall")) tag="motor_stall";
-    else if(t.includes("insufficient")||t.includes("underpowered")||t.includes("cannot")||t.includes("cannot fly")) tag="thrust_deficit";
-    else if(t.includes("burned")||t.includes("depleted")) tag="critical"; }
+  if(t.includes("runaway")) tag = "runaway";
+  else if(t.includes("linear fit")) tag = "tss_fit";
+  else if(t.includes("load-independent") || t.startsWith("τ")) tag = "tau_confirmed";
+  else if(t.includes("esc survives")) tag = "esc_survives";
+  else if(t.includes("esc over-temp")) tag = "esc_overtemp";
+  else if(t.includes("recirculation")) tag = "recirculation";
+  else if(t.includes("still too hot")) tag = "still_hot";
+  else if(t.includes("cooled")) tag = "cooled";
   if(tag && VOICE_FILES[tag]) playVoiceFile(VOICE_FILES[tag]);
 }
-/* realistic motor / propeller engine — frequency tracks RPM, level tracks thrust */
+/* Realistic motor / propeller engine — frequency tracks RPM, level tracks thrust.
+   audioStart() only BUILDS the nodes; it never makes sound on its own. The level
+   is driven entirely by rpm in audioUpdate(), because on this bench Arm does not
+   spin the motor — throttle does. Spooling to a fixed level on Arm meant a motor
+   droning at 0 % throttle with nothing turning. */
 function audioStart(){
   if(state.sfxVol<=0) return;
   try{
@@ -2956,8 +4192,7 @@ function audioStart(){
     const noiseG = ctx.createGain(); noiseG.gain.value=.12; noise.connect(bp); bp.connect(noiseG); noiseG.connect(g);
     rumble.start(); whine.start(); noise.start();
     engine = { g, rumble, whine, whineF, noise, bp, cur:0 };
-    // spool-up
-    g.gain.setTargetAtTime(.9, ctx.currentTime, .25);
+    // silent until rpm says otherwise — audioUpdate owns the level
   }catch(e){}
 }
 function audioStopNow(){
@@ -2973,11 +4208,22 @@ function audioStop(){
   setTimeout(()=>{ try{ dead.rumble.stop(); dead.whine.stop(); dead.noise.stop(); }catch(x){} }, 500);
   if(engine === e) engine = null;
 }
+/* Below this the motor is considered stopped: no sound at all, and the nodes are
+   torn down so an idle bench is truly silent rather than quietly droning. */
+const ENGINE_RPM_FLOOR = 120;
 function audioUpdate(){
-  if(!engine || !actx) return;
+  const target = sim.lastRpm || 0;
+  // start on demand, stop on demand — the sound exists only while the shaft turns
+  if(state.sfxVol <= 0 || (target < ENGINE_RPM_FLOOR && (!engine || engine.cur < ENGINE_RPM_FLOOR))){
+    if(engine) audioStop();
+    return;
+  }
+  // The one-shot SFX are <audio> files and never touch Web Audio, so on a fresh
+  // page actx/aMaster may still be null here. audioStart() creates them via ac().
+  if(!engine){ audioStart(); if(!engine || !actx) return; }
   const ctx = actx;
   // rpm → frequencies
-  const rpm = engine.cur + (sim.lastRpm - engine.cur)*0.15;   // smooth
+  const rpm = engine.cur + (target - engine.cur)*0.15;        // smooth
   engine.cur = rpm;
   const rev = rpm/60;                       // shaft rev/s
   const p = propulsionParams();
@@ -2987,9 +4233,13 @@ function audioUpdate(){
   engine.rumble.frequency.setTargetAtTime(Math.max(rev,10), ctx.currentTime, .05);
   engine.whine.frequency.setTargetAtTime(Math.max(blade,40), ctx.currentTime, .05);
   engine.bp.frequency.setTargetAtTime(Math.min(400+blade*1.4, 5200), ctx.currentTime, .05);
-  // level rises with rpm & load; a touch of extra air when flying
-  const lvl = Math.min(0.25 + rpm/9000*0.7, 1.0) * (flying?1.05:1);
-  engine.g.gain.setTargetAtTime(lvl*Math.min(0.6+load*0.5,1.2), ctx.currentTime, .08);
+  // Level is PROPORTIONAL to rpm with no floor — at rest it is genuinely zero.
+  // The SFX slider is applied here as well as on the master bus, so dragging it
+  // to 0 silences the engine immediately even mid-automation.
+  const spin = Math.max(0, Math.min(rpm/9000, 1.15));
+  const lvl = spin * (0.55 + 0.45*Math.min(load, 1)) * (flying ? 1.05 : 1);
+  const vol = Math.max(0, Math.min(state.sfxVol/100, 1));
+  engine.g.gain.setTargetAtTime(lvl*vol, ctx.currentTime, .08);
 }
 
 /* ════════════ 13 · INSTRUCTOR ════════════ */
@@ -3031,6 +4281,31 @@ $("modalOverlay").addEventListener("click", e=>{ if(e.target === $("modalOverlay
 document.addEventListener("keydown", e=>{ if(e.key==="Escape" && !$("modalOverlay").hidden) closeModal(); });
 
 let lastT = 0, graphEvery = 0;
+/* ── propeller spin ─────────────────────────────────────────────────────────
+   True shaft speed is ω = rpm/60·2π rad/s. Drawing that literally only strobes
+   (a 2-blade prop at 9 000 rpm passes a blade every 3 ms — far under a frame),
+   so the view runs at a fixed fraction of real ω: PROP_VIS. Every rpm RATIO
+   stays exact — double the rpm, double the on-screen rate — and the result is
+   integrated against dt, so it no longer runs faster on a 120 Hz display than
+   on a 60 Hz one the way the old per-frame constant did. */
+/* 1/150, not 1/12. With the old factor a 24 000 rpm bench prop advanced ~200 deg
+   per 60 Hz frame — far past the 120 deg at which a 3-blade disc repeats — so it
+   read as a stroboscopic stutter rather than rotation. At 1/150 the step stays
+   under ~20 deg all the way to 30 000 rpm, which is 6+ samples per blade repeat
+   and looks continuously smooth, while every rpm RATIO is still exact. */
+const PROP_VIS = 1/150;
+function propSpinRate(rpm){ return Math.max(0, (rpm||0)/60*2*Math.PI*PROP_VIS); }
+/* Even at PROP_VIS the step can alias. A 3-blade disc repeats every 120°, so a
+   frame step near or past that reads as a stroboscopic stutter instead of
+   rotation — at 28 000 rpm the old maths advanced ~225° per frame, which is what
+   made the motor look like it was running at a few fps. Cap the step at a third
+   of the blade-symmetry angle so successive frames are always unambiguous. The
+   apparent direction and every rpm RATIO are preserved below the cap, which with
+   PROP_VIS above only binds beyond ~30 000 rpm. */
+function propStep(rate, dt, blades){
+  const sym = 2*Math.PI/Math.max(blades||2, 1);
+  return Math.min(rate*dt, sym/6);
+}
 function loop(t){
   requestAnimationFrame(loop);
   frameNo++;
@@ -3074,14 +4349,17 @@ function loop(t){
       }
     }
     // props are stationary when the drone is landed / powered down
-    const spin = simActive ? Math.min((sim.lastRpm||0)/3200, 3.4) + .15 : 0;
-    propGroups.forEach((p,i)=>{
-      const dir = p.userData.spinDir != null ? p.userData.spinDir : (i%2?1:-1);
-      p.rotation.y += spin*dir;
-    });
+    const spin = simActive ? propSpinRate(sim.lastRpm) : 0;
+    if(spin > 0){
+      const pr = opt("propeller");
+      const step = propStep(spin, dt, (pr && pr.phys && pr.phys.blades) || 2);
+      propGroups.forEach((p,i)=>{
+        const dir = p.userData.spinDir != null ? p.userData.spinDir : (i%2?1:-1);
+        p.rotation.y += step*dir;
+      });
+    }
   }
   if(simActive){
-    if(isThermalBench()) sim.lastRpm = Math.max(0, Math.min(1, (state.manualThrottle||0)/100)) * 8000;
     simStep(dt);
     audioUpdate();
     if(++graphEvery % 3 === 0) drawLiveGraph();
@@ -3096,11 +4374,17 @@ function loop(t){
   }
   if(isThermalBench()){
     const ambT = state.ambientT;
-    const motorT = simActive ? sim.temp : liveThermalCalc().Tss;
-    const escT = simActive ? sim.escTemp : liveThermalCalc().Tesc;
+    const cur = liveThermalCalc();
+    const motorT = simActive ? sim.temp : cur.Tss;
+    const escT = simActive ? sim.escTemp : cur.Tesc;
+    const windT = simActive ? liveWind(cur) : cur.Twind;
     tickThermalVisuals(dt, motorT, escT, ambT);
+    tickCamMode(motorT, escT, ambT, windT);
     if(!$("escBadge").hidden) updateEscBadgePosition();
     updateProbeReadout(motorT, ambT);
+    // bench instrument display — 6 Hz is plenty and keeps the canvas upload cheap
+    meterAcc += dt;
+    if(benchMeter && meterAcc > 0.16){ meterAcc = 0; benchMeter.userData.setReadout(motorT, escT, ESC_TLIMIT); }
   }
   FX.tick(dt);
   blitPreviews();
@@ -3109,16 +4393,31 @@ function loop(t){
 }
 
 /* ════════════ 13b · THERMAL RIG CONTROLS (Exp 09, additive) ════════════ */
+const COOL_PART_LABEL = { heatsink:"Heatsink", pad:"Thermal Pad", fan:"Ducted Fan" };
+/* Mounted parts render as removable pills. Previously a part could only ever be
+   added — once a heatsink was dropped there was no way to take it off, so a
+   student could not compare "with" against "without" without wiping the whole
+   experiment via Reset. */
 function renderCoolMounted(){
   const box = $("coolMounted"); if(!box) return;
-  const labels = { heatsink:"Heatsink", pad:"Thermal Pad", fan:"Ducted Fan" };
-  const parts = [];
+  box.innerHTML = "";
+  let n = 0;
   ["motor","esc"].forEach(targetKey=>{
     Object.keys(COOLING_PART_FRAC).forEach(part=>{
-      if(state.cooling[targetKey][part]) parts.push(labels[part]+" → "+(targetKey==="motor"?"Motor":"ESC"));
+      if(!state.cooling[targetKey][part]) return;
+      n++;
+      const pill = el("span","cool-pill",
+        txt(COOL_PART_LABEL[part]) + " · " + (targetKey==="motor"?"MOTOR":"ESC") +
+        ' <button type="button" aria-label="Remove">✕</button>');
+      pill.querySelector("button").addEventListener("click", e=>{
+        e.stopPropagation();
+        state.cooling[targetKey][part] = false;
+        saveState(); renderCoolMounted(); applyThermalState(); sfx("tick");
+      });
+      box.appendChild(pill);
     });
   });
-  box.textContent = parts.length ? "Mounted: "+parts.join(" · ") : "No cooling parts mounted yet";
+  if(!n) box.appendChild(el("span", null, "No cooling parts mounted — drag a chip onto the motor or the ESC in the viewport"));
 }
 /* raycast the pointer position against the motor / ESC bench parts; falls back
    to "nearest projected anchor within a generous radius" so small meshes stay
@@ -3143,29 +4442,50 @@ function pickDropTarget(clientX, clientY){
   });
   return best;
 }
+/* Cooling tray: drag a chip onto the motor / ESC, OR tap a chip to arm it and then
+   tap the target in the viewport. The tap path exists because a drag from a card
+   in the centre column onto a canvas is awkward on a touch screen. */
+let armedCoolPart = null;
+function mountCoolPart(target, part){
+  if(!target || !part) return false;
+  state.cooling[target][part] = true;
+  saveState(); renderCoolMounted(); applyThermalState(); sfx("tick");
+  return true;
+}
+function setArmedCoolPart(part){
+  armedCoolPart = part;
+  document.querySelectorAll(".cool-chip").forEach(c=>c.classList.toggle("armed", c.dataset.part === part));
+  const vp = $("viewport"); if(vp) vp.style.cursor = part ? "copy" : "";
+}
 function initCoolingTray(){
-  let ghost = null, dragPart = null;
+  let ghost = null, dragPart = null, startX = 0, startY = 0;
   function moveGhost(e){ if(ghost){ ghost.style.left=e.clientX+"px"; ghost.style.top=e.clientY+"px"; } }
   function endDrag(e){
     document.removeEventListener("pointermove", moveGhost);
     if(ghost){ ghost.remove(); ghost = null; }
+    const moved = Math.hypot(e.clientX-startX, e.clientY-startY) > 8;
     const target = pickDropTarget(e.clientX, e.clientY);
-    if(target && dragPart){
-      state.cooling[target][dragPart] = true;
-      saveState(); renderCoolMounted(); applyThermalState(); sfx("tick");
-    }
+    if(target) mountCoolPart(target, dragPart);
+    else if(!moved) setArmedCoolPart(armedCoolPart === dragPart ? null : dragPart);  // tap = arm / disarm
     dragPart = null;
   }
   document.querySelectorAll(".cool-chip").forEach(chip=>{
     chip.addEventListener("pointerdown", e=>{
       e.preventDefault();
-      dragPart = chip.dataset.part;
+      dragPart = chip.dataset.part; startX = e.clientX; startY = e.clientY;
       ghost = el("div","drag-ghost", chip.textContent);
       document.body.appendChild(ghost);
       moveGhost(e);
       document.addEventListener("pointermove", moveGhost);
       document.addEventListener("pointerup", endDrag, { once:true });
     });
+  });
+  // armed-chip drop: click the motor or the ESC in the scene
+  const vp = $("viewport");
+  if(vp) vp.addEventListener("click", e=>{
+    if(!armedCoolPart) return;
+    const target = pickDropTarget(e.clientX, e.clientY);
+    if(target){ mountCoolPart(target, armedCoolPart); setArmedCoolPart(null); }
   });
 }
 /* draggable τ-cursor overlay on the live-graph chart-box — pixel↔data mapping
@@ -3239,6 +4559,10 @@ function initThermalControls(){
   function syncAirButtons(){
     if(bs) bs.classList.toggle("active", !state.airForward);
     if(bf) bf.classList.toggle("active", !!state.airForward);
+    const note = $("airModeNote");
+    if(note) note.textContent = state.airForward
+      ? "clean air — all of the flow cools"
+      : "hover — re-ingests exhaust, ~" + Math.round(RECIRC_STATIC*100) + "% effective";
   }
   syncAirButtons();
   if(bs) bs.addEventListener("click", ()=>{ state.airForward=false; syncAirButtons(); applyThermalState(); sfx("tick"); });
@@ -3248,7 +4572,7 @@ function initThermalControls(){
   function syncChips(){
     if(cam) cam.classList.toggle("active", state.camMode);
     if(probe) probe.classList.toggle("active", state.probeMode);
-    const vf = $("vpFrame"); if(vf) vf.classList.toggle("thermal-cam-mode", state.camMode);
+    applyCamMode(state.camMode);                 // real IR render swap, not a CSS filter (§8d)
     if(!state.probeMode){ const pr = $("probeReadout"); if(pr) pr.hidden = true; }
   }
   syncChips();

@@ -1,0 +1,232 @@
+{
+  "_readme": "Drop a new option folder (with spec.json + model) inside its category folder, then add the folder name to that category's options list below. Nothing in index.html / main.css / main.js needs to change.",
+  "categories": [
+    {
+      "key": "chasis",
+      "label": "Chassis",
+      "fallback": "frame",
+      "options": [
+        "micro4",
+        "fpv5",
+        "fpv_chasis_6_350gms",
+        "free7",
+        "cine10"
+      ]
+    },
+    {
+      "key": "propeller",
+      "label": "Propeller",
+      "fallback": "prop",
+      "options": [
+        "2.7in_tri",
+        "3in_tri",
+        "5in_tri",
+        "6in_bi",
+        "6in_tri",
+        "7in_bi",
+        "8in_bi",
+        "9in_bi",
+        "10in_bi",
+        "11in_bi",
+        "13in_bi",
+        "15in_bi",
+        "16in_bi"
+      ]
+    },
+    {
+      "key": "motor",
+      "label": "Motor",
+      "fallback": "motor",
+      "options": [
+        "1405",
+        "1806",
+        "2310",
+        "2806",
+        "3015",
+        "4130",
+        "4530",
+        "5010",
+        "9030"
+      ]
+    },
+    {
+      "key": "esc",
+      "label": "ESC",
+      "fallback": "esc",
+      "options": [
+        "Cyclone_35A",
+        "esc_45a",
+        "Diatine_mamba_55A",
+        "esc_65a",
+        "Dakefpv_120A",
+        "UH300",
+        "esc_4in1_50a",
+        "esc_20a",
+        "esc_30a",
+        "esc_80a",
+        "esc_40a_4in1",
+        "esc_100a_4in1"
+      ]
+    },
+    {
+      "key": "battery",
+      "label": "Battery",
+      "fallback": "battery",
+      "options": [
+        "3s_2200",
+        "4s_1500",
+        "4s_3300",
+        "6s_4000",
+        "6s_5000",
+        "3s_1300",
+        "4s_2200",
+        "6s_1300",
+        "6s_3000",
+        "4s_5200",
+        "4s_1300_lowc",
+        "4s_1500_highc"
+      ]
+    },
+    {
+      "key": "controller",
+      "label": "Flight Ctrl",
+      "fallback": "fc",
+      "options": [
+        "PiHawk",
+        "diatone_mamba",
+        "speedybee_f405",
+        "matek_f405"
+      ]
+    },
+    {
+      "key": "reciever",
+      "label": "Receiver",
+      "fallback": "rx",
+      "options": [
+        "CM703",
+        "nano_rx_pro",
+        "rbx_12",
+        "rush_fpv"
+      ]
+    },
+    {
+      "key": "attachments",
+      "label": "Attachment",
+      "fallback": "gimbal",
+      "multi": true,
+      "options": [
+        "gps_m8n",
+        "gps_m10",
+        "gps_rtk",
+        "gimbal_nano",
+        "gimbal_2axis",
+        "gimbal_3axis",
+        "cam_fpv",
+        "cam_hd",
+        "cam_4k",
+        "cam_cinema",
+        "thermal_256",
+        "thermal_640"
+      ]
+    }
+  ],
+  "defaults": {
+    "chasis": "fpv5",
+    "propeller": "5in_tri",
+    "motor": "1806",
+    "esc": "Cyclone_35A",
+    "battery": "4s_1500",
+    "controller": "PiHawk",
+    "reciever": "CM703",
+    "attachments": []
+  },
+  "modules": [
+    {
+      "id": "m1",
+      "label": "Module 1",
+      "sub": "Assembly & Thrust",
+      "experiments": [
+        {
+          "id": "assemble",
+          "name": "Assembly Check",
+          "unit": "",
+          "metric": "build",
+          "type": "assembly"
+        },
+        {
+          "id": "thrust",
+          "name": "Static Thrust",
+          "unit": "N",
+          "metric": "thrust",
+          "type": "bench"
+        }
+      ]
+    },
+    {
+      "id": "m2",
+      "label": "Module 2",
+      "sub": "Motor Characterisation",
+      "experiments": [
+        {
+          "id": "thermal",
+          "name": "Thermal · RPM Loss",
+          "unit": "°C",
+          "metric": "temp",
+          "type": "bench"
+        },
+        {
+          "id": "efficiency",
+          "name": "Motor Efficiency",
+          "unit": "%",
+          "metric": "eff",
+          "type": "bench"
+        }
+      ]
+    },
+    {
+      "id": "m3",
+      "label": "Module 3",
+      "sub": "Flight Verification",
+      "experiments": [
+        {
+          "id": "verify",
+          "name": "Hover / Flight",
+          "unit": "m",
+          "metric": "alt",
+          "type": "flight"
+        }
+      ]
+    }
+  ],
+  "instructor": [
+    {
+      "text": "Welcome to the Integration Capstone. This is the final test: build one quadcopter that satisfies the whole mission at once — everything you learned in Experiments 1 to 10 has to agree.",
+      "audio": null
+    },
+    {
+      "text": "Read the Mission Brief on the left: a maximum all-up weight, a minimum flight time, and a payload the aircraft must lift. Every choice you make will be judged against all three together.",
+      "audio": null
+    },
+    {
+      "text": "Tap any component tile to open its option library. The subsystems are coupled — a bigger motor lifts more but draws more current, heats the ESC and drains the battery faster. Watch the live metrics react.",
+      "audio": null
+    },
+    {
+      "text": "Tick the payload box to load the mission cargo, then read Mission Verify on the right: weight, thrust-to-weight, hover throttle, flight time, ESC temperature and hover efficiency all update as you build.",
+      "audio": null
+    },
+    {
+      "text": "When you think it is ready, press Verify Build. If any constraint fails, the result names only the experiment whose concept you have not yet applied — no shortcut. Return to it, rebuild, and verify again.",
+      "audio": null
+    },
+    {
+      "text": "Clear every constraint at once and the aircraft is flight-verified. That single build is the proof that the ten prior concepts have become one working design.",
+      "audio": null
+    }
+  ],
+  "reward": {
+    "category": null,
+    "name": "Showdown",
+    "desc": "The capstone is the final verification run — there is nothing left to unlock."
+  }
+}

@@ -1,0 +1,21 @@
+{
+  "name": "Thermal Camera 256",
+  "mass_g": 15,
+  "qty": 1,
+  "size_mm": [
+    20,
+    20,
+    25
+  ],
+  "model": "assets/attachments/thermal_cam/thermal_cam.glb",
+  "specs": {
+    "Type": "Thermal/IR",
+    "Resolution": "256×192",
+    "Range": "-20…400 °C"
+  },
+  "physics": {
+    "payload": true,
+    "mount_type": "camera",
+    "thermal": true
+  }
+}

@@ -1,4 +1,175 @@
 {
   "version": 2.0,
-  "questions": []
+  "questions": [
+    {
+      "question": "Q1. The steady-state module passes once a straight-line fit of settled temperature against I^2 reaches R^2 of at least 0.98 across five or more points. What is that fit actually confirming?",
+      "answers": {
+        "a": "That the temperature sensor is calibrated",
+        "b": "That the rise above ambient is governed by P x R_th with P = I^2 x R, so plotting against I^2 rather than I linearises it",
+        "c": "That the motor is running at constant RPM",
+        "d": "That the ambient temperature never changed"
+      },
+      "explanations": {
+        "a": "Incorrect — calibration would not produce a specific functional form.",
+        "b": "Correct — a high R^2 against I^2 is direct evidence of the square law. Against I the same data would curve, which is the whole point of choosing that axis.",
+        "c": "Incorrect — RPM varies across the sweep; each point is a different operating condition.",
+        "d": "Incorrect — ambient is held constant as a test condition, but the fit tests the current relationship."
+      },
+      "correctAnswer": "b",
+      "difficulty": "intermediate"
+    },
+    {
+      "question": "Q2. The bench logs a data point only once the case temperature has settled at a given throttle, and refuses to log at all during runaway. Why does runaway produce no valid point?",
+      "answers": {
+        "a": "The sensor saturates above a certain temperature",
+        "b": "A diverging system has no steady state to record, so there is no settled temperature to associate with that current",
+        "c": "The logging routine is disabled to save memory",
+        "d": "Runaway points would be duplicates of existing points"
+      },
+      "explanations": {
+        "a": "Incorrect — the reading remains valid, it simply never stops rising.",
+        "b": "Correct — the fit relates current to a settled temperature. During runaway the temperature never converges, so no such value exists and logging one would corrupt the dataset.",
+        "c": "Incorrect — memory is not the constraint.",
+        "d": "Incorrect — the throttle differs, so the point would be new, just meaningless."
+      },
+      "correctAnswer": "b",
+      "difficulty": "advanced"
+    },
+    {
+      "question": "Q3. The time-constant module requires two successful cursor reads, one at 65% throttle or below and one at 85% or above, each within 15% of the analytic value for that throttle. What does comparing the two reveal?",
+      "answers": {
+        "a": "That tau is exactly identical at all loads",
+        "b": "That the settled temperature rise changes enormously between the two throttles while tau barely moves, because tau is set by the thermal path and thermal mass rather than by drive level",
+        "c": "That tau scales linearly with throttle",
+        "d": "That the cursor tool is imprecise"
+      },
+      "explanations": {
+        "a": "Incorrect — tau does shift slightly, and the module quantifies by how much.",
+        "b": "Correct — tau = R_th x C_th. Driving the motor harder changes the heat input, and therefore the final temperature, dramatically, but it hardly touches how long the part takes to get there.",
+        "c": "Incorrect — the small change in tau is not a linear function of throttle.",
+        "d": "Incorrect — the 15% band is a reading tolerance, not the lesson."
+      },
+      "correctAnswer": "b",
+      "difficulty": "advanced"
+    },
+    {
+      "question": "Q4. Tau does shorten slightly at higher throttle. What causes that?",
+      "answers": {
+        "a": "The copper resistance rises, shortening the time constant",
+        "b": "More throttle means more propeller downwash over the motor, which lowers R_th, and tau = R_th x C_th falls with it",
+        "c": "The thermal mass of the motor decreases as it heats",
+        "d": "The ambient temperature rises during the run"
+      },
+      "explanations": {
+        "a": "Incorrect — resistance affects how much heat is produced, not the thermal path that sets tau.",
+        "b": "Correct — the motor sits in its own wash, so higher throttle means better forced convection and a shorter thermal path constant. C_th is fixed by the metal, so tau follows R_th.",
+        "c": "Incorrect — mass and specific heat are essentially constant over this range.",
+        "d": "Incorrect — ambient is held fixed by the test setup."
+      },
+      "correctAnswer": "b",
+      "difficulty": "advanced"
+    },
+    {
+      "question": "Q5. The ESC conduction loss model includes a quadratic over-current penalty term that grows as current approaches the board's rating. What real behaviour does that represent?",
+      "answers": {
+        "a": "The ESC deliberately wastes power near its limit",
+        "b": "Switching and parasitic losses climb disproportionately near the rating, so dissipation rises faster than simple I^2 x R_DS(on) predicts",
+        "c": "The rating is arbitrary and the penalty is cosmetic",
+        "d": "The battery sags, causing extra loss in the ESC"
+      },
+      "explanations": {
+        "a": "Incorrect — nothing is deliberate; the extra loss is a consequence of operating near the design limit.",
+        "b": "Correct — near the rating, switching losses, gate-drive limitations and current crowding all worsen, so the simple conduction term understates the true dissipation. This is why headroom matters rather than just meeting the number.",
+        "c": "Incorrect — the rating reflects a genuine thermal and electrical design limit.",
+        "d": "Incorrect — pack sag is modelled separately and is not the source of this term."
+      },
+      "correctAnswer": "b",
+      "difficulty": "advanced"
+    },
+    {
+      "question": "Q6. A correctly sized motor stays comfortably cool, yet the ESC behind it exceeds 80 C and fails the module. What does that outcome demonstrate?",
+      "answers": {
+        "a": "The motor measurement must be wrong",
+        "b": "Motor and ESC have independent thermal budgets, and the ESC has to be rated or cooled for the current the motor actually draws",
+        "c": "The ESC and motor always fail together",
+        "d": "The ESC limit should be raised to match the motor"
+      },
+      "explanations": {
+        "a": "Incorrect — both readings are valid; they describe different components with different thermal paths.",
+        "b": "Correct — the motor has a large metal bell in moving air, while the ESC is a small board that may be buried in the frame. The same current produces very different outcomes in each.",
+        "c": "Incorrect — the module exists precisely because they fail independently.",
+        "d": "Incorrect — 80 C is a silicon and board limit, not an adjustable preference."
+      },
+      "correctAnswer": "b",
+      "difficulty": "intermediate"
+    },
+    {
+      "question": "Q7. In the cooling module, hover mode settles above the 80 C ceiling while forward flight brings the same build back under it. What is the physical difference?",
+      "answers": {
+        "a": "Forward flight reduces the current draw to near zero",
+        "b": "In hover the aircraft recirculates its own warm exhaust, whereas in forward flight it continuously sweeps unheated air over the motor",
+        "c": "The propeller spins slower in forward flight",
+        "d": "Ambient temperature is lower at speed"
+      },
+      "explanations": {
+        "a": "Incorrect — forward flight does not eliminate the load; the aircraft still has to hold itself up.",
+        "b": "Correct — hover is thermally the worst case because the cooling air is progressively contaminated with the machine's own waste heat. Translating supplies a fresh air mass continuously, which raises the convective coefficient and lowers R_th.",
+        "c": "Incorrect — RPM is set by the thrust requirement, not by translation.",
+        "d": "Incorrect — the air is the same temperature; what changes is how much of it passes over the part."
+      },
+      "correctAnswer": "b",
+      "difficulty": "intermediate"
+    },
+    {
+      "question": "Q8. A heatsink is worth about a 30% reduction in R_th and a thermal pad about 15%. Fitting both, what reduction results?",
+      "answers": {
+        "a": "45%, because the reductions add",
+        "b": "About 40.5%, because the factors multiply: 0.70 x 0.85 = 0.595 of the original",
+        "c": "30%, because only the best part counts",
+        "d": "15%, because the weakest part limits the result"
+      },
+      "explanations": {
+        "a": "Incorrect — thermal resistances in a chain do not reduce additively when expressed as percentages.",
+        "b": "Correct — the parts stack multiplicatively on the remaining resistance, so R_th falls to 0.595 of its original value, a 40.5% reduction rather than 45%.",
+        "c": "Incorrect — both parts contribute.",
+        "d": "Incorrect — cooling measures combine; they are not limited by the weakest."
+      },
+      "correctAnswer": "b",
+      "difficulty": "advanced"
+    },
+    {
+      "question": "Q9. The cooling module reports the required airflow Q in litres per second alongside the settled temperature. Why is that number more useful to a designer than the temperature alone?",
+      "answers": {
+        "a": "It is easier to measure than temperature",
+        "b": "It states the specification a duct, fan or vent design has to meet, converting a thermal result into a mechanical requirement",
+        "c": "It determines the motor's KV rating",
+        "d": "It replaces the need for a temperature limit"
+      },
+      "explanations": {
+        "a": "Incorrect — airflow is generally harder to measure than temperature.",
+        "b": "Correct — knowing the part settles at a safe temperature is only half the answer. The airflow figure tells you what the airframe has to actually deliver for that to hold in service.",
+        "c": "Incorrect — KV is an electrical constant, unrelated to cooling.",
+        "d": "Incorrect — the temperature limit is still the criterion; Q is what achieving it costs."
+      },
+      "correctAnswer": "b",
+      "difficulty": "intermediate"
+    },
+    {
+      "question": "Q10. Why can raising the ambient temperature push an otherwise passing build into thermal runaway, even though the current draw is unchanged?",
+      "answers": {
+        "a": "Higher ambient increases the applied voltage",
+        "b": "The whole temperature curve shifts upward, so the winding starts nearer the point where rising copper resistance generates heat faster than cooling can remove it",
+        "c": "Ambient temperature does not affect the outcome",
+        "d": "Higher ambient reduces the thermal mass of the motor"
+      },
+      "explanations": {
+        "a": "Incorrect — ambient temperature has no effect on supply voltage.",
+        "b": "Correct — steady temperature is ambient plus P x R_th. Starting from a higher baseline means a hotter winding, which means higher resistance and more loss, and the feedback loop can cross from convergent to divergent without any change in commanded current.",
+        "c": "Incorrect — ambient enters the steady-state equation directly.",
+        "d": "Incorrect — thermal mass is a property of the metal and is essentially unchanged."
+      },
+      "correctAnswer": "b",
+      "difficulty": "advanced"
+    }
+  ]
 }

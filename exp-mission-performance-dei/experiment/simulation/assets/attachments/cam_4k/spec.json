@@ -1,0 +1,22 @@
+{
+  "name": "4K Action Camera",
+  "mass_g": 34,
+  "qty": 1,
+  "size_mm": [
+    28,
+    28,
+    34
+  ],
+  "model": "assets/attachments/camera/camera.glb",
+  "specs": {
+    "Type": "4K action",
+    "FOV": "145°",
+    "Resolution": "4K30 / 1080p120",
+    "Stabilised": "Yes"
+  },
+  "physics": {
+    "payload": true,
+    "mount_type": "camera",
+    "sensor_mp": 12.0
+  }
+}

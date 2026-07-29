@@ -1,71 +1,101 @@
 <h1>Lab Procedure: GPS &amp; Barometric Navigation Characterization</h1>
 
-<p>This document outlines the step-by-step workflow for <strong>Navigation &amp; Positioning</strong>. The experiment spans three modules — <strong>Module 1: GPS Constellation</strong> (two tabs: Constellation Geometry and Horizontal Accuracy), <strong>Module 2: Barometric Altimetry</strong> (ISA Altitude Profiling), and <strong>Module 3: Nav Synthesis</strong> (Error Budget Synthesis). Module 1's Constellation Geometry check must pass before Modules 2 and 3 unlock — until then their tabs show a lock icon and are disabled.</p>
+<p>Three modules, run in order. You build a satellite constellation and turn its geometry into metres of position error; you profile a barometer against true altitude; then you combine the two into a single 3-D error radius and decide whether an autopilot could safely fly on it. Modules 2 and 3 stay locked until Module 1 passes &mdash; their tabs carry a lock icon and will not open.</p>
+
+<table>
+<thead><tr><th>Module</th><th>Sub-experiment</th><th>Reports</th></tr></thead>
+<tbody>
+<tr><td>Module 1 &middot; GPS Accuracy</td><td>Constellation Geometry &amp; Accuracy</td><td>HDOP and CEP, in m</td></tr>
+<tr><td>Module 2 &middot; ISA Altitude</td><td>ISA Altitude Profiling</td><td>barometric error, in m</td></tr>
+<tr><td>Module 3 &middot; Nav Synthesis</td><td>Error Budget Synthesis</td><td>3-D error radius, in m</td></tr>
+</tbody>
+</table>
 
 <hr>
 
-<h2>Stage 1: Constellation Geometry (Module 1, Tab 1)</h2>
+<h2>Module 1 &middot; Constellation Geometry &amp; Accuracy</h2>
 
 <h3>Objective</h3>
-<p>Build a GPS satellite constellation and drive its Horizontal/Vertical/Position Dilution of Precision (HDOP/VDOP/PDOP) into an acceptable range by controlling satellite count and sky geometry.</p>
+<p>Build a satellite geometry good enough to fix position, then turn that geometry into an actual distance on the ground. One run grades both halves.</p>
 
-<h3>Step-by-Step Procedure</h3>
+<p><img src="./images/constellation_geometry_diagram.png" alt="Satellite constellation geometry and dilution of precision"></p>
+
 <ol>
-<li><strong>Launch the Simulator:</strong> Open the virtual lab page. It loads by default into <strong>Module 1 &middot; Horizontal Accuracy</strong>, experiment tab <strong>Constellation Geometry</strong>.</li>
-<li><strong>Read the Constellation card:</strong> In the left-hand Input Parameters column, locate the <strong>Constellation &middot; GPS sky</strong> card. It shows a live <code>HDOP</code> badge and a mini readout of <code>VDOP</code>, <code>PDOP</code>, and <code>CEP</code> that updates as you change the geometry.</li>
-<li><strong>Adjust satellite count:</strong> Drag the <strong>Satellites</strong> slider (range 4&ndash;12). Below 4 satellites the Diagnostics Log reports a blocking error ("No GPS fix — only <i>N</i> satellites in view; a 3-D + clock solution needs at least 4.") and the <strong>▶ Run Sim</strong> button is disabled.</li>
-<li><strong>Try the geometry presets:</strong> Click through the four preset buttons — <strong>Spread</strong> (good geometry), <strong>Clustered</strong> (one tight sky cone), <strong>Wall</strong> (spread azimuth but all high-elevation), and <strong>Line</strong> (near-collinear). Watch the HDOP badge react: Spread gives the lowest HDOP, Clustered and Line drive it up sharply, and Wall keeps HDOP deceptively low while VDOP balloons.</li>
-<li><strong>Open the sky-plot editor:</strong> Click <strong>◎ Edit sky-plot (drag satellites) ›</strong>. A modal opens with a polar sky-plot (elevation 90&deg; at the centre, the horizon at the rim, azimuth 0&deg;/N pointing up, clockwise). Drag any numbered satellite dot to a new position — HDOP/VDOP/PDOP/GDOP and CEP in the side readout update live as you drag. Releasing a dragged satellite detaches the constellation from its named preset (shown as "custom").</li>
-<li><strong>Run the check:</strong> Once the Constellation card shows HDOP under 2 (and VDOP is not flagged), click <strong>▶ Run Sim</strong>. The telemetry strip's <code>phase</code> field reads <code>ACQUIRING</code> then settles to <code>GPS LOCK</code> (or <code>GEOMETRY POOR</code> / <code>NO FIX</code> on a bad geometry) as the run plays out.</li>
-<li><strong>Read the verdict:</strong> After the run, a toast reports one of: <code>"GPS LOCK — HDOP &lt;value&gt;, good geometry"</code> (pass, HDOP &lt; 2), <code>"Good HDOP but VDOP &lt;value&gt; — 2D DOP hides vertical dilution"</code> (fail — the Wall trap), <code>"Poor geometry — HDOP &lt;value&gt;, fix wanders"</code> (fail, HDOP &gt; 4), <code>"Marginal geometry — HDOP &lt;value&gt;, accuracy degraded"</code> (fail, in between), or <code>"No fix — insufficient/degenerate geometry"</code> (fail, singular or &lt;4 satellites). Only a PASS here unlocks Modules 2 and 3.</li>
+<li>Find the <strong>Constellation &middot; GPS sky</strong> card in the left column. It carries a live HDOP badge and a smaller readout of VDOP, PDOP and CEP that tracks every change you make.</li>
+
+<li>Drag the <strong>Satellites</strong> slider (4 to 12). Below four the Diagnostics Log blocks the run outright &mdash; a 3-D position plus a clock bias is four unknowns, and you cannot solve four unknowns with three ranges.</li>
+
+<li>Work through the four geometry presets and watch the HDOP badge react:
+  <ul>
+  <li><strong>Spread</strong> &mdash; satellites well distributed, and the lowest HDOP you will get.</li>
+  <li><strong>Clustered</strong> &mdash; all in one tight cone of sky, and HDOP climbs sharply.</li>
+  <li><strong>Line</strong> &mdash; near-collinear, which is close to degenerate.</li>
+  <li><strong>Wall</strong> &mdash; spread in azimuth but all high in elevation. This is the interesting one: HDOP stays deceptively low while VDOP balloons. Good horizontal geometry can hide terrible vertical geometry, and a 2-D DOP number will not tell you.</li>
+  </ul>
+</li>
+
+<li>Click <strong>Edit sky-plot (drag satellites)</strong> for the polar editor &mdash; elevation 90&deg; at the centre, horizon at the rim, azimuth 0&deg;/north pointing up and running clockwise. Drag any numbered satellite and all four DOP figures plus CEP update as you move it. Once you drag one, the constellation detaches from its preset and shows as "custom".</li>
+
+<li>Pick a ranging scenario in the <strong>Sensor &amp; Atmosphere</strong> card: <strong>Open-sky</strong> at UERE = 3.0 m, or <strong>Urban</strong> at 7.5 m with multipath. CEP = HDOP &times; UERE, so the readout moves the moment you switch.</li>
+
+<li>With HDOP under 2 and VDOP unflagged, press <strong>&#9654; Run Sim</strong>. The run plots around fifty individual fixes scattered about the true position, each drawn from a Rayleigh radial distribution whose median radius is the current CEP. The telemetry phase settles to <code>FIX LOCKED</code>, or to <code>GEOMETRY POOR</code>, <code>MULTIPATH</code>, <code>DEGRADED</code> or <code>NO FIX</code>.</li>
+</ol>
+
+<p><img src="./images/cep_rayleigh_diagram.png" alt="Circular error probable and the Rayleigh scatter of GPS fixes"></p>
+
+<h3>Reading the verdict</h3>
+
+<p>Only a pass here unlocks Modules 2 and 3, and it needs both HDOP &lt; 2 <em>and</em> CEP &lt; 4 m. The failures each name their own cause:</p>
+
+<ul>
+<li><strong>GPS LOCK</strong> &mdash; both conditions met.</li>
+<li><strong>Good HDOP but VDOP &hellip;</strong> &mdash; the Wall trap. Horizontal geometry passed, vertical did not.</li>
+<li><strong>Poor geometry</strong> (HDOP &gt; 4) or <strong>Marginal geometry</strong> (HDOP 2&ndash;4) &mdash; the fix wanders.</li>
+<li><strong>Multipath</strong> &mdash; HDOP is fine, but urban ranging error alone pushes CEP out of spec.</li>
+<li><strong>Accuracy out of spec</strong> &mdash; CEP &ge; 4 m for some other combination of the two.</li>
+<li><strong>No fix</strong> &mdash; singular geometry, or fewer than four satellites.</li>
+</ul>
+
+<p>Re-run the same constellation with the other UERE setting and watch the fix cloud balloon. Identical geometry, worse environment &mdash; that is the multipath term doing all of it.</p>
+
+<hr>
+
+<h2>Module 2 &middot; ISA Altitude Profiling</h2>
+
+<h3>Objective</h3>
+<p>Profile a barometric altimeter's error against true altitude, for two sensor grades, with and without a temperature inversion.</p>
+
+<p><img src="./images/baro_altitude_error_diagram.png" alt="Barometric altitude error growing with height"></p>
+
+<ol>
+<li>Pick a sensor grade in the <strong>Sensor &amp; Atmosphere</strong> card: <strong>Fine</strong> (MS5611-class) or <strong>Coarse</strong> (BMP180-class). The badge shows the 1&sigma; altitude error at whatever the True Altitude slider is currently set to.</li>
+
+<li>Optionally tick <strong>Temperature inversion (systematic bias)</strong>. This injects a height-proportional bias, standing in for a warm layer of air near the ground that the sensor's ISA model does not know about.</li>
+
+<li>Press <strong>&#9654; Run Sim</strong>. This run ignores the True Altitude slider &mdash; it sweeps altitude from 0 to 3000 m over the run window and plots sensed-minus-true error against true altitude live. The phase reads <code>SWEEPING</code>, or <code>COARSE SCATTER</code> / <code>INVERSION BIAS</code> when those faults are active.</li>
+
+<li>A pass needs the fine sensor, no inversion, and a peak error under 3.5 m. The verdict quotes the error at 500 m and again at 3000 m so you can see how it grows.</li>
+
+<li>Re-run every combination and compare the curve shapes. The fine sensor's error grows gently and smoothly with height, which is the pressure-sensitivity term on its own. The inversion produces something quite different: a steep, systematic climb. Random noise and a systematic bias look nothing alike on this plot, and that is the point of running all four.</li>
 </ol>
 
 <hr>
 
-<h2>Stage 2: Horizontal Accuracy (Module 1, Tab 2)</h2>
+<h2>Module 3 &middot; Error Budget Synthesis</h2>
 
 <h3>Objective</h3>
-<p>Convert the constellation's HDOP into a Circular Error Probable (CEP) figure using the receiver's ranging error, and observe the Rayleigh-distributed scatter of individual GPS fixes.</p>
+<p>Combine the horizontal and vertical errors into one number, and decide whether it is safe to fly near an obstacle.</p>
 
-<h3>Step-by-Step Procedure</h3>
+<p><img src="./images/nav3d_error_budget_diagram.png" alt="Horizontal CEP and vertical barometric error combined into a 3-D error radius"></p>
+
 <ol>
-<li><strong>Switch experiment tab:</strong> Click <strong>Horizontal Accuracy</strong> in the experiment tab strip.</li>
-<li><strong>Select a ranging scenario:</strong> In the <strong>Sensor &amp; Atmosphere</strong> card, use the <strong>Ranging (UERE)</strong> segmented control to pick <strong>Open-sky</strong> (UERE = 3.0 m) or <strong>Urban</strong> (UERE = 7.5 m, multipath). The card's CEP readout in the Constellation card updates immediately.</li>
-<li><strong>Run the fix simulation:</strong> Click <strong>▶ Run Sim</strong>. The simulator plots roughly 50 individual GPS fixes scattered around true position, each drawn from a Rayleigh radial distribution with median radius equal to the current CEP. Watch the telemetry <code>phase</code> field: <code>FIX LOCKED</code> (CEP &lt; 4 m), <code>MULTIPATH</code> (urban scenario, CEP over spec), or <code>DEGRADED</code>.</li>
-<li><strong>Read the verdict:</strong> The toast reports <code>"Fix locked — CEP &lt;value&gt; m, within spec"</code> (pass, CEP &lt; 4 m), <code>"Multipath — CEP &lt;value&gt; m, position unreliable"</code> (fail, urban scenario), or <code>"Degraded accuracy — CEP &lt;value&gt; m, exceeds spec"</code> (fail, otherwise).</li>
-<li><strong>Compare scenarios:</strong> Re-run with the other UERE setting and note how the fix cloud visibly balloons outward under the urban scenario for the same constellation geometry.</li>
+<li>This module has no new controls. It reads the constellation, the ranging scenario, the sensor grade and the True Altitude slider exactly as you left them in Modules 1 and 2, and the telemetry updates live if you change any of them.</li>
+
+<li>Press <strong>&#9654; Run Sim</strong>. Two error markers grow in the 3-D viewport toward their steady size &mdash; a horizontal disc sized to CEP, and a vertical extent sized to the barometric error. The phase reads <code>SAFE ENVELOPE</code> or <code>UNSAFE &mdash; DRIFTING</code>.</li>
+
+<li>The verdict passes under a 5 m combined radius and fails at or above it, in which case it says the fix drifts toward the obstacle.</li>
+
+<li>Open the <strong>Calculations</strong> card for the full chain: the HDOP and CEP computation, the ISA altitude error, and the final Total = &radic;(CEP&sup2; + h_err&sup2;), with your current numbers in place.</li>
 </ol>
 
-<hr>
-
-<h2>Stage 3: ISA Altitude Profiling (Module 2)</h2>
-
-<h3>Objective</h3>
-<p>Profile a barometric altimeter's error against true altitude across a 0&ndash;3000 m sweep, for two sensor grades and with an optional temperature-inversion fault injected.</p>
-
-<h3>Step-by-Step Procedure</h3>
-<ol>
-<li><strong>Unlock and enter Module 2:</strong> Once Stage 1's Constellation Geometry check has passed, the <strong>Module 2 &middot; ISA Altitude</strong> tab unlocks. Click it to open the <strong>ISA Altitude Profiling</strong> experiment.</li>
-<li><strong>Choose a sensor grade:</strong> In the <strong>Sensor &amp; Atmosphere</strong> card, use the <strong>Barometer</strong> segmented control to select <strong>Fine</strong> (MS5611-class) or <strong>Coarse</strong> (BMP180-class). The card's badge shows the current 1&sigma; altitude error (<code>&plusmn;X m</code>) at the True Altitude slider's current setting.</li>
-<li><strong>Toggle the temperature inversion fault:</strong> Check the <strong>Temperature inversion (systematic bias)</strong> checkbox to inject a height-proportional altitude bias, simulating a warm near-ground air layer the sensor's ISA model doesn't account for.</li>
-<li><strong>Run the sweep:</strong> Click <strong>▶ Run Sim</strong>. Unlike the other experiments, this run ignores the True Altitude slider and automatically sweeps true altitude from 0 m to 3000 m over the run window, plotting sensed-minus-true altitude error against true altitude live. The telemetry <code>phase</code> field reads <code>SWEEPING</code>, or <code>COARSE SCATTER</code> / <code>INVERSION BIAS</code> if those faults are active.</li>
-<li><strong>Read the verdict:</strong> The toast reports <code>"ISA profile good — X.X m @500 m rising to X.X m @3000 m"</code> (pass, fine sensor, no inversion, peak error under 3.5 m), <code>"Coarse barometer — &plusmn;X.X m altitude noise"</code> (fail), <code>"Temperature inversion — altitude biased by &plusmn;X.X m"</code> (fail), or <code>"Altitude error high — X.X m peak, exceeds ISA prediction"</code> (fail).</li>
-<li><strong>Compare the curve shape:</strong> Re-run with each combination of sensor grade and inversion toggle and compare the plotted error-vs-altitude curves — the fine sensor's error grows gently and smoothly with height (from the pressure-sensitivity term alone), while the inversion fault produces a much steeper, systematic climb.</li>
-</ol>
-
-<hr>
-
-<h2>Stage 4: Error Budget Synthesis (Module 3)</h2>
-
-<h3>Objective</h3>
-<p>Combine the horizontal CEP from Module 1 and the vertical altitude error from Module 2 into a single 3-D navigation error radius, and determine whether the resulting fix is safe for autonomous flight near an obstacle.</p>
-
-<h3>Step-by-Step Procedure</h3>
-<ol>
-<li><strong>Enter Module 3:</strong> Click the <strong>Module 3 &middot; Nav Synthesis</strong> tab to open <strong>Error Budget Synthesis</strong>.</li>
-<li><strong>Confirm your inputs:</strong> This module reads the constellation, ranging scenario, sensor grade, and True Altitude slider exactly as configured in Modules 1 and 2 — no new controls are introduced. Adjust any of them and the telemetry updates live.</li>
-<li><strong>Run the synthesis:</strong> Click <strong>▶ Run Sim</strong>. The 3D viewport grows two overlapping error markers toward their steady-state size — a horizontal disc sized to CEP and a vertical extent sized to the barometric error — while the telemetry <code>phase</code> field reads <code>SAFE ENVELOPE</code> or <code>UNSAFE — DRIFTING</code>.</li>
-<li><strong>Read the verdict:</strong> The toast reports <code>"Safe for autonomous — X.X m 3D error"</code> (pass, combined radius under 5 m) or <code>"Unsafe — X.X m 3D error, drifts toward obstacle"</code> (fail, 5 m or more).</li>
-<li><strong>Inspect the full derivation:</strong> Click the <strong>Calculations</strong> card to open the detailed breakdown modal, which shows the exact HDOP/CEP computation, the ISA altitude-error computation, and the final <code>Total = &radic;(CEP&sup2; + h_err&sup2;)</code> step with your current numbers substituted in.</li>
-<li><strong>Complete the lab:</strong> A pass here (with Stages 1&ndash;3 already passed) completes the experiment and unlocks the GPS Module reward, shown in the <strong>Components Unlocked</strong> panel on the right.</li>
-</ol>
+<p>That root-sum-square is worth sitting with. Two errors that each look acceptable on their own combine into one that is not, and a budget like this is the only way to see it coming. A pass here completes the lab and unlocks the GPS module under <strong>Components Unlocked</strong>.</p>

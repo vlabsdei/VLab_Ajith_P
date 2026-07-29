@@ -1,0 +1,27 @@
+{
+  "name": "FPV 6\" Chassis",
+  "mass_g": 350,
+  "qty": 1,
+  "size_mm": [
+    260,
+    45,
+    260
+  ],
+  "model": "fpv_chasis_6_350gms.glb",
+  "specs": {
+    "Prop size": "6 in",
+    "Wheelbase": "308 mm",
+    "Material": "Carbon fibre"
+  },
+  "physics": {
+    "wheelbase_mm": 308,
+    "recommended_prop_in": [
+      6,
+      7
+    ],
+    "frontal_area_m2": 0.0112,
+    "cd": 1.05,
+    "arm_length_mm": 154
+  },
+  "mounts": "fpv_chasis_6_350gms_mounts-2.json"
+}

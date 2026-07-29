@@ -1,0 +1,24 @@
+{
+  "name": "Heavy 80 A (single)",
+  "mass_g": 14,
+  "qty": 4,
+  "size_mm": [
+    35,
+    20,
+    8
+  ],
+  "model": "assets/esc/_model/esc_single.glb",
+  "specs": {
+    "Current": "80 A",
+    "Firmware": "BLHeli_32",
+    "Config": "4 × single",
+    "Note": "High-current ESC — up to 8S"
+  },
+  "physics": {
+    "current_a": 80,
+    "burst_current_a": 100,
+    "rds_on_ohm": 0.0013,
+    "r_th_c_per_w": 11,
+    "max_cells": 8
+  }
+}

@@ -1,0 +1,24 @@
+{
+  "name": "5\" Tri-Blade",
+  "mass_g": 4.4,
+  "qty": 4,
+  "size_mm": [
+    127,
+    11,
+    18
+  ],
+  "model": "5_tri-blade_propeller-2.glb",
+  "specs": {
+    "Diameter": "5 in",
+    "Pitch": "4.3 in",
+    "Blades": "3"
+  },
+  "physics": {
+    "diameter_in": 5,
+    "pitch_in": 4.3,
+    "blades": 3,
+    "ct": 0.125,
+    "cq": 0.014,
+    "mass_g_each": 4.4
+  }
+}

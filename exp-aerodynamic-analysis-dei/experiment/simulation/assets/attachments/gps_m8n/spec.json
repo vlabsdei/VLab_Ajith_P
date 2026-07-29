@@ -1,0 +1,23 @@
+{
+  "name": "M8N GNSS + Compass",
+  "mass_g": 10,
+  "qty": 1,
+  "size_mm": [
+    25,
+    25,
+    8
+  ],
+  "model": "assets/attachments/gps/gps.glb",
+  "specs": {
+    "System": "GPS/GLONASS",
+    "Compass": "HMC5883 integrated",
+    "Update": "10 Hz",
+    "Accuracy": "2.5 m CEP"
+  },
+  "physics": {
+    "payload": true,
+    "mount_type": "gps",
+    "cep_m": 2.5,
+    "channels": 72
+  }
+}

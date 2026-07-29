@@ -1,21 +1,14 @@
 # Academic References
 
-The pulse-width modulation models, control-resolution relationships, MOSFET conduction-loss equations, and thermal-coefficient data implemented in this experiment are derived from the following power-electronics, embedded-systems, and electrical-machines literature:
+The PWM-mapping, duty-cycle and MOSFET conduction-loss models in this experiment are based on the following laboratory manual (primary) and prescribed Indian-university textbook.
 
-1. **N. Mohan, T. M. Undeland, and W. P. Robbins**, *Power Electronics: Converters, Applications, and Design*, 3rd ed. Hoboken, NJ: John Wiley & Sons, 2003.  
-   *(Provides the switching-converter foundations, MOSFET conduction loss P = I<sup>2</sup>R<sub>DS(on)</sub>, and duty-cycle/PWM theory used in the resolution and dissipation sub-calculations.)*
+**Laboratory manual (primary)**
 
-2. **M. H. Rashid**, *Power Electronics: Circuits, Devices, and Applications*, 4th ed. Harlow, UK: Pearson Education, 2014.  
-   *(Covers PWM generation, switching frequency selection, and the trade-off between switching loss and conduction loss in power MOSFET stages.)*
+1. **SRM Valliammai Engineering College**, *Power Electronics Laboratory Manual* (1905610). PWM duty ratio *k = TON/T*, *Vo = Vs/(1−k)* (p51); MOSFET characteristics and switching behaviour (p5, 7, 35, 41); switching-mode transistor power dissipation, treated qualitatively (p87).
+   https://srmvalliammai.ac.in/wp-content/uploads/2022/05/1905610-power-electronics-laboratory-manual.pdf
 
-3. **J. G. Kassakian, M. F. Schlecht, and G. C. Verghese**, *Principles of Power Electronics*, 2nd ed. Cambridge, UK: Cambridge University Press, 2023.  
-   *(Details gate-drive timing, dead-time/dead-band insertion, and converter control resolution as a function of timer clock and modulation frequency.)*
+**Textbook**
 
-4. **D. C. Hanselman**, *Brushless Permanent Magnet Motor Design*, 2nd ed. Madison, WI: Magna Physics Publishing, 2006.  
-   *(Supplies the BLDC commutation and back-EMF relationships that link the ESC phase current to the motor operating point carried forward from Experiment 1.)*
+2. **P. S. Bimbhra**, *Power Electronics*, Khanna Publishers. PWM generation, duty-cycle control and MOSFET conduction loss.
 
-5. **Texas Instruments**, "Calculating Power Dissipation for a H-Bridge or Half-Bridge Driver," Application Report SLVA504A, Texas Instruments Inc., Dallas, TX, 2011.  
-   *(Practical reference for MOSFET conduction-loss estimation, the positive temperature coefficient of R<sub>DS(on)</sub>, and junction-to-ambient thermal-resistance heatsinking decisions.)*
-
-6. **IEEE Standard 1459-2010**, *IEEE Standard Definitions for the Measurement of Electric Power Quantities Under Sinusoidal, Nonsinusoidal, Balanced, or Unbalanced Conditions*, IEEE, New York, NY, 2010.  
-   *(Reference for RMS current and average power definitions underlying the I<sup>2</sup>R dissipation computation.)*
+*Note: the conduction-loss expression P = I²·R_DS(on) and the junction-temperature relation T = T_amb + P·R_th are analytical results and are not printed in the bench manual above; they are cited to the textbook.*

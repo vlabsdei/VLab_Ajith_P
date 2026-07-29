@@ -283,13 +283,41 @@ input[type=range]::-moz-range-thumb{width:12px;height:12px;border-radius:50%;bac
   display:grid;grid-template-columns:repeat(4,1fr);gap:1px;
   background:var(--line-soft);border:1px solid var(--line-soft);border-radius:9px;overflow:hidden;
 }
-.sf-matrix .cell{background:#fff;padding:8px 6px;font-size:9.5px;text-align:center}
+.sf-matrix .cell{background:#fff;padding:8px 6px;font-size:9.5px;text-align:center;position:relative}
 .sf-matrix .cell.hd{background:var(--panel);font-weight:700;color:var(--ink-3);font-size:8.5px;letter-spacing:.04em;text-transform:uppercase}
-.sf-matrix .cell.rowhd{background:var(--panel);font-weight:700;color:var(--ink-2);text-align:left;padding-left:9px}
-.sf-matrix .cell b{font-family:'IBM Plex Mono',monospace;display:block;font-size:11px}
+.sf-matrix .cell.rowhd{background:var(--panel);font-weight:700;color:var(--ink-2);text-align:left;padding-left:9px;cursor:pointer}
+.sf-matrix .cell.rowhd:hover{background:#eef2f6}
+.sf-matrix .cell.rowhd.sel{background:var(--teal-soft);color:var(--teal)}
+.sf-matrix .cell b{font-family:'IBM Plex Mono',monospace;display:block;font-size:12px;line-height:1.2}
+.sf-matrix .cell .cap{display:block;font-size:7.5px;letter-spacing:.05em;color:var(--muted);margin-top:1px}
+.sf-matrix .cell.run{cursor:pointer;transition:background .12s,box-shadow .12s}
+.sf-matrix .cell.run:hover{box-shadow:inset 0 0 0 1.5px var(--teal)}
+.sf-matrix .cell.untested{color:var(--faint)}
+.sf-matrix .cell.untested b{color:var(--muted);opacity:.55}
+.sf-matrix .cell.active{box-shadow:inset 0 0 0 2px var(--amber)}
 .sf-matrix .cell.pass{color:#1f8a5b}
+.sf-matrix .cell.pass.tested{background:rgba(31,138,91,.08)}
 .sf-matrix .cell.marginal{color:var(--amber-ink)}
+.sf-matrix .cell.marginal.tested{background:rgba(198,93,59,.08)}
 .sf-matrix .cell.fail{color:var(--danger)}
+.sf-matrix .cell.fail.tested{background:rgba(168,50,50,.08)}
+.sf-matrix .cell .tick{position:absolute;top:2px;right:4px;font-size:8px;color:#1f8a5b}
+
+/* ─────── Module-2 material + matrix bench — sits beside the viewport (row 1) ─────── */
+.m2-bench{
+  gap:9px;
+  height:clamp(340px,44vh,560px);
+  overflow-y:auto;scrollbar-width:thin;
+}
+.m2-bench[hidden]{display:none}
+.m2-bench .matrix-head{margin-top:2px}
+.matrix-rec{font-size:9px;font-weight:700;color:var(--muted);letter-spacing:.02em}
+.matrix-rec.good{color:#1f8a5b}
+.matrix-hint{font-size:9px;color:var(--faint);line-height:1.55;margin:1px 0 0}
+.m2-bench .mat-picker-grid{display:grid;grid-template-columns:1fr;gap:7px}
+
+/* M1/M2 visuals swap in the two visual rows */
+.m1-only[hidden]{display:none !important}
 
 /* ─────────── diagnostics log ─────────── */
 .log-card{gap:7px}
@@ -314,15 +342,33 @@ input[type=range]::-moz-range-thumb{width:12px;height:12px;border-radius:50%;bac
 .log-empty{font-size:9.5px;color:var(--muted);padding:6px 2px}
 
 /* ─────────── outputs ─────────── */
-.out-pair{display:flex;flex-direction:column;gap:13px}
-.out-card canvas{width:100%;display:block;border-radius:7px;background:#fbfcfc}
-#liveGraph{height:118px}
-#massChart{height:110px}
-button.out-card:hover{border-color:var(--slate)}
+/* Graphs section — collapsible; expand to see every graph, click one to open */
+.graphs-card{gap:0}
+.graphs-head{background:none;border:none;padding:0;width:100%;cursor:pointer;font:inherit}
+.graphs-head .card-title em{transition:color .15s}
+.graphs-caret{color:var(--slate);font-size:15px;font-weight:700;transition:transform .2s}
+.graphs-card:not(.collapsed) .graphs-caret{transform:rotate(90deg)}
+.graphs-card.collapsed .graphs-body{display:none}
+.graphs-body{display:flex;flex-direction:column;gap:10px;margin-top:10px}
+/* material tiles stack cleanly in the narrower bench column */
+.m2-bench .mat-tile{flex-direction:column;align-items:flex-start;gap:5px;padding:9px 12px}
+.m2-bench .mat-tile .specs{gap:12px}
+.graph-item{
+  width:100%;border:1px solid var(--line-soft);border-radius:9px;background:#fff;
+  padding:8px 9px;display:flex;flex-direction:column;gap:5px;text-align:left;cursor:pointer;
+  transition:border-color .15s,box-shadow .15s;
+}
+.graph-item:hover{border-color:var(--slate);box-shadow:0 3px 10px rgba(31,58,147,.1)}
+.gi-label{font-size:8.5px;font-weight:700;letter-spacing:.06em;color:var(--ink-3);text-transform:uppercase}
+.graph-item canvas{width:100%;display:block;border-radius:6px;background:#fbfcfc}
+#liveGraph{height:116px}
+.struct-graphs{display:flex;flex-direction:column;gap:10px}
+.struct-graphs[hidden]{display:none}
+.struct-card canvas{height:122px}
 
-.reward-card{flex:1;min-height:150px}
+.reward-card{flex:0 0 auto;min-height:0}
 .head-unlock{margin-top:6px}
-.reward-body{flex:1;display:flex;flex-direction:column;min-height:120px}
+.reward-body{flex:1;display:flex;flex-direction:column;min-height:0}
 .reward-locked{
   flex:1;border-radius:9px;background:#f2f5f4;border:1px dashed #ccd6d2;
   display:flex;flex-direction:column;align-items:center;justify-content:center;gap:6px;padding:14px;
@@ -331,7 +377,10 @@ button.out-card:hover{border-color:var(--slate)}
 .reward-locked p{margin:0;font-size:9.5px;font-weight:600;color:var(--muted);text-align:center;line-height:1.5}
 .reward-open{
   flex:1;border-radius:9px;border:1px solid #e8cabc;overflow:hidden;display:flex;flex-direction:column;
-  background:linear-gradient(165deg,rgba(198,93,59,.10),rgba(31,58,147,.06));
+  /* neutral studio backdrop — a soft vignette so the component reads as a lit
+     object on a sweep, instead of the old amber/navy wash that tinted the mesh */
+  background:
+    radial-gradient(120% 90% at 50% 28%, #ffffff 0%, #f2f5f4 46%, #e3e9e7 100%);
   animation:cardIn .5s ease;
 }
 .reward-open .view{flex:1;min-height:96px}
@@ -402,6 +451,8 @@ button.out-card:hover{border-color:var(--slate)}
 .modal-body{flex:1;overflow-y:auto;padding:16px 18px}
 .modal-foot{flex:none;padding:9px 18px;border-top:1px solid var(--line-soft);background:var(--panel);font-size:9px;color:var(--muted)}
 .modal-foot b{color:var(--teal);font-weight:600}
+.modal-back{border:1px solid var(--line);background:#fff;border-radius:7px;padding:5px 11px;font-size:10px;font-weight:600;color:var(--slate);cursor:pointer}
+.modal-back:hover{border-color:var(--slate)}
 
 /* picker (component-choice modal) */
 .pick-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:12px}
@@ -514,7 +565,7 @@ button.out-card:hover{border-color:var(--slate)}
   .col{overflow:visible}
   .col-right{grid-column:1/-1;border-left:none;border-top:1px solid var(--line)}
   .out-pair{display:grid;grid-template-columns:1fr 1fr;gap:12px}
-  .reward-card{min-height:210px}
+  .reward-card{min-height:0}
   .m2-chart-grid{grid-template-columns:1fr 1fr}
   .chart-block:nth-child(3){grid-column:1/-1}
 }
@@ -536,10 +587,9 @@ button.out-card:hover{border-color:var(--slate)}
   .head-inputs{order:6}
   .param-grid{order:7;display:flex;overflow-x:auto;gap:9px;padding-bottom:6px;scroll-snap-type:x mandatory;-webkit-overflow-scrolling:touch}
   .param-grid .tile{flex:0 0 148px;scroll-snap-align:start}
-  .mat-picker{order:8}
   .mass-card{order:9}
   .calc-card{order:10}
-  .m2-charts{order:11}
+  .m2-bench{order:11}
   .head-outputs{order:12}
   .out-pair{order:13;display:grid;grid-template-columns:1fr 1fr;gap:10px}
   .log-card{order:14}
@@ -595,3 +645,37 @@ button.out-card:hover{border-color:var(--slate)}
 @media (max-width:400px){
   .vp-telemetry{width:132px;padding:6px 8px}
 }
+
+/* Mobile running order.
+   At =<820px .col{display:contents} flattens all three columns into one flex
+   list and `order` alone decides the sequence. .graphs-card is a direct child
+   of .col-right and the shared base gives it no order — so it would default to
+   order:0 and stack ABOVE the 3D viewport. Charts sit between the Outputs
+   header and the Diagnostics Log in the propulsion lab (where they ride inside
+   .out-pair); this lab has no .out-pair element, so .graphs-card takes that
+   functional slot and the shared cards after it shift by one:
+   … → outputs head → graphs → diagnostics → unlocked */
+@media (max-width:820px){
+  .graphs-card{order:13}
+  .out-pair{order:14}
+  .log-card{order:15}
+  .head-unlock{order:16}
+  .reward-card{order:17}
+  .slider-panel{order:18}
+}
+
+/* ─────────── reward card (unlocked component) ─────────── */
+.reward-open .view{position:relative}
+.reward-open .view::after{            /* contact shadow under the floating part */
+  content:"";position:absolute;left:50%;bottom:8%;transform:translateX(-50%);
+  width:52%;height:9px;border-radius:50%;pointer-events:none;
+  background:radial-gradient(ellipse at center, rgba(30,42,41,.20), rgba(30,42,41,0) 70%);
+}
+.reward-open .meta{display:flex;flex-direction:column;gap:3px;border-top:1px solid rgba(232,202,188,.7)}
+.rw-kind{font-size:8px;font-weight:700;letter-spacing:.10em;text-transform:uppercase;color:var(--amber)}
+.reward-open .meta b{font-size:11px;line-height:1.25;color:var(--ink)}
+.rw-specs{display:flex;flex-wrap:wrap;gap:4px 10px;margin-top:1px}
+.rw-specs span{display:flex;gap:4px;font-size:8.5px;color:var(--ink-3);white-space:nowrap}
+.rw-specs i{font-style:normal;color:var(--faint)}
+.reward-final .lock{background:#fdf1d8;color:#9a7a1e}
+.reward-final p{color:var(--amber-ink)}

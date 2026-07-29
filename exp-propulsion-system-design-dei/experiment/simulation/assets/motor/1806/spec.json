@@ -1,5 +1,5 @@
 {
-  "name": "1806 \u2014 2300 KV",
+  "name": "1806 — 2750 KV",
   "mass_g": 19,
   "qty": 4,
   "size_mm": [
@@ -12,16 +12,16 @@
     "rotar.glb"
   ],
   "specs": {
-    "KV": "2300 rpm/V",
-    "Max current": "28 A",
-    "Stator": "18 \u00d7 06"
+    "KV": "2750 rpm/V",
+    "Max current": "36 A",
+    "Stator": "18 × 6"
   },
   "physics": {
-    "kv": 2300,
-    "rm_ohm": 0.09,
-    "i0_a": 0.6,
-    "max_current_a": 28,
-    "max_power_w": 420,
+    "kv": 2750,
+    "rm_ohm": 0.0595,
+    "i0_a": 0.66,
+    "max_current_a": 36,
+    "max_power_w": 550,
     "k_fe": 0.0003,
     "max_cells": 6
   }

@@ -80,16 +80,52 @@ async function loadCatalog(){
     const opts = (byCat[c.key] || []).sort((a,b)=>order.indexOf(a.id)-order.indexOf(b.id));
     return { key:c.key, label:c.label, multi:!!c.multi, options:opts };
   });
+  /* Reward pool. The reward names a CATEGORY and the unlock draws a random real
+     component from it. That category is not always a selectable one in this
+     experiment (exp-03 awards a propeller but never lets you pick one), so any
+     option that wasn't already loaded is fetched straight from its spec.json. */
+  const rwCfg = manifest.reward || {};
+  let rewardPool = [];
+  if(rwCfg.category){
+    const inCat = byCat[rwCfg.category] || [];
+    const wantIds = rwCfg.options || inCat.map(o=>o.id);
+    const missing = wantIds.filter(id => !inCat.some(o=>o.id===id));
+    let extra = [];
+    if(missing.length){
+      extra = (await Promise.all(missing.map(async id=>{
+        const base = "assets/" + rwCfg.category + "/" + id;
+        try{
+          const spec = await (await fetch(base + "/spec.json", {cache:"no-store"})).json();
+          let files = [];
+          if(spec.model){
+            const arr = Array.isArray(spec.model) ? spec.model : [spec.model];
+            files = arr.map(f => f.includes("/") ? f : base + "/" + f);
+          }
+          return { id, name: spec.name || id, catKey: rwCfg.category,
+                   mass: spec.mass_g || 0, qty: spec.qty || 1,
+                   size: spec.size_mm || null, view: spec.view || null,
+                   specs: Object.entries(spec.specs || {}), phys: spec.physics || {},
+                   files, mounts: null,
+                   fallback: { kind: rwCfg.fallback || "none", color: 0x5a6672, s: 1 } };
+        }catch(e){ console.warn("reward spec missing for", base); return null; }
+      }))).filter(Boolean);
+    }
+    const all = inCat.concat(extra);
+    rewardPool = wantIds.map(id => all.find(o=>o.id===id)).filter(Boolean);
+  }
   DRONE_DB = {
     categories,
     defaults: manifest.defaults || {},
     modules: manifest.modules,
     instructor: manifest.instructor,
-    reward: {
-      name: manifest.reward.name, desc: manifest.reward.desc,
-      files: manifest.reward.model ? [manifest.reward.model] : [],
-      fallback: { kind: manifest.reward.fallback || "lidar", color: 0x845b23, s: 1 }
-    }
+    /* The reward is no longer one hardcoded mesh: it names a CATEGORY, and the
+       unlock draws a random real component from it (a random motor, a random
+       airframe, …). Because the drawn option is a genuine catalogue entry it
+       carries its own catKey, so fitUnit applies the same orientation rule the
+       component uses everywhere else — the old reward object had no catKey at
+       all, which is why it rendered at an arbitrary angle. */
+        reward: { category: rwCfg.category || null, name: rwCfg.name || "", desc: rwCfg.desc || "",
+              fallback: { kind: rwCfg.fallback || "lidar", color: 0x845b23, s: 1 }, pool: rewardPool }
   };
 }
 
@@ -99,7 +135,13 @@ const FC_DEFAULT = {
   cmd:20, kp:0.6, ki:0, kd:0.04, dist:false,
   znGain:1, znMethod:"classic", znKu:0, znPu:0,
   air:0, wind:0, imu:"mpu6000", alpha:0.98,
-  controller:"manual", estimator:"comp", escFault:false
+  controller:"manual", estimator:"comp", escFault:false,
+  // cinematic / fidelity controls
+  fidelity:"real",      // "real" = discrete loop, noisy sensors, mixer limits · "ideal" = textbook 1/(Js²)
+  terms:"pid",          // term isolation: p | pi | pd | pid
+  cine:true,            // narrated slow-motion playback on Run
+  cineSpeed:1,          // playback rate multiplier
+  annot:true            // 3-D thrust / torque / setpoint annotations
 };
 const state = {
   sel:{}, altitude:0, module:"m1", exp:{},
@@ -244,7 +286,22 @@ function cellIR(p, soc){
 }
 function motorRm(p, tempC){ return p.rm20 * (1 + ALPHA_CU*((tempC==null?20:tempC) - 20)); }
 
-/* BEMT-lite propeller aero coefficients — pitch/diameter + Reynolds + induced-flow corrected */
+/* BEMT-lite propeller aero coefficients — pitch/diameter + Reynolds + figure of merit.
+
+   Ct is a static thrust coefficient fitted to the catalogue's hand-authored
+   empirical propellers (5x4.3 tri -> 0.130, 10x4.5 bi -> 0.100).
+
+   Cq is NOT an independent fit. Hover shaft power must equal the induced power
+   divided by the rotor's figure of merit:
+
+       2*pi*Cq*rho*n^3*D^5  =  T^1.5 / (FoM * sqrt(2*rho*A)),   T = Ct*rho*n^2*D^4
+
+   which reduces to  Cq = Ct^1.5 * 0.12699 / FoM.  Deriving Cq this way keeps
+   thrust and torque thermodynamically consistent — the previous independent
+   `ct*(0.045*reFactor + 0.11*pd)` fit drifted about 30% high on torque while Ct
+   itself read ~20% low, so every build drew far more current than the same parts
+   would in reality. Bigger discs are more efficient; low Reynolds (small, slow
+   props) costs figure of merit. */
 function propAero(p, omega){
   const pd = Math.max(0.2, Math.min(1.2, p.pitchIn / Math.max(p.diaIn,1)));
   const R = p.D/2, chord = 0.1*p.D;
@@ -252,17 +309,15 @@ function propAero(p, omega){
   const rho = rhoNow();
   const Re = Math.max(rho * Vtip * chord / MU_AIR, 1000);
   const reFactor = Math.pow(150000/Re, 0.25);
-  const ctStatic = p.ctRaw!=null ? p.ctRaw : 0.115 * pd;
-  const cqBase = p.cqRaw!=null ? p.cqRaw : ctStatic * (0.045*reFactor + 0.11*pd);
-  const Ji = Math.sqrt(Math.max(2*ctStatic/Math.PI, 0));
-  const ctEff = ctStatic;                    // authored Ct is already an empirical hover measurement
-  const cqEff = cqBase * (1 + 1.5*Ji*Ji);     // induced-power penalty still raises torque/current/heat
-  return { ctEff, cqEff, rho };
+  const ctStatic = p.ctRaw!=null ? p.ctRaw : 0.067 + 0.073*pd;
+  const fom = Math.max(0.40, Math.min(0.78, 0.42 + 0.022*p.diaIn)) / Math.sqrt(Math.max(reFactor,1));
+  const cqEff = p.cqRaw!=null ? p.cqRaw : Math.pow(ctStatic,1.5)*0.12699/Math.max(fom,0.25);
+  return { ctEff: ctStatic, cqEff, rho };
 }
 /* solve steady-state motor+prop point via quadratic torque balance. returns null on stall. */
 function calcMotorPoint(duty, V, Rm, Resc){
   const p = propulsionParams();
-  if(duty <= 0 || V <= 0) return { rpm:0, omega:0, T:0, Q:0, I:p.i0*0, P:0, Pmech:0, stalled:false };
+  if(duty <= 0 || V <= 0) return { rpm:0, omega:0, T:0, Q:0, I:p.i0*0, Idc:0, P:0, Pmech:0, stalled:false };
   Rm = Rm==null ? motorRm(p,20) : Rm;
   const Reff = Rm + (Resc||0);
   const ke = 60/(2*Math.PI*p.kv), kt = ke;
@@ -278,13 +333,24 @@ function calcMotorPoint(duty, V, Rm, Resc){
     if(!isFinite(next) || next < 0){ stalled = true; omega = 0; break; }
     omega += (next - omega) * 0.6;
   }
-  if(stalled) return { rpm:0, omega:0, T:0, Q:0, I:0, P:0, Pmech:0, stalled:true };
+  if(stalled) return { rpm:0, omega:0, T:0, Q:0, I:0, Idc:0, P:0, Pmech:0, stalled:true };
   const n = omega/(2*Math.PI);
   const T = aero.ctEff * aero.rho * n*n * Math.pow(p.D,4);
   const Q = aero.cqEff * aero.rho * n*n * Math.pow(p.D,5);
   const I = Math.min(Q/kt + p.i0, p.imax*1.6);
   const Vterm = Math.max(V*duty - I*Reff, 0);
-  return { rpm: n*60, omega, T:Math.max(T,0), Q, I, P: Vterm*I + I*I*Reff, Pmech: Q*omega, stalled:false };
+  // Two different currents, and mixing them up is the classic drive-train error:
+  //   I    — PHASE current in the motor branch. Sets copper loss, motor heating
+  //          and the motor / ESC per-channel ratings.
+  //   Idc  — DC-LINK current the PACK actually supplies. The ESC is a switching
+  //          converter, so it steps V down to V·duty: power in = power out gives
+  //          V·Idc = (V·duty)·I, i.e. Idc = duty·I. The two coincide at full
+  //          throttle, but at a ~30 % hover the pack sees roughly a third of the
+  //          phase current — treating them as equal made hover draw ~3× too high
+  //          and cut every endurance figure to a third of the real value.
+  const Idc = duty * I;
+  return { rpm: n*60, omega, T:Math.max(T,0), Q, I, Idc,
+           P: Vterm*I + I*I*Reff, Pmech: Q*omega, stalled:false };
 }
 /* full quad at throttle d + state-of-charge soc (0..1), incl. pack sag under 4-motor draw */
 function solveQuad(d, soc){
@@ -293,11 +359,14 @@ function solveQuad(d, soc){
   const rIR = cellIR(p, s), Rpack = p.cells*rIR;
   let V = cellOCV(s)*p.cells, r = calcMotorPoint(d, V, motorRm(p,20), p.rdsOn);
   for(let k=0;k<6;k++){
-    V = Math.max(cellOCV(s)*p.cells - 4*r.I*Rpack, p.cells*2.8);
+    // the pack sags against what it actually delivers — the DC-link current
+    V = Math.max(cellOCV(s)*p.cells - 4*r.Idc*Rpack, p.cells*2.8);
     r = calcMotorPoint(d, V, motorRm(p,20), p.rdsOn);
   }
-  return { rpm:r.rpm, omega:r.omega, Tper:r.T, Ttot:4*r.T, Iper:r.I, Itot:4*r.I,
-           V, P:V*4*r.I, Pmech:4*r.Pmech, Q:r.Q, stalled:r.stalled };
+  return { rpm:r.rpm, omega:r.omega, Tper:r.T, Ttot:4*r.T,
+           Iper:r.I,          // phase current — motor / ESC channel ratings, heating
+           Itot:4*r.Idc,      // pack current  — C-rating, sag, coulomb count
+           V, P:4*r.P, Pmech:4*r.Pmech, Q:r.Q, stalled:r.stalled };
 }
 /* single motor on the bench (1 motor draws from the pack); tempC = winding temp for Rm */
 function solveBench(d, soc, tempC){
@@ -307,7 +376,7 @@ function solveBench(d, soc, tempC){
   const Rm = motorRm(p, tempC==null?20:tempC);
   let V = cellOCV(s)*p.cells, r = calcMotorPoint(d, V, Rm, p.rdsOn);
   for(let k=0;k<6;k++){
-    V = Math.max(cellOCV(s)*p.cells - r.I*Rpack, p.cells*2.8);
+    V = Math.max(cellOCV(s)*p.cells - r.Idc*Rpack, p.cells*2.8);
     r = calcMotorPoint(d, V, Rm, p.rdsOn);
   }
   return Object.assign(r, { V, Rm });
@@ -392,7 +461,7 @@ function diagnostics(){
       fix:"Pick an Airframe in Input Parameters." });
   }
   if(exp==="pid"){
-    const s = pidStepSim({});
+    const s = pidRun();
     if(s.diverged) items.push({ sev:"err", tag:"unstable",
       msg:"Loop is unstable — the response diverges at K_p="+state.fc.kp.toFixed(2)+", K_d="+state.fc.kd.toFixed(3)+"; the drone would flip.",
       fix:"Add derivative damping K_d or lower K_p / K_i." });
@@ -660,7 +729,20 @@ function seatModel(g, mode){
   else                g.position.y += (c.y - b.min.y) / s;
 }
 /* immediate placeholder group; swaps in the real oriented+fitted model on arrival */
-function modelFor(o, span, onReady){
+/* Orientation used for the small PREVIEW renders only (tiles, picker, reward
+   card). The assembled drone seats attachments with its own mount logic
+   (orientThinUp / orientCameraForward / seatModel "hang"), so this deliberately
+   does NOT touch the spec files — changing those would double-rotate the parts
+   on the rig. ORIENT has attachments:"none", which left a GPS board standing on
+   edge and a gimbal lying on its side in every preview. */
+function previewOrient(o){
+  if(!o || o.catKey !== "attachments") return undefined;
+  const mt = (o.phys && o.phys.mount_type) || "";
+  if(mt === "gps") return "flat";        // thin PCB face → horizontal
+  if(mt === "payload") return "axis";    // gimbal yoke → long axis vertical
+  return undefined;
+}
+function modelFor(o, span, onReady, orientRule){
   span = span || 1.6;
   const g = new THREE.Group();
   const fb = buildFallback((o && o.fallback) || {kind:"none",color:0xcccccc,s:1});
@@ -671,7 +753,7 @@ function modelFor(o, span, onReady){
       const parts = masters.map(m=>m.clone(true));
       parts.forEach(p=>merged.add(p));
       const oriented = o.catKey === "motor" && orientMotorCombo(merged, parts);
-      const fitted = fitUnit(merged, span, o, oriented ? "none" : undefined);
+      const fitted = fitUnit(merged, span, o, oriented ? "none" : orientRule);
       while(g.children.length) g.remove(g.children[0]);
       g.add(fitted);
       if(onReady) onReady(g);
@@ -745,23 +827,76 @@ function detectArmTips(root, fallbackR){
 /* ════════════ 7 · PREVIEW ENGINE ════════════ */
 let previewRenderer = null;
 const previews = new Map();
+/* Supersample factor for every preview render. The canvas backing store is sized
+   to its ON-SCREEN size x this, so on a retina panel the component is rendered at
+   the display's real pixel density instead of half of it. Capped at 3 so a 4K
+   display doesn't quietly cost 16x the fill rate. */
+const PREVIEW_DPR = Math.max(2, Math.min(window.devicePixelRatio || 1, 3));
+/* A tiny sky/ground gradient, prefiltered through PMREM. Without an environment
+   map three.js MeshStandardMaterial metals have nothing to reflect and read as
+   flat grey plastic — this is what makes the motor bell and prop hub look
+   machined rather than painted. */
+let ENV_TEX = null;
+function ensureEnv(rnd){
+  if(ENV_TEX || !rnd || !THREE.PMREMGenerator) return ENV_TEX;
+  try{
+    const c = document.createElement("canvas"); c.width = 64; c.height = 32;
+    const x = c.getContext("2d"), grd = x.createLinearGradient(0,0,0,32);
+    grd.addColorStop(0,"#eef2f6"); grd.addColorStop(.45,"#b9c2cc");
+    grd.addColorStop(.58,"#6e7681"); grd.addColorStop(1,"#2b3036");
+    x.fillStyle = grd; x.fillRect(0,0,64,32);
+    const tex = new THREE.CanvasTexture(c);
+    tex.mapping = THREE.EquirectangularReflectionMapping;
+    const pm = new THREE.PMREMGenerator(rnd); pm.compileEquirectangularShader();
+    ENV_TEX = pm.fromEquirectangular(tex).texture; tex.dispose();
+  }catch(e){ ENV_TEX = null; }
+  return ENV_TEX;
+}
 function initPreviewEngine(){
-  previewRenderer = new THREE.WebGLRenderer({antialias:true, alpha:true});
-  previewRenderer.setSize(220,150);
-  previewRenderer.setPixelRatio(1);
+  previewRenderer = new THREE.WebGLRenderer({ antialias:true, alpha:true,
+                                              powerPreference:"high-performance" });
+  previewRenderer.setPixelRatio(1);          // sizes below are already device pixels
+  if(THREE.sRGBEncoding !== undefined) previewRenderer.outputEncoding = THREE.sRGBEncoding;
+  if(THREE.ACESFilmicToneMapping !== undefined){
+    previewRenderer.toneMapping = THREE.ACESFilmicToneMapping;
+    previewRenderer.toneMappingExposure = 0.82;   // calibrated against the env map below
+  }
+  previewRenderer.setSize(320,220,false);
+}
+/* The environment map is a full-strength reflection by default, which blows the
+   pale plastics out. Dial it back per material and keep a floor on roughness so
+   nothing turns into a mirror. */
+function tunePreviewMaterials(root){
+  if(!root || !root.traverse) return;
+  root.traverse(function(m){
+    if(!m.isMesh || !m.material) return;
+    (Array.isArray(m.material) ? m.material : [m.material]).forEach(function(mat){
+      if(mat.envMapIntensity !== undefined) mat.envMapIntensity = 0.38;
+      if(mat.roughness !== undefined) mat.roughness = Math.max(mat.roughness, 0.32);
+      mat.needsUpdate = true;
+    });
+  });
 }
 function registerPreview(canvas, o){
   if(!canvas || !o || !previewRenderer) return;
   const scene = new THREE.Scene();
-  scene.add(new THREE.AmbientLight(0xffffff,.85));
-  const d = new THREE.DirectionalLight(0xffffff,.9); d.position.set(2,3,2); scene.add(d);
-  const d2 = new THREE.DirectionalLight(0xdce3f2,.35); d2.position.set(-2,-1,-2); scene.add(d2);
-  const group = modelFor(o); scene.add(group);
-  const camera = new THREE.PerspectiveCamera(34, 220/150, .1, 50);
+  scene.environment = ensureEnv(previewRenderer);   // reflections for metal parts
+  // Studio 3-point rig. Ambient is dialled back from .85 because the environment
+  // map now supplies the fill — leaving it high washed every material out flat.
+  scene.add(new THREE.AmbientLight(0xffffff,.20));
+  const d = new THREE.DirectionalLight(0xffffff,.62); d.position.set(2.4,3.2,2.2); scene.add(d);
+  const d2 = new THREE.DirectionalLight(0xdce3f2,.26); d2.position.set(-2.6,-.6,-1.8); scene.add(d2);
+  const d3 = new THREE.DirectionalLight(0xffffff,.18); d3.position.set(-1.4,2.0,-2.6); scene.add(d3);
+  const group = modelFor(o, undefined, function(g){ tunePreviewMaterials(g); }, previewOrient(o));
+  tunePreviewMaterials(group);
+  scene.add(group);
+  const aspect = (canvas.width && canvas.height) ? canvas.width/canvas.height : 220/150;
+  const camera = new THREE.PerspectiveCamera(34, aspect, .1, 50);
   camera.position.set(1.9,1.35,1.9); camera.lookAt(0,0,0);
   previews.set(canvas, {scene, camera, group});
 }
 let frameNo = 0;
+let previewW = 0, previewH = 0;
 function blitPreviews(){
   if(!previewRenderer) return;
   let i = 0;
@@ -769,10 +904,25 @@ function blitPreviews(){
     if(!cv.isConnected){ previews.delete(cv); continue; }
     if((i++ + frameNo) % 2 !== 0) continue;
     p.group.rotation.y += .022;
+    // Size the backing store to the canvas's ON-SCREEN box x PREVIEW_DPR. The
+    // markup ships a fixed width/height (280x190 for the reward card) while CSS
+    // stretches the element to fill its panel, so the old fixed buffer was both
+    // upscaled and rendered at half density on a retina display — that is what
+    // made the parts look jagged and soft.
+    const r = cv.getBoundingClientRect();
+    if(!r.width || !r.height) continue;
+    const w = Math.max(2, Math.round(r.width  * PREVIEW_DPR));
+    const h = Math.max(2, Math.round(r.height * PREVIEW_DPR));
+    if(cv.width !== w || cv.height !== h){ cv.width = w; cv.height = h; }
+    if(previewW !== w || previewH !== h){
+      previewW = w; previewH = h;
+      previewRenderer.setSize(w, h, false);
+    }
+    if(p.camera.aspect !== w/h){ p.camera.aspect = w/h; p.camera.updateProjectionMatrix(); }
     previewRenderer.render(p.scene, p.camera);
     const ctx = cv.getContext("2d");
-    ctx.clearRect(0,0,cv.width,cv.height);
-    ctx.drawImage(previewRenderer.domElement, 0,0, cv.width, cv.height);
+    ctx.clearRect(0,0,w,h);
+    ctx.drawImage(previewRenderer.domElement, 0,0, w, h);
   }
 }
 
@@ -911,6 +1061,7 @@ function resizeViewport(){
   camera.aspect = w/h; camera.updateProjectionMatrix();
 }
 function clearRig(){
+  if(typeof Annot !== "undefined") Annot.dispose();   // annotations are parented to the rig
   if(rig){ scene.remove(rig); rig = null; }
   if(benchGroup){ scene.remove(benchGroup); benchGroup = null; }
   propGroups = [];
@@ -1430,12 +1581,20 @@ function renderCalcChips(){
   const r = rollInertia();
   let chips = [{ k:"Roll inertia J", v:r.J.toFixed(4)+" kg·m²", cls:"" }];
   if(exp==="pid"){
-    const s = pidStepSim({});
+    const s = pidRun();
     chips.push({ k:"ω_n", v:s.met.wn.toFixed(1)+" rad/s", cls:"" });
     chips.push({ k:"Damping ζ", v:s.met.zeta.toFixed(3), cls:s.met.zeta>=0.4&&s.met.zeta<=0.9?"good":s.met.zeta<0.3?"warn":"" });
-    chips.push({ k:"Overshoot", v:s.osSim.toFixed(1)+" %", cls:s.osSim<=25?"good":"warn" });
-    chips.push({ k:"Settling t_s", v:s.tsSim.toFixed(2)+" s", cls:"" });
-    if(state.fc.dist) chips.push({ k:"Steady-state e_ss", v:s.essDeg.toFixed(2)+"°", cls:Math.abs(s.essDeg)<0.2?"good":"warn" });
+    // once the loop diverges the aircraft has flipped — overshoot / settling /
+    // droop are no longer meaningful numbers, so don't print noise as data
+    if(s.diverged){
+      chips.push({ k:"Overshoot", v:"loss of control", cls:"warn" });
+      chips.push({ k:"Settling t_s", v:"never", cls:"warn" });
+    }else{
+      chips.push({ k:"Overshoot", v:s.osSim.toFixed(1)+" %", cls:s.osSim<=25?"good":"warn" });
+      chips.push({ k:"Settling t_s", v:s.tsSim.toFixed(2)+" s", cls:"" });
+      if(state.fc.dist) chips.push({ k:"Steady-state e_ss", v:s.essDeg.toFixed(2)+"°", cls:Math.abs(s.essDeg)<0.2?"good":"warn" });
+    }
+    if(s.real && s.satPct > 0.5) chips.push({ k:"Mixer saturation", v:s.satPct.toFixed(1)+" %", cls:"warn" });
   } else if(exp==="zn"){
     const zn = znUltimate(), g = znGains(state.fc.znMethod, zn.Ku, zn.Pu);
     const rl = rateLoopStep(g.kp,g.ki,g.kd,{});
@@ -1473,7 +1632,7 @@ function renderLog(){
     const d = el("div","log-item "+it.sev);
     d.innerHTML = '<span class="ic">'+icon(it.sev)+'</span>'+
       '<div class="body"><span class="msg">'+txt(it.msg)+'</span>'+
-      (it.fix ? '<span class="fix">→ '+txt(it.fix)+'</span>' : '')+'</div>';
+      (it.fix ? '<span class="fix">Fix: '+txt(it.fix)+'</span>' : '')+'</div>';
     list.appendChild(d);
   });
   const badge = $("logBadge"), sum = $("logSummary");
@@ -1488,22 +1647,71 @@ function renderLog(){
   else { rb.classList.remove("blocked"); }
   return dg;
 }
+/* local mass formatter — exp-04 has no fmtMass() of its own */
+function rwMass(g){
+  if(typeof fmtMass === "function") return fmtMass(g);
+  return g >= 1000 ? (g/1000).toFixed(2)+" kg" : (g<10 && g>0 ? g.toFixed(1) : Math.round(g))+" g";
+}
+/* Draw a random component from the reward category and REMEMBER the draw, so the
+   card doesn't reshuffle on every re-render. Kept in localStorage under its own
+   key (not the experiment's state schema, which differs per experiment) so a
+   fresh play-through can award a different part. */
+let _rewardPick = null;
+function rewardPick(r){
+  if(!r || !r.pool || !r.pool.length) return null;
+  if(_rewardPick && r.pool.indexOf(_rewardPick) !== -1) return _rewardPick;
+  const KEY = "dtl-reward-" + (r.category || "x");
+  let id = null; try{ id = localStorage.getItem(KEY); }catch(e){}
+  let p = id ? r.pool.filter(function(o){ return o.id === id; })[0] : null;
+  if(!p){
+    p = r.pool[Math.floor(Math.random()*r.pool.length)];
+    try{ localStorage.setItem(KEY, p.id); }catch(e){}
+  }
+  _rewardPick = p;
+  return p;
+}
 function renderReward(){
-  const body = $("rewardBody");
+  const body = $("rewardBody"); if(!body) return;
+  const DB = (typeof DRONE_DB !== "undefined" && DRONE_DB) ? DRONE_DB
+           : (typeof ESC_DB   !== "undefined" && ESC_DB)   ? ESC_DB : null;
+  const r = (DB && DB.reward) || { pool: [] };
   const unlocked = allDone();
-  $("rewardBadge").textContent = (unlocked?1:0)+" / 1";
+  const badge = $("rewardBadge");
   body.innerHTML = "";
-  if(unlocked){
-    const r = DRONE_DB.reward;
-    const d = el("div","reward-open");
-    d.innerHTML = '<div class="view"><canvas width="280" height="190"></canvas></div>'+
-      '<div class="meta"><b>★ '+txt(r.name)+'</b><p>'+txt(r.desc)+'</p></div>';
+  // capstone: the experiment IS the showdown, so there is nothing to unlock
+  if(!r.category){
+    if(badge) badge.textContent = unlocked ? "PASS" : "—";
+    const d = el("div","reward-locked"+(unlocked?" reward-final":""));
+    d.innerHTML = '<div class="lock">'+(unlocked?"🏆":"🔒")+'</div><p>'+
+      (unlocked ? "Full system verified — the build flies."
+                : txt(r.desc || "Complete every check to clear the flight test."))+'</p>';
     body.appendChild(d);
-    registerPreview(d.querySelector("canvas"), r);
+    return;
+  }
+  if(badge) badge.textContent = (unlocked?1:0)+" / 1";
+  if(unlocked){
+    const pick = rewardPick(r);
+    const d = el("div","reward-open");
+    const specs = (pick && pick.specs && pick.specs.length)
+      ? pick.specs.slice(0,3).map(function(s){ return '<span><i>'+txt(s[0])+'</i>'+txt(s[1])+'</span>'; }).join("")
+      : "";
+    d.innerHTML =
+      '<div class="view"><canvas width="280" height="190"></canvas></div>'+
+      '<div class="meta"><span class="rw-kind">'+txt(r.name)+' unlocked</span>'+
+      '<b>'+txt(pick ? pick.name : r.name)+'</b>'+
+      (specs ? '<div class="rw-specs mono">'+specs+'</div>' : '')+
+      (pick && pick.mass ? '<div class="rw-specs mono"><span><i>Mass</i>'+rwMass(pick.mass)+
+        (pick.qty>1?" × "+pick.qty:"")+'</span></div>' : '')+
+      '</div>';
+    body.appendChild(d);
+    // pick is a REAL catalogue option, so it carries catKey → fitUnit applies the
+    // same orientation rule this component uses everywhere else in the lab.
+    registerPreview(d.querySelector("canvas"), pick || { fallback:r.fallback });
   }else{
     const total = allExperiments().length;
     const d = el("div","reward-locked");
-    d.innerHTML = '<div class="lock">🔒</div><p>Complete all '+total+' experiments<br>to unlock a reward component</p>';
+    d.innerHTML = '<div class="lock">🔒</div><p>Complete all '+total+' experiments<br>to unlock a '+
+      txt((r.name||"reward component").toLowerCase())+'</p>';
     body.appendChild(d);
   }
 }
@@ -1737,34 +1945,95 @@ function renderSankeyDOM(host){
     '</div><p class="chart-footnote">At '+Math.round(d*100)+'% throttle · motor efficiency '+(pMech/pElec*100).toFixed(0)+'%.</p>';
 }
 /* registry of every analysis chart — drives both the gallery and single-chart view */
-function chartDefs(){
+function plotDefsAll(){
   const exp = currentExp().exp.id;
   const znNote = ()=>{ const zn=znUltimate(); return "K_u = "+zn.Ku.toFixed(2)+" · P_u = "+(zn.Pu*1000).toFixed(1)+" ms · ω_u = "+zn.wu.toFixed(1)+" rad/s"; };
   const all = {
     pid: [
-      { id:"step",  title:"PID step response — overshoot, rise & settling", cfg:()=>cfgPidStep(false), note:()=>{ const s=pidStepSim({}); return "ω_n = "+s.met.wn.toFixed(2)+" · ζ = "+s.met.zeta.toFixed(3)+" · overshoot "+s.osSim.toFixed(1)+"% · t_s "+s.tsSim.toFixed(2)+" s"; } },
-      { id:"terms", title:"PID term contributions (P / I / D torque)", cfg:()=>cfgPidTerms(false) }
+      { id:"step",  title:"PID step response — overshoot, rise & settling", cfg:()=>cfgPidStep(false), note:()=>{ const s=pidRun(); return "ω_n = "+s.met.wn.toFixed(2)+" · ζ = "+s.met.zeta.toFixed(3)+" · overshoot "+s.osSim.toFixed(1)+"% · t_s "+s.tsSim.toFixed(2)+" s"; } },
+      { id:"terms", title:"PID term contributions (P / I / D torque)", cfg:()=>cfgPidTerms(false),
+        note:()=>"Each curve is one term's share of the demanded torque. P dies with the error, D lives only while the aircraft is moving, I is the only one that survives at rest." },
+      { id:"motors",title:"Motor mixing — the thrust difference that becomes torque", cfg:()=>cfgPidMotors(false),
+        empty:"Switch plant fidelity to Real drone to see per-motor thrust.",
+        note:()=>{ const s=pidRun(); return s.act ? "hover trim "+s.act.Th.toFixed(2)+" N · motor ceiling "+s.act.TmaxEach.toFixed(2)+" N · τ_max "+s.act.tauMax.toFixed(3)+" N·m · mixer clipped "+s.satPct.toFixed(1)+"% of the run" : ""; } },
+      { id:"family",title:"Gain sweep — the same step with one gain varied", cfg:()=>cfgPidFamily(false),
+        note:()=>"Sweeping "+({kp:"K_p",ki:"K_i",kd:"K_d"}[state.fc.lastGain||"kp"])+" (the gain you last moved) across its full slider range, everything else held. The bold curve is your current setting." },
+      { id:"poles", title:"s-plane pole map — where stability actually lives", cfg:()=>cfgPidPoles(false),
+        note:()=>"Closed-loop roots of J s³ + (K_d+b) s² + K_p s + K_i. Left of the red line is stable; the further from the real axis, the more it rings. Overshoot is set by the angle from the negative-real axis (ζ = cos θ)." },
+      { id:"vsreal",title:"Textbook plant vs the real machine, same gains", cfg:()=>cfgPidIdealReal(false),
+        note:()=>"Identical gains. The gap is discrete sampling at the IMU rate, sensor noise, motor spool-up lag and mixer saturation — every reason a tune that is perfect on paper still has to be flown." }
     ],
     zn: [
       { id:"sust",  title:"Sustained oscillation at the ultimate gain K_u", cfg:()=>cfgZNsustained(false), note:znNote },
       { id:"cmp",   title:"Closed-loop rate step — Classic vs Tyreus-Luyben", cfg:()=>cfgZNcompare(false) },
-      { id:"sweep", title:"Proportional sweep response", cfg:()=>cfgZNsweep(false) }
+      { id:"sweep", title:"Proportional sweep response", cfg:()=>cfgZNsweep(false) },
+      { id:"margin",title:"Stability margin — how close the tune sits to K_u", cfg:()=>cfgZNmargin(false),
+        note:()=>{ const zn=znUltimate(), g=znGains(state.fc.znMethod,zn.Ku,zn.Pu); return "Classic parks at K_p/K_u = 0.60, Tyreus-Luyben at 0.45; the current method sits at "+(g.kp/zn.Ku).toFixed(2)+". Everything to the right of 1.0 is an aircraft you cannot fly."; } }
     ],
     fusion: [
-      { id:"series", title:"Sensor fusion — gyro drift + accel noise → fused", cfg:()=>cfgFusionSeries(false), note:()=>{ const s=fusionSim(); return "gyro drift ≈ "+s.driftAt8.toFixed(1)+"° at 8 s · accel σ = "+s.sig.toFixed(1)+"°"; } },
-      { id:"trade",  title:"Drift vs noise trade-off — choosing α", cfg:()=>cfgFusionTradeoff(false), note:()=>{ const t=fusionTradeoff(); return "minimum total error at α = "+t.bestAlpha.toFixed(3)+" ("+t.bestTotal.toFixed(3)+"°)"; } }
+      { id:"series", title:"Sensor fusion · gyro drift + accel noise, fused", cfg:()=>cfgFusionSeries(false), note:()=>{ const s=fusionSim(); return "gyro drift ≈ "+s.driftAt8.toFixed(1)+"° at 8 s · accel σ = "+s.sig.toFixed(1)+"°"; } },
+      { id:"trade",  title:"Drift vs noise trade-off — choosing α", cfg:()=>cfgFusionTradeoff(false), note:()=>{ const t=fusionTradeoff(); return "minimum total error at α = "+t.bestAlpha.toFixed(3)+" ("+t.bestTotal.toFixed(3)+"°)"; } },
+      { id:"spec",   title:"Frequency view — the two paths sum to exactly one", cfg:()=>cfgFusionSpectrum(false),
+        note:()=>{ const m=alphaMetrics(state.fc.alpha); return "Crossover at 1/(2πτ_f) = "+(1/(2*Math.PI*Math.max(m.tf,1e-4))).toFixed(2)+" Hz. Above it the estimate is the gyro; below it gravity pulls the estimate back onto truth."; } },
+      { id:"acmp",   title:"Estimate error over time for four values of α", cfg:()=>cfgFusionAlphaCompare(false),
+        note:()=>"α = 0.999 is effectively pure gyro: watch its error walk away and never come back. Everything else is bounded — the question is only how noisy." }
     ],
     full: [
       { id:"resp",  title:"Closed loop on the estimate — true vs θ̂", cfg:()=>cfgFullResponse(false), note:()=>{ const r=fullSystemSim(state.fc.controller,state.fc.estimator,{escFault:state.fc.escFault}); return "score "+r.score+" · tracking RMS "+r.trackRMS.toFixed(2)+"° · estimator RMS "+r.estRMS.toFixed(2)+"°"; } },
+      { id:"err",   title:"Estimator error vs tracking error", cfg:()=>cfgFullError(false),
+        note:()=>"The controller drives the blue curve to zero by definition — it can only see θ̂. Whatever the red curve does is invisible to it, and lands on the airframe anyway." },
       { id:"board", title:"Leaderboard — 9 controller × estimator systems", cfg:()=>cfgFullLeaderboard(false) }
     ]
   };
   return all[exp] || all.pid;
 }
 /* single-chart floating detail — reached by clicking any chart's expand button */
-function openSingleChart(def){
+/* ── Graphs vs Charts split ───────────────────────────────────────────────────
+   A plot belongs on the Graphs card when it is drawn as a CURVE — a line chart,
+   or a scatter with showLine (the sweep / CDF style). Everything else — bars,
+   radars, doughnuts, clouds, histograms — stays in Charts. The kind is read off
+   the built config, so a new plot lands in the right panel without a flag. A def
+   with an `empty` fallback is a recorded-run plot: it is a line too, and the
+   Graphs modal shows it as the full-width live block instead of a tile. */
+function plotIsLine(def){
+  if(def.dom) return false;
+  if(def.empty) return true;
+  try{
+    const c = def.cfg();
+    if(!c) return true;
+    if(c.type === "line") return true;
+    return c.type === "scatter" && (c.data.datasets||[]).some(d=>d.showLine);
+  }catch(e){ return false; }
+}
+function graphDefs(){ return plotDefsAll().filter(plotIsLine); }
+function chartDefs(){
+  const out = plotDefsAll().filter(d=>!plotIsLine(d));
+  // Some experiments plot nothing but curves — say so instead of an empty panel.
+  return out.length ? out : [{ id:"nocharts", title:"No non-line charts in this experiment",
+    cfg:()=>null, empty:"Every plot here is a curve — they are all on the Graphs card." }];
+}
+/* gallery body shared by the Graphs modal: one block per def + expand button */
+function renderGraphBlocks(wrap, defs){
+  const pending = [];
+  defs.forEach(def=>{
+    const block = el("div","calc-block gchart");
+    const head = el("div","gchart-head");
+    head.innerHTML = '<h3>'+txt(def.title)+'</h3><button type="button" class="gchart-expand" title="Expand">⤢</button>';
+    head.querySelector("button").addEventListener("click", ()=>openSingleChart(def, "graphs"));
+    block.appendChild(head);
+    const cfg = def.cfg();
+    if(cfg){ const box = el("div","chart-box-lg");
+      box.innerHTML = '<canvas id="gc_'+def.id+'"></canvas>'; block.appendChild(box);
+      pending.push({ id:"gc_"+def.id, cfg }); }
+    else block.appendChild(el("div","runs-empty", txt(def.empty||"No data yet.")));
+    if(def.note) block.appendChild(el("p","chart-footnote", txt(def.note())));
+    wrap.appendChild(block);
+  });
+  return pending;
+}
+function openSingleChart(def, backTo){
   const body = openModal(txt(def.title)+' <em>· detail</em>', "#c65d3b",
-    '<button type="button" class="modal-back" id="chartBack">‹ all charts</button>');
+    '<button type="button" class="modal-back" id="chartBack">‹ all '+(backTo==="graphs"?"graphs":"charts")+'</button>');
   const wrap = el("div"); wrap.style.cssText = "height:62vh;min-height:340px;position:relative";
   if(def.dom){ wrap.style.height="auto"; def.dom(wrap); }
   else{ wrap.innerHTML = '<canvas id="gc_single"></canvas>'; }
@@ -1772,19 +2041,27 @@ function openSingleChart(def){
   if(def.cfg){ const c = def.cfg(); if(c) ChartHub.put("gc_single", c);
     else wrap.innerHTML = '<div class="runs-empty">'+txt(def.empty||"No data yet.")+'</div>'; }
   if(def.note) body.appendChild(el("p","chart-footnote", txt(def.note())));
-  const back = $("chartBack"); if(back) back.addEventListener("click", openChartsDetail);
+  const back = $("chartBack"); if(back) back.addEventListener("click", backTo==="graphs"?openGraphDetail:openChartsDetail);
 }
 /* live graph detail — reached by clicking the Graphs card. Flight-control charts
    are always computed live from the current parameters (no recorded-run buffer),
    so the detail view just re-renders fcPrimaryCfg at full size, same as the mini
    card on the Outputs panel. */
 function openGraphDetail(){
+  ChartHub.killPrefix("gc_");
   const { exp } = currentExp();
-  const body = openModal('Live Graph <em>· '+txt(exp.name)+'</em>', "#4f6d9e");
+  const body = openModal('Graphs <em>· live run + parameter sweeps</em>', "#4f6d9e");
+  const wrap = el("div","calc-blocks");
   const frac = simActive ? Math.min(sim.play/Math.max(sim.playDur,0.001),1) : null;
-  const wrap = el("div"); wrap.style.cssText = "height:62vh;min-height:340px;position:relative";
-  wrap.innerHTML = '<canvas id="gc_single"></canvas>'; body.appendChild(wrap);
-  ChartHub.put("gc_single", fcPrimaryCfg(false, frac));
+  const live = el("div","calc-block gchart");
+  live.innerHTML = '<div class="gchart-head"><h3>Live run · '+txt(exp.name)+'</h3></div>';
+  const box = el("div","chart-box-lg");
+  box.innerHTML = '<canvas id="gc_live"></canvas>'; live.appendChild(box);
+  wrap.appendChild(live);
+  const pending = renderGraphBlocks(wrap, graphDefs().filter(d=>!d.empty));
+  body.appendChild(wrap);
+  ChartHub.put("gc_live", fcPrimaryCfg(false, frac));
+  pending.forEach(p=>ChartHub.put(p.id, p.cfg));
 }
 
 /* ════════════ 10 · FLOATING WINDOWS ════════════ */
@@ -1873,7 +2150,7 @@ function openChartsDetail(){
   const tiles = el("div","metric-tiles");
   const mt = (k,v,cls)=>'<div class="metric-tile"><span class="mk">'+k+'</span><span class="mv '+(cls||"")+'">'+v+'</span></div>';
   let tilesHtml = mt("Roll inertia J", r.J.toFixed(4)) + mt("Arm L", Math.round(r.armMm)+" mm");
-  if(exp==="pid"){ const s=pidStepSim({});
+  if(exp==="pid"){ const s=pidRun();
     tilesHtml += mt("ω_n", s.met.wn.toFixed(1)) + mt("ζ", s.met.zeta.toFixed(3), s.met.zeta>=0.4?"good":"warn") +
       mt("Overshoot", s.osSim.toFixed(1)+"%", s.osSim<=25?"good":"warn") + mt("Settling", s.tsSim.toFixed(2)+" s");
   } else if(exp==="zn"){ const zn=znUltimate();
@@ -1944,7 +2221,7 @@ function openCalcDetail(){
   const blocks = [
     { t:"1 · Roll-axis inertia (from the build)", b:"lumped X-quad: J = m·L²/2, effective L = 0.75·arm\nm = "+r.m.toFixed(3)+" kg,  arm = "+Math.round(r.armMm)+" mm  → L = "+(r.L*1000).toFixed(0)+" mm", r:"J = "+r.J.toFixed(4)+" kg·m²" }
   ];
-  if(exp==="pid"){ const s = pidStepSim({});
+  if(exp==="pid"){ const s = pidRun();
     blocks.push({ t:"2 · Second-order prototype", b:"ω_n = √(K_p/J),  ζ = (K_d+b)/(2√(K_p·J))\nK_p = "+state.fc.kp.toFixed(2)+", K_d = "+state.fc.kd.toFixed(3), r:"ω_n = "+s.met.wn.toFixed(2)+" rad/s · ζ = "+s.met.zeta.toFixed(3) });
     blocks.push({ t:"3 · Step-response metrics", b:"M_p = 100·e^(−πζ/√(1−ζ²)),  t_s = 4/(ζω_n)\n(simulated on the real closed loop, so K_i reshapes them)", r:"overshoot "+s.osSim.toFixed(1)+"% · t_r "+s.met.tr.toFixed(3)+" s · t_s "+s.tsSim.toFixed(2)+" s" });
     blocks.push({ t:"4 · Steady-state error", b:state.fc.dist ? "τ_d = m·g·d = "+(r.m*G*CG_OFFSET_M).toFixed(4)+" N·m,  e_ss = τ_d/K_p (K_i=0)\nIntegral action drives e_ss → 0" : "enable the disturbance torque to expose the CG-offset droop", r:state.fc.dist ? "e_ss = "+s.essDeg.toFixed(2)+"°" : "—" });
@@ -1986,7 +2263,7 @@ function buildRun(){
   const exp = currentExp().exp.id;
   const cmd = state.fc.cmd;
   if(exp==="pid"){
-    const s = pidStepSim({});
+    const s = pidRun();
     const pass = !s.diverged && s.osSim <= 30;
     const verdict = s.diverged
       ? "Unstable loop — the drone flips; add K_d or lower K_p / K_i"
@@ -1994,8 +2271,9 @@ function buildRun(){
         ? "Excessive overshoot — "+s.osSim.toFixed(0)+"% past the comfort limit; raise K_d"
         : "Stable attitude hold — overshoot "+s.osSim.toFixed(1)+"%, settling "+s.tsSim.toFixed(2)+" s"
           + (state.fc.dist ? (Math.abs(s.essDeg)<0.2 ? ", zero steady-state error" : ", droop "+s.essDeg.toFixed(2)+"°") : "");
-    return { series:{ t:s.t, roll:s.th, est:null }, met:s.met, os:s.osSim, ts:s.tsSim,
+    return { series:{ t:s.t, roll:s.th, est:s.real?s.thm:null }, met:s.met, os:s.osSim, ts:s.tsSim,
              pass, verdict, unstable:s.diverged, playDur:Math.min(Math.max(s.T,2),4.5),
+             story:storyPID(s), pid:s,
              phaseLive:f=>s.diverged&&f>0.4?"UNSTABLE":"TRACKING", phaseCls:s.diverged?"danger":"good" };
   }
   if(exp==="zn"){
@@ -2011,6 +2289,7 @@ function buildRun(){
       : "Robust tune — overshoot "+rl.os.toFixed(0)+"% under the 25% limit, zero steady-state error";
     return { series:{ t:rl.t, roll, est:null }, met:null, os:rl.os, ts:rl.ts,
              pass, verdict, unstable:rl.diverged, playDur:3,
+             story:storyZN(rl, g, zn, latched),
              phaseLive:f=>rl.diverged&&f>0.4?"DIVERGING":"RATE STEP", phaseCls:rl.diverged?"danger":pass?"good":"warn" };
   }
   if(exp==="fusion"){
@@ -2023,6 +2302,7 @@ function buildRun(){
              : "Sub-optimal blend — total "+mm.total.toFixed(3)+"°; nudge α toward "+tr.bestAlpha.toFixed(3);
     return { series:{ t:s.t, roll:s.tru, est:s.fused }, met:null, os:null, ts:null,
              pass, verdict, unstable:false, playDur:4.5, gyroDrift:pureGyro?s.gyroOnly:null,
+             story:storyFusion(s, tr, mm),
              phaseLive:f=>"FUSING", phaseCls:pass?"good":"warn" };
   }
   // full
@@ -2036,6 +2316,7 @@ function buildRun(){
            : "Weak system — score "+r2.score+"; try the complementary estimator";
   return { series:{ t:r2.t, roll:r2.tru, est:r2.est }, met:null, os:r2.os, ts:r2.ts,
            pass, verdict, unstable:false, playDur:4,
+           story:storyFull(r2, board, isLeader),
            phaseLive:f=>"CLOSED LOOP", phaseCls:pass?"good":"warn" };
 }
 function runSim(){
@@ -2053,6 +2334,10 @@ function runSim(){
   sim.run = R; sim.play = 0; sim.playDur = R.playDur; sim.roll = 0; sim.est = null;
   sim.verdict = null; sim.verdictOk = false; sim.pass = false; sim.unstable = false;
   syncRunControls();
+  // cinematic playback: the storyboard re-times the run and takes over the camera
+  if(state.fc.cine && R.story && R.story.length) Cine.start(R.story);
+  else Cine.stop();
+  if(state.fc.annot) Annot.build();
   audioStart();
   $("runBtn").textContent = "■ Stop";
   $("runBtn").classList.add("running");
@@ -2064,6 +2349,7 @@ function stopSim(completed){
   $("runBtn").textContent = "▶ Run";
   $("runBtn").classList.remove("running");
   $("telDot").classList.remove("on");
+  Cine.stop(); Annot.hide();
   audioStop();
   const badge = $("ffBadge"); if(badge) badge.hidden = true;
   if(completed && sim.run && sim.pass){
@@ -2082,7 +2368,9 @@ function stopSim(completed){
 }
 function resetSim(){
   if(simActive) stopSim(false);
-  sim.run = null; sim.roll = 0; sim.est = null; sim.unstable = false;
+  sim.run = null; sim.roll = 0; sim.est = null; sim.unstable = false; sim.act = null;
+  Cine.stop(); Annot.dispose();
+  if(controls){ controls.enabled = true; camera.position.set(4.2,3.0,4.6); syncCamera(); }
   updateTelemetry({}); drawLiveGraph(); syncRunControls();
 }
 /* Flight control has no throttle/flight-mode controls — hide the platform's
@@ -2101,8 +2389,13 @@ function showVerdictToast(text, ok){
 }
 function simStep(dt){
   const R = sim.run; if(!R){ stopSim(false); return; }
-  sim.play += dt;
-  const frac = Math.min(sim.play/Math.max(sim.playDur,0.001), 1);
+  // In cinematic mode the DIRECTOR owns the clock: it maps wall time onto
+  // simulation time chapter by chapter (slow motion where it matters), and the
+  // rest of the pipeline keeps working off the same normalised fraction.
+  const cine = Cine.active();
+  let frac;
+  if(cine){ frac = Cine.tick(dt); sim.play = frac*sim.playDur; }
+  else { sim.play += dt; frac = Math.min(sim.play/Math.max(sim.playDur,0.001), 1); }
   const S = R.series, n = S.t.length;
   const idx = frac*(n-1), i0 = Math.floor(idx), i1 = Math.min(i0+1, n-1), fr = idx-i0;
   const lerp = a => a[i0] + (a[i1]-a[i0])*fr;
@@ -2116,7 +2409,19 @@ function simStep(dt){
     wn:R.met?R.met.wn:null, zeta:R.met?R.met.zeta:null, os:R.os, ts:R.ts,
     phase:R.phaseLive(frac)+" · "+Math.round(frac*100)+"%", phaseCls:R.phaseCls });
   if(sim.unstable && Math.random()<0.15){ FX.burstKind("motor",2); }
-  if(frac >= 1){
+  // feed the in-scene annotation layer with this instant's real actuator state
+  if(R.pid && R.pid.real && R.pid.M0.length){
+    const P = R.pid;
+    const Tl = P.M0[i0] + (P.M0[i1]-P.M0[i0])*fr, Tr = P.M1[i0] + (P.M1[i1]-P.M1[i0])*fr;
+    const tau = P.TAU[i0] + (P.TAU[i1]-P.TAU[i0])*fr;
+    sim.act = { T:[Tl,Tl,Tr,Tr], Th:P.act.Th, Tceil:P.act.TmaxEach,
+      Tspan:(P.act.Th + P.act.dMax)*1.06, tau, tauMax:P.act.tauMax,
+      sat: Tl >= P.act.TmaxEach*0.999 || Tr <= 1e-3,
+      roll, cmd:state.fc.cmd, dist:state.fc.dist };
+  } else {
+    sim.act = { T:null, tau:null, roll, cmd:state.fc.cmd, dist:false };
+  }
+  if(frac >= 1 && (!cine || Cine.finished())){
     sim.roll = S.roll[n-1]; sim.est = S.est ? S.est[n-1] : null;
     sim.verdict = R.verdict; sim.verdictOk = R.pass; sim.pass = R.pass;
     stopSim(true);
@@ -2211,7 +2516,7 @@ let currentVoice = null, lastVoiceUrl = null;
 function stopVoice(){
   if(currentVoice){ try{ currentVoice.pause(); currentVoice.currentTime = 0; }catch(e){} currentVoice = null; }
 }
-function playVoiceFile(url){
+function playVoiceFile(url, onBlocked){
   if(!url) return;
   lastVoiceUrl = url;                 // remembered even when muted, for Replay
   if(state.voiceVol<=0) return;
@@ -2221,10 +2526,70 @@ function playVoiceFile(url){
     a.volume = Math.min(state.voiceVol/100,1);
     currentVoice = a;
     a.addEventListener("ended", ()=>{ if(currentVoice===a) currentVoice = null; });
-    a.play().catch(()=>{});
-  }catch(e){}
+    a.play().then(()=>{ if(onBlocked) onBlocked(null); })
+            .catch(err=>{ if(onBlocked) onBlocked(err||new Error("blocked")); });
+  }catch(e){ if(onBlocked) onBlocked(e); }
 }
-function playIntroVoice(key){ if(INTRO_FILES[key]) playVoiceFile(INTRO_FILES[key]); }
+function playIntroVoice(key, onBlocked){
+  if(INTRO_FILES[key]) playVoiceFile(INTRO_FILES[key], onBlocked);
+  else if(onBlocked) onBlocked(null);
+}
+/* ── on-load narration ───────────────────────────────────────────────────────
+   Every load speaks the active tab's introduction. Autoplay is blocked by
+   default in Chrome/Safari/Firefox until the document has been interacted
+   with, and a blocked play() rejects silently — which is why this used to look
+   like "the narration never plays". So: attempt it, and if the browser refuses,
+   put a real button on screen and also arm the first gesture. */
+let _narrArmed = false;
+function narrationPrompt(show){
+  let el0 = $("narrPrompt");
+  if(!show){ if(el0) el0.remove(); return; }
+  if(el0) return;
+  el0 = el("button","narr-prompt");
+  el0.type = "button";
+  el0.id = "narrPrompt";
+  el0.innerHTML = '<span class="narr-ic">🔊</span><span>Play lab narration</span>';
+  el0.addEventListener("click", e=>{
+    e.stopPropagation();
+    narrationPrompt(false);
+    try{ ac(); }catch(err){}
+    playIntroVoice(currentIntroKey());
+  });
+  document.body.appendChild(el0);
+}
+window.__narration = { state:"idle" };           // small diagnostic, handy from the console
+function startIntroNarration(){
+  if(state.voiceVol <= 0){ __narration.state = "muted"; return; }
+  // Speaking into a tab nobody is looking at just burns the clip: if the lab was
+  // opened in a background tab, wait until it is actually on screen.
+  if(document.hidden){
+    __narration.state = "deferred (tab hidden)";
+    document.addEventListener("visibilitychange", function once(){
+      if(document.hidden) return;
+      document.removeEventListener("visibilitychange", once);
+      startIntroNarration();
+    });
+    return;
+  }
+  __narration.state = "playing…";
+  playIntroVoice(currentIntroKey(), err=>{
+    if(!err){ __narration.state = "playing"; narrationPrompt(false); return; }
+    __narration.state = "blocked by autoplay policy — waiting for a gesture";
+    narrationPrompt(true);                      // blocked → offer a real button
+    if(_narrArmed) return;
+    _narrArmed = true;
+    const go = ()=>{
+      try{ if(actx && actx.state === "suspended") actx.resume(); }catch(e){}
+      if(state.voiceVol > 0 && (!currentVoice || currentVoice.paused)){
+        narrationPrompt(false);
+        __narration.state = "playing (after gesture)";
+        playIntroVoice(currentIntroKey());
+      }
+    };
+    window.addEventListener("pointerdown", go, { once:true });
+    window.addEventListener("keydown", go, { once:true });
+  });
+}
 function currentIntroKey(){ return state.module + ":" + state.exp[state.module]; }
 function playFaultVoice(text, ok){
   const t = (text||"").toLowerCase();
@@ -2335,6 +2700,15 @@ $("modalOverlay").addEventListener("click", e=>{ if(e.target === $("modalOverlay
 document.addEventListener("keydown", e=>{ if(e.key==="Escape" && !$("modalOverlay").hidden) closeModal(); });
 
 let lastT = 0, graphEvery = 0;
+/* ── propeller spin ─────────────────────────────────────────────────────────
+   True shaft speed is ω = rpm/60·2π rad/s. Drawing that literally only strobes
+   (a 2-blade prop at 9 000 rpm passes a blade every 3 ms — far under a frame),
+   so the view runs at a fixed fraction of real ω: PROP_VIS. Every rpm RATIO
+   stays exact — double the rpm, double the on-screen rate — and the result is
+   integrated against dt, so it no longer runs faster on a 120 Hz display than
+   on a 60 Hz one the way the old per-frame constant did. */
+const PROP_VIS = 1/12;
+function propSpinRate(rpm){ return Math.max(0, (rpm||0)/60*2*Math.PI*PROP_VIS); }
 function loop(t){
   requestAnimationFrame(loop);
   frameNo++;
@@ -2361,10 +2735,10 @@ function loop(t){
     else { rig.rotation.z += (targetRoll - rig.rotation.z) * 0.28; }
     rig.rotation.x = 0;
     // props are stationary when the drone is landed / powered down
-    const spin = simActive ? Math.min((sim.lastRpm||0)/3200, 3.4) + .15 : 0;
+    const spin = simActive ? propSpinRate(sim.lastRpm) : 0;
     propGroups.forEach((p,i)=>{
       const dir = p.userData.spinDir != null ? p.userData.spinDir : (i%2?1:-1);
-      p.rotation.y += spin*dir;
+      p.rotation.y += spin*dir*dt;
     });
     // ── ghost drone showing the ESTIMATE θ̂ (Sensor Fusion / Full System) ──
     const expId = currentExp().exp.id;
@@ -2380,8 +2754,9 @@ function loop(t){
     } else removeGhost();
   }
   if(simActive){
-    simStep(dt);
+    simStep(dt);                       // may end the run and clear simActive
     audioUpdate();
+    Annot.update(simActive ? sim.act : null);
     if(++graphEvery % 3 === 0) drawLiveGraph();
   }
   // fault reaction: an unstable / tumbling loop vents smoke from the motors
@@ -2442,6 +2817,22 @@ async function boot(){
   $("chartCard").addEventListener("click", openChartsDetail);
   $("runBtn").addEventListener("click", runSim);
   $("resetBtn").addEventListener("click", resetSim);
+  // ── cinematic transport ──
+  $("cinePlay").addEventListener("click", ()=>{ Cine.togglePause(); sfx("tick"); });
+  $("cinePrev").addEventListener("click", ()=>{ Cine.jump(-1); sfx("tick"); });
+  $("cineNext").addEventListener("click", ()=>{ Cine.jump(1); sfx("tick"); });
+  $("cineSkip").addEventListener("click", ()=>{ Cine.skipToEnd(); });
+  $("cineTrack").addEventListener("click", e=>{
+    const r = e.currentTarget.getBoundingClientRect();
+    Cine.seek((e.clientX - r.left)/Math.max(r.width,1) * Cine.dur);
+  });
+  $("cineSpeed").querySelectorAll("button").forEach(b=>b.addEventListener("click", e=>{
+    e.stopPropagation();
+    state.fc.cineSpeed = +b.dataset.sp; saveState();
+    $("cineSpeed").querySelectorAll("button").forEach(x=>x.classList.toggle("on", x===b));
+  }));
+  // grabbing the viewport during a cinematic run hands the camera back to the user
+  $("viewport").addEventListener("pointerdown", ()=>{ if(Cine.active()) Cine.releaseCamera(); });
   $("instrOrb").addEventListener("click", ()=>{
     state.instrOpen = !state.instrOpen; saveState(); renderInstr();
     if(state.instrOpen) playVoice();
@@ -2464,19 +2855,12 @@ async function boot(){
   // Chart.js auto-resizes active charts; the empty-state raw canvas needs a redraw
   let _rzT = 0;
   window.addEventListener("resize", ()=>{ clearTimeout(_rzT); _rzT = setTimeout(()=>{ if(!ChartHub.reg["liveGraph"]) drawLiveGraph(); }, 120); });
-  // Greet on load, best-effort. Most browsers block autoplay until the user
-  // interacts, so if this attempt is blocked (the <audio> stays paused) we
-  // re-speak the intro on the first gesture — otherwise the on-load greeting
-  // already played and we don't repeat it.
-  if(state.instrOpen) playIntroVoice(currentIntroKey());
-  let audioPrimed = false;
-  const primeAudio = ()=>{
-    if(audioPrimed) return; audioPrimed = true;
-    try{ if(actx && actx.state === "suspended") actx.resume(); }catch(e){}
-    if(state.instrOpen && (!currentVoice || currentVoice.paused)) playIntroVoice(currentIntroKey());
-  };
-  window.addEventListener("pointerdown", primeAudio, { once:true });
-  window.addEventListener("keydown", primeAudio, { once:true });
+  // The active tab's narration speaks on load, every load, on every tab —
+  // gated only on the SPEAKER level, not on whether the instructor panel
+  // happens to be open. Browsers block autoplay until the page has been
+  // interacted with, so a blocked attempt raises a visible prompt instead of
+  // failing silently, and any first gesture starts it.
+  startIntroNarration();
   bootProgress("ready", 1);
   hideBoot();
   requestAnimationFrame(loop);
@@ -2546,59 +2930,176 @@ function pidMetrics(J, kp, kd, b){
   return { wn, zeta, Mp, tp, tr, ts };
 }
 
-/* ── Tab 1: PID angle-loop step response on the real 1/(J s²) plant ──────────
-   Full closed-loop integration (derivative-on-measurement, anti-windup) so Ki
-   and the disturbance torque visibly reshape the curve. Returns time series in
-   DEGREES plus the live P/I/D torque split, and detects divergence (fault).  */
+/* ── Roll actuator envelope, derived from the REAL propulsion build ──────────
+   An X-quad rolls by driving one lateral PAIR of motors up and the other down
+   about the hover thrust T_h. Each motor sits a perpendicular distance
+   a = L_geo/√2 from the roll axis, so
+
+       τ_roll = (T_left_pair − T_right_pair)·a = 4·δ·a          (δ = per-motor trim)
+
+   and the authority is bounded by how much headroom a motor has either side of
+   hover: δ_max = min(T_h, T_max_each − T_h). That is why an under-powered or a
+   nose-heavy build simply cannot hold an aggressive gain — the mixer clips
+   before the controller gets what it asked for.                               */
+function rollActuator(){
+  const c = calcCached();
+  const r = rollInertia();
+  const armGeo = Math.max(r.armMm, 20)/1000;             // TRUE geometric arm (m)
+  const a = armGeo/Math.SQRT2;                           // perpendicular arm of one motor
+  const TmaxEach = Math.max(c.Tmax, 1e-3)/4;             // N per motor, wide-open
+  const Th = Math.min(r.m*G/4, TmaxEach*0.98);           // hover thrust per motor
+  const dMax = Math.max(Math.min(Th, TmaxEach - Th), 1e-4);
+  return { a, armGeo, TmaxEach, Th, dMax, tauMax: 4*dMax*a, J:r.J, m:r.m };
+}
+/* per-motor thrust for a demanded roll torque, with real clipping at 0 / T_max.
+   Returns the ACHIEVED torque, so saturation shows up in the response.        */
+function rollMix(tauCmd, act){
+  const d = tauCmd/(4*act.a);                            // per-motor trim (N)
+  // motor order: 0 front-left, 1 rear-left (roll +), 2 front-right, 3 rear-right
+  let l = act.Th + d, rr = act.Th - d;
+  l  = Math.max(0, Math.min(act.TmaxEach, l));
+  rr = Math.max(0, Math.min(act.TmaxEach, rr));
+  return { T:[l,l,rr,rr], tau:(l - rr)*2*act.a, sat:(l!==act.Th+d || rr!==act.Th-d) };
+}
+
+/* ── Tab 1: PID angle-loop step response ─────────────────────────────────────
+   Two fidelities, switchable from the panel:
+
+   "ideal" — the textbook prototype: a perfect 1/(J s²) rigid body, a continuous
+             controller and a torque source with no lag and no limit. The
+             analytic ω_n / ζ / M_p formulas hold exactly here.
+
+   "real"  — the same gains flying an actual multirotor: the loop runs at the
+             IMU's discrete rate with zero-order hold, the controller sees a
+             complementary-filtered NOISY attitude (not the truth), the mixer
+             clips at the motors' thrust envelope, and every motor spools with a
+             first-order lag τ_a. The gap between the two curves is the whole
+             point of the tab.
+   Returns time series in DEGREES plus the P/I/D torque split, the per-motor
+   thrusts, and divergence detection.                                          */
 function pidStepSim(o){
   o = o || {};
+  const real = ((o.fidelity != null ? o.fidelity : state.fc.fidelity) === "real");
   const { J, m } = rollInertia();
+  const terms = o.terms || state.fc.terms || "pid";
+  const useI = terms === "pid" || terms === "pi";
+  const useD = terms === "pid" || terms === "pd";
   const kp = o.kp != null ? o.kp : state.fc.kp;
-  const ki = o.ki != null ? o.ki : state.fc.ki;
-  const kd = o.kd != null ? o.kd : state.fc.kd;
-  const b  = o.b  != null ? o.b  : 0;
+  const ki = (o.ki != null ? o.ki : state.fc.ki) * (useI ? 1 : 0);
+  const kd = (o.kd != null ? o.kd : state.fc.kd) * (useD ? 1 : 0);
+  // Aerodynamic damping is physics, not fidelity: it applies to BOTH plants, and
+  // it enters ζ in exactly the same place K_d does. "Ideal" removes discrete
+  // sampling, sensor noise, actuator lag and mixer limits — not the air.
+  const b  = o.b  != null ? o.b  : dragCoeff();
   const cmd = (o.cmdDeg != null ? o.cmdDeg : state.fc.cmd) * RAD;
-  const tauD = o.dist ? m*G*CG_OFFSET_M : 0;
+  const dist = o.dist != null ? o.dist : state.fc.dist;
+  const tauD = dist ? m*G*CG_OFFSET_M : 0;
   const met = pidMetrics(J, kp, kd, b);
   const T = Math.min(Math.max(1.2, 5*met.ts), 6);
   const dt = 0.0004;
   const N = Math.floor(T/dt);
   const stride = Math.max(1, Math.floor(N/420));
-  const t=[], th=[], Pc=[], Ic=[], Dc=[];
-  let x=0, xd=0, integ=0, peak=0, diverged=false;
+  const t=[], th=[], thm=[], Pc=[], Ic=[], Dc=[], TAU=[], M0=[], M1=[];
+  let x=0, xd=0, integ=0, peak=0, diverged=false, satN=0;
+
+  const act = real ? rollActuator() : null;
+  const im  = real ? imu() : null;
+  const hz  = real ? im.hz : 0;
+  const ctrlDt = real ? 1/hz : dt;                 // controller runs at the IMU rate
+  const alpha = state.fc.alpha;
+  const tauA = TAU_A;                              // motor/ESC spool-up lag (s)
+  const tauDf = 0.008;                             // derivative low-pass
+  const rng = real ? mulberry32(0x0FC1 ^ (state.fc.imu.length*2654435761 >>> 0)) : null;
   const iClamp = 3*Math.abs(cmd || 1) + 5;
+  let est = 0, gInt = 0, dFilt = 0, nextCtrl = 0;
+  let P = 0, I = 0, D = 0, tauCmd = 0;
+  let Tm = act ? [act.Th, act.Th, act.Th, act.Th] : [0,0,0,0];
+  let tauAct = 0;
+
   for(let k=0;k<=N;k++){
-    const e = cmd - x;
-    integ += e*dt; if(integ>iClamp) integ=iClamp; else if(integ<-iClamp) integ=-iClamp;
-    const P = kp*e, I = ki*integ, D = -kd*xd;
-    const tau = P + I + D;
-    const xdd = (tau - b*xd - tauD)/J;
+    const tt = k*dt;
+    if(!real){
+      const e = cmd - x;
+      integ += e*dt; if(integ>iClamp) integ=iClamp; else if(integ<-iClamp) integ=-iClamp;
+      P = kp*e; I = ki*integ; D = -kd*xd;
+      tauAct = P + I + D;
+    }else{
+      // ── discrete controller tick (zero-order hold between ticks) ──
+      if(tt >= nextCtrl){
+        nextCtrl += ctrlDt;
+        const gMeas = xd + im.bias*RAD + gaussPRNG(rng)*0.004;         // gyro rate
+        const aMeas = x + gaussPRNG(rng)*im.sigma*RAD;                 // accel angle
+        est = alpha*(est + gMeas*ctrlDt) + (1-alpha)*aMeas;            // what the FC believes
+        gInt += gMeas*ctrlDt;
+        const e = cmd - est;
+        // conditional-integration anti-windup: stop winding while the mixer clips
+        const clipped = Math.abs(tauCmd) > act.tauMax*0.999;
+        if(!(clipped && e*tauCmd > 0)){
+          integ += e*ctrlDt; if(integ>iClamp) integ=iClamp; else if(integ<-iClamp) integ=-iClamp;
+        }
+        dFilt += (gMeas - dFilt)*ctrlDt/Math.max(tauDf, ctrlDt);
+        P = kp*e; I = ki*integ; D = -kd*dFilt;
+        tauCmd = P + I + D;
+      }
+      // ── mixer + motor spool-up ──
+      const mix = rollMix(tauCmd, act);
+      if(mix.sat) satN++;
+      for(let j=0;j<4;j++) Tm[j] += (mix.T[j] - Tm[j])*dt/tauA;
+      tauAct = (Tm[0] - Tm[2])*2*act.a;
+    }
+    const xdd = (tauAct - b*xd - tauD)/J;
     xd += xdd*dt; x += xd*dt;
-    if(Math.abs(x) > 40*Math.abs(cmd||1)+50){ diverged=true; }
+    // A multirotor past ~120° of roll has flipped — it is not "a large overshoot",
+    // it is a crash. Anything beyond 3× the command counts as loss of control too.
+    if(Math.abs(x) > Math.max(3*Math.abs(cmd), 2.094)){ diverged=true; }
     peak = Math.max(peak, x);
     if(k % stride === 0 || k===N){
-      t.push(+(k*dt).toFixed(4)); th.push(x*DEG);
-      Pc.push(P); Ic.push(I); Dc.push(D);
+      t.push(+tt.toFixed(4)); th.push(x*DEG); thm.push((real?est:x)*DEG);
+      Pc.push(P); Ic.push(I); Dc.push(D); TAU.push(tauAct);
+      M0.push(Tm[0]); M1.push(Tm[2]);
     }
     if(diverged) break;
   }
-  // simulated metrics (honest — reflect Ki & disturbance)
+  // simulated metrics (honest — reflect Ki, saturation, lag & disturbance)
   const cmdDeg = cmd*DEG;
   const osSim = cmdDeg ? Math.max(0,(peak*DEG - cmdDeg)/cmdDeg*100) : 0;
   let ess = th.length ? (cmdDeg - th[th.length-1]) : 0;   // deg (droop)
   // settling: last index outside ±2% band
   let tsSim = 0; const band = 0.02*Math.abs(cmdDeg);
   for(let i=0;i<th.length;i++){ if(Math.abs(th[i]-cmdDeg) > band) tsSim = t[i]; }
-  return { t, th, Pc, Ic, Dc, cmdDeg, met, osSim, tsSim, essDeg:ess, diverged, J, T };
+  return { t, th, thm, Pc, Ic, Dc, TAU, M0, M1, cmdDeg, met, osSim, tsSim, essDeg:ess,
+           diverged, J, T, real, act, satPct: N ? satN/N*100 : 0,
+           tauMax: act ? act.tauMax : Infinity, peakDeg: peak*DEG };
+}
+/* memoised wrapper — pidStepSim is called by the chips, notes, diagnostics and
+   two charts on every slider tick; the integration is ~15 k steps. */
+let _pidCache = { key:null, val:null };
+function pidRun(){
+  const f = state.fc, r = rollInertia();
+  const key = [f.kp,f.ki,f.kd,f.cmd,f.dist,f.fidelity,f.terms,f.imu,f.alpha,f.air,
+               r.J.toFixed(6), state.altitude].join("|");
+  if(_pidCache.key !== key) _pidCache = { key, val: pidStepSim({}) };
+  return _pidCache.val;
 }
 
-/* ── Tab 2: Ziegler–Nichols on the inner rate loop ──────────────────────────*/
-function znUltimate(){
-  const tm=TAU_M, ta=TAU_A, ts=TAU_S;
+/* ── Tab 2: Ziegler–Nichols on the inner rate loop ──────────────────────────
+   Aerodynamic damping enters the MECHANICAL stage, not the controller output:
+   the body-rate equation is J·ω̇ = τ − b·ω, so extra drag both speeds the
+   mechanical pole up and lowers the stage's DC gain by the same factor.
+
+       τ_m,eff = τ_m/(1+d)      K_plant = 1/(1+d)      d = 0.9·(air%/100)
+
+   Both effects push the ultimate gain UP, which is why a big draggy airframe at
+   sea level tolerates a hotter tune than the same airframe at altitude. */
+function dragNorm(air){ return 0.9*((air==null?state.fc.air:air)/100); }
+function znUltimate(air){
+  const d = dragNorm(air);
+  const tm = TAU_M/(1+d), ta = TAU_A, ts = TAU_S;
   const wu = Math.sqrt((tm+ta+ts)/(tm*ta*ts));
   const Pu = 2*Math.PI/wu;
-  const Ku = ((tm*ta + tm*ts + ta*ts)*(tm+ta+ts)/(tm*ta*ts) - 1);   // K (DC gain)=1
-  return { wu, Pu, Ku };
+  // loop gain at ω_u is K·K_plant/… = 1 → K_u carries the 1/(1+d) DC gain back
+  const Ku = (1+d)*((tm*ta + tm*ts + ta*ts)*(tm+ta+ts)/(tm*ta*ts) - 1);
+  return { wu, Pu, Ku, d };
 }
 function znGains(method, Ku, Pu){
   if(method === "tyreus"){
@@ -2613,7 +3114,7 @@ function rateLoopStep(kp, ki, kd, o){
   o = o || {};
   const air = o.air != null ? o.air : state.fc.air;
   const windA = (o.wind != null ? o.wind : state.fc.wind)/100 * 0.9;
-  const bDrag = 0.0667*(air/100);                 // rate-loop drag (normalised plant)
+  const d = dragNorm(air);                        // aerodynamic damping, normalised
   const T = o.T || 0.5, dt = 0.00005;
   const N = Math.floor(T/dt), stride = Math.max(1, Math.floor(N/500));
   const t=[], y=[]; let a=0,b=0,yy=0, integ=0, yprev=0, peak=0, diverged=false;
@@ -2627,8 +3128,8 @@ function rateLoopStep(kp, ki, kd, o){
     dfilt += (ydot - dfilt)*dt/tdf;
     let u = kp*e + ki*integ - kd*dfilt;
     const wind = windA * (0.6 + 0.4*Math.sin(2*Math.PI*0.8*tt));
-    u = u - bDrag*yy + wind;
-    a  += (u - a)/TAU_M*dt;
+    u = u + wind;
+    a  += (u - (1+d)*a)/TAU_M*dt;                 // J·ω̇ = τ − b·ω  (drag on the body)
     b  += (a - b)/TAU_A*dt;
     yy += (b - yy)/TAU_S*dt;
     peak = Math.max(peak, yy);
@@ -2650,12 +3151,12 @@ function znSustained(){
 function znSweepResponse(gain){
   const { Ku } = znUltimate();
   const T = 0.5, dt = 0.00005, N=Math.floor(T/dt), stride=Math.max(1,Math.floor(N/500));
-  const air = state.fc.air, bDrag = 0.0667*(air/100);
+  const d = dragNorm();
   const t=[], y=[]; let a=0,b=0,yy=0, diverged=false;
   for(let k=0;k<=N;k++){
     const tt=k*dt; const e = 1 - yy;
-    let u = gain*e - bDrag*yy;
-    a += (u-a)/TAU_M*dt; b += (a-b)/TAU_A*dt; yy += (b-yy)/TAU_S*dt;
+    let u = gain*e;
+    a += (u-(1+d)*a)/TAU_M*dt; b += (a-b)/TAU_A*dt; yy += (b-yy)/TAU_S*dt;
     if(Math.abs(yy)>12) diverged=true;
     if(k%stride===0||k===N){ t.push(+tt.toFixed(5)); y.push(yy); }
     if(diverged) break;
@@ -2806,6 +3307,15 @@ function renderTabControls(){
     html += fcSlider("fcKp","Proportional K_p",0.05,1.5,0.01,f.kp,v=>(+v).toFixed(2));
     html += fcSlider("fcKi","Integral K_i",0,4,0.05,f.ki,v=>(+v).toFixed(2));
     html += fcSlider("fcKd","Derivative K_d",0,0.15,0.005,f.kd,v=>(+v).toFixed(3));
+    html += '<div class="fc-sub">Active terms <em>— isolate one action at a time</em></div>'+
+      '<div class="fc-methods" id="fcTermGrp">'+
+      [["p","P only"],["pi","PI"],["pd","PD"],["pid","full PID"]].map(k=>
+        '<button type="button" class="fc-mbtn '+(f.terms===k[0]?"active":"")+'" data-term="'+k[0]+'">'+k[1]+'</button>').join("")+'</div>';
+    html += '<div class="fc-sub">Plant fidelity</div><div class="fc-methods" id="fcFidGrp">'+
+      [["real","Real drone"],["ideal","Ideal 1/(J s²)"]].map(k=>
+        '<button type="button" class="fc-mbtn '+(f.fidelity===k[0]?"active":"")+'" data-fid="'+k[0]+'">'+k[1]+'</button>').join("")+'</div>';
+    // aerodynamic damping enters ζ in exactly the same place K_d does — free damping
+    html += fcSlider("fcAir","Air resistance <em>(free damping)</em>",0,90,5,f.air,v=>v+"%");
     html += '<label class="fc-switch"><input type="checkbox" id="fcDist" '+(f.dist?"checked":"")+
       '> Disturbance torque <em>(CG offset)</em></label>';
     html += '<div class="fc-note mono" id="fcPidNote"></div>';
@@ -2834,6 +3344,13 @@ function renderTabControls(){
     html += '<label class="fc-switch"><input type="checkbox" id="fcEsc" '+(f.escFault?"checked":"")+
       '> Uncalibrated ESC <em>(actuation offset)</em></label>';
   }
+  // ── shared playback / explanation controls ──
+  html += '<div class="fc-sub">Playback</div>'+
+    '<label class="fc-switch"><input type="checkbox" id="fcCine" '+(f.cine?"checked":"")+
+      '> Narrated slow-motion run <em>(cinematic)</em></label>'+
+    '<label class="fc-switch"><input type="checkbox" id="fcAnnot" '+(f.annot?"checked":"")+
+      '> In-scene thrust / torque annotations</label>'+
+    '<button type="button" class="fc-concept" id="fcConcept">How this works — full derivation ›</button>';
   html += '</div>';
   host.innerHTML = html;
   wireTabControls(exp);
@@ -2849,17 +3366,29 @@ function bindSlider(id, key, fmt, after){
     const v = +e.target.value; state.fc[key] = v;
     const lab = $(id+"v"); if(lab) lab.textContent = fmt(v);
     saveState(); if(after) after();
-    renderInertia(); renderCalcChips(); drawLiveGraph(); drawMassChart();
+    renderInertia(); renderCalcChips(); updateFcNotes(); renderLog();
+    drawLiveGraph(); drawMassChart();
   });
 }
 function wireTabControls(exp){
   const redraw = ()=>{ renderCalcChips(); renderLog(); drawLiveGraph(); drawMassChart(); updateFcNotes(); };
+  // shared playback controls
+  const cn=$("fcCine"); if(cn) cn.addEventListener("change",e=>{ state.fc.cine=e.target.checked; saveState(); });
+  const an=$("fcAnnot"); if(an) an.addEventListener("change",e=>{
+    state.fc.annot=e.target.checked; saveState(); if(!state.fc.annot) Annot.hide(); });
+  const cc=$("fcConcept"); if(cc) cc.addEventListener("click",()=>{ openConcept(); sfx("tick"); });
   if($("fcCmd")) bindSlider("fcCmd","cmd",v=>v+"°");
   if(exp==="pid"){
-    bindSlider("fcKp","kp",v=>(+v).toFixed(2));
-    bindSlider("fcKi","ki",v=>(+v).toFixed(2));
-    bindSlider("fcKd","kd",v=>(+v).toFixed(3));
+    // remember which gain was touched last — the family + pole-locus charts sweep it
+    bindSlider("fcKp","kp",v=>(+v).toFixed(2), ()=>{ state.fc.lastGain="kp"; });
+    bindSlider("fcKi","ki",v=>(+v).toFixed(2), ()=>{ state.fc.lastGain="ki"; });
+    bindSlider("fcKd","kd",v=>(+v).toFixed(3), ()=>{ state.fc.lastGain="kd"; });
+    bindSlider("fcAir","air",v=>v+"%");
     const d=$("fcDist"); if(d) d.addEventListener("change",e=>{ state.fc.dist=e.target.checked; saveState(); redraw(); });
+    document.querySelectorAll("[data-term]").forEach(b=>b.addEventListener("click",()=>{
+      state.fc.terms=b.dataset.term; saveState(); renderTabControls(); redraw(); sfx("tick"); }));
+    document.querySelectorAll("[data-fid]").forEach(b=>b.addEventListener("click",()=>{
+      state.fc.fidelity=b.dataset.fid; saveState(); renderTabControls(); redraw(); sfx("tick"); }));
   } else if(exp==="zn"){
     bindSlider("fcZnGain","znGain",v=>(+v).toFixed(2), ()=>znLatchCheck());
     bindSlider("fcAir","air",v=>v+"%");
@@ -2903,11 +3432,14 @@ function znAutoTune(){
 function updateFcNotes(){
   const exp = currentExp().exp.id;
   if(exp==="pid"){
-    const r = pidStepSim({});
+    const r = pidRun();
     const n=$("fcPidNote"); if(n) n.innerHTML =
       'ω_n = '+r.met.wn.toFixed(1)+' rad/s · ζ = '+r.met.zeta.toFixed(3)+
-      '<br>overshoot '+r.osSim.toFixed(1)+'% · t_s '+r.tsSim.toFixed(2)+' s'+
-      (state.fc.dist ? '<br>e_ss = '+r.essDeg.toFixed(2)+'°' : '');
+      (r.diverged
+        ? '<br><b style="color:#a83232">diverging — the aircraft flips</b>'
+        : '<br>overshoot '+r.osSim.toFixed(1)+'% · t_s '+r.tsSim.toFixed(2)+' s'+
+          (state.fc.dist ? '<br>e_ss = '+r.essDeg.toFixed(2)+'°' : ''))+
+      (r.real && r.satPct > 0.5 ? '<br>mixer clipped '+r.satPct.toFixed(1)+'% of the run' : '');
   } else if(exp==="zn"){
     const zn = znUltimate(), g = znGains(state.fc.znMethod, zn.Ku, zn.Pu);
     const n=$("fcZnNote"); if(n) n.innerHTML =
@@ -2942,7 +3474,7 @@ function xy(xa, ya){ return xa.map((x,i)=>({x, y:ya[i]})); }
 
 /* Tab 1 — PID step response, gold curve + setpoint + ±2% band (+ markers) */
 function cfgPidStep(mini, frac){
-  const s = pidStepSim({});
+  const s = pidRun();
   const cmd = s.cmdDeg;
   let n = s.t.length; if(frac!=null) n = Math.max(2, Math.floor(s.t.length*frac));
   const T = s.t.length ? s.t[s.t.length-1] : 1;
@@ -2959,8 +3491,11 @@ function cfgPidStep(mini, frac){
     borderColor:FC_RED, borderWidth:1.2, borderDash:[4,3], pointRadius:0 });
   const opt = fcLineOpts("Time (s)","Roll angle (deg)", mini);
   opt.scales.x.min = 0; opt.scales.x.max = T;
-  opt.scales.y.suggestedMax = cmd*1.35; opt.scales.y.min = 0;
-  if(s.diverged){ opt.scales.y.suggestedMax = cmd*3; }
+  // let a lightly damped loop show its undershoot instead of clipping it at zero
+  const lo = Math.min.apply(null, s.th.length ? s.th : [0]);
+  opt.scales.y.suggestedMax = cmd*1.35;
+  opt.scales.y.min = Math.min(0, lo*1.12);
+  if(s.diverged){ opt.scales.y.suggestedMax = cmd*3; opt.scales.y.min = Math.min(-cmd*2, lo*1.05); }
   return { type:"line", data:{datasets:ds}, options:opt };
 }
 /* Tab 2 — closed-loop rate step: classic vs Tyreus-Luyben + 25% comfort line */
@@ -3077,7 +3612,7 @@ function fcSecondaryCfg(mini){
 }
 /* PID term contributions (P / I / D torque split over the step) */
 function cfgPidTerms(mini){
-  const s = pidStepSim({});
+  const s = pidRun();
   const ds = [
     { label:"P", data:xy(s.t,s.Pc), borderColor:FC_BLUE, borderWidth:2, pointRadius:0, tension:.2 },
     { label:"I", data:xy(s.t,s.Ic), borderColor:FC_GREEN, borderWidth:2, pointRadius:0, tension:.2 },
@@ -3109,4 +3644,891 @@ function removeGhost(){
     ghostRig.traverse(o=>{ if(o.isMesh && o.material){ (Array.isArray(o.material)?o.material:[o.material]).forEach(m=>m.dispose&&m.dispose()); } });
   }catch(e){}
   ghostRig = null; ghostFor = null;
+}
+
+/* ════════════════════════════════════════════════════════════════════════════
+   ═══════════════  15 · IN-SCENE ANNOTATION LAYER  ═══════════════
+   The bridge between the maths and the airframe. While a run plays, the
+   viewport draws what the controller is actually doing to the machine:
+
+     · four thrust columns, one per motor, height = that motor's live thrust
+     · a setpoint blade at θ_cmd and an attitude blade at the true θ, so the
+       error is a visible wedge between them
+     · a roll-torque arc whose length and colour track τ (and turns red the
+       instant the mixer saturates)
+     · a disturbance arrow at the offset CG when that fault is armed
+
+   All of it is procedural three.js — no assets, no extra libraries.
+   ═════════════════════════════════════════════════════════════════════════ */
+const Annot = (function(){
+  let grp = null, forRig = null;
+  let bars = [], barMats = [], trims = [], anchors = [];
+  let setBlade = null, attBlade = null, wedge = null;
+  let arc = null, arcMat = null, distArrow = null;
+  let labelSprites = [];
+
+  function tex(text, color){
+    const c = document.createElement("canvas"); c.width = 256; c.height = 64;
+    const g = c.getContext("2d");
+    g.clearRect(0,0,256,64);
+    g.fillStyle = "rgba(255,255,255,0.88)";
+    g.strokeStyle = color; g.lineWidth = 3;
+    roundRect(g, 3, 6, 250, 52, 10); g.fill(); g.stroke();
+    g.fillStyle = color; g.font = "600 30px 'IBM Plex Mono', monospace";
+    g.textAlign = "center"; g.textBaseline = "middle";
+    g.fillText(text, 128, 33);
+    const t = new THREE.Texture(c); t.needsUpdate = true; return t;
+  }
+  function roundRect(g,x,y,w,h,r){
+    g.beginPath(); g.moveTo(x+r,y); g.lineTo(x+w-r,y); g.quadraticCurveTo(x+w,y,x+w,y+r);
+    g.lineTo(x+w,y+h-r); g.quadraticCurveTo(x+w,y+h,x+w-r,y+h); g.lineTo(x+r,y+h);
+    g.quadraticCurveTo(x,y+h,x,y+h-r); g.lineTo(x,y+r); g.quadraticCurveTo(x,y,x+r,y); g.closePath();
+  }
+  function label(text, color){
+    const s = new THREE.Sprite(new THREE.SpriteMaterial({ map:tex(text,color), transparent:true, depthTest:false }));
+    s.scale.set(0.9, 0.225, 1); s.renderOrder = 999;
+    labelSprites.push(s); return s;
+  }
+  function setLabel(sprite, text, color){
+    if(!sprite) return;
+    if(sprite.material.map) sprite.material.map.dispose();
+    sprite.material.map = tex(text, color); sprite.material.needsUpdate = true;
+  }
+  /* motor anchors, sorted so index 0/1 are the LEFT pair (x<0 → the pair that
+     lifts for a positive roll) and 2/3 the right pair — matches rollMix(). */
+  function findAnchors(){
+    const list = [];
+    const src = (rigParts.motors && rigParts.motors.length===4) ? rigParts.motors : propGroups;
+    const v = new THREE.Vector3();
+    src.forEach(o=>{ if(!o) return; o.updateWorldMatrix(true,false); o.getWorldPosition(v);
+      list.push({ o, local: rig.worldToLocal(v.clone()) }); });
+    if(list.length < 4) return [];
+    list.sort((a,b)=>a.local.x - b.local.x);            // most negative x first
+    return list.slice(0,4);
+  }
+  function build(){
+    dispose();
+    if(!rig || typeof THREE === "undefined") return;
+    const a = findAnchors();
+    if(!a.length) return;
+    grp = new THREE.Group(); grp.renderOrder = 900;
+    anchors = a;
+    // ── thrust columns (children of rig → they bank with the airframe) ──
+    a.forEach((an,i)=>{
+      const mat = new THREE.MeshBasicMaterial({ color:0x1f8a5b, transparent:true, opacity:0.62, depthTest:false });
+      const bar = new THREE.Mesh(new THREE.BoxGeometry(0.085,1,0.085), mat);
+      bar.position.set(an.local.x, an.local.y + 0.10, an.local.z);
+      bar.renderOrder = 901;
+      grp.add(bar); bars.push(bar); barMats.push(mat);
+      // hover-trim reference tick: the height the column sits at with zero roll
+      // demand, so "more than trim" and "less than trim" are readable at a glance
+      const tick = new THREE.Mesh(new THREE.BoxGeometry(0.20,0.012,0.20),
+        new THREE.MeshBasicMaterial({ color:0x5c6d68, transparent:true, opacity:0.55, depthTest:false }));
+      tick.renderOrder = 902; tick.userData.trim = true;
+      tick.position.set(an.local.x, an.local.y + 0.10, an.local.z);
+      grp.add(tick); trims.push(tick);
+    });
+    rig.add(grp);
+    // ── world-space blades: setpoint (grey dashed) vs true attitude (gold) ──
+    setBlade = bladeMesh(0x8b9a95, 0.42);
+    attBlade = bladeMesh(0xd99b1c, 0.85);
+    wedge = new THREE.Mesh(new THREE.CircleGeometry(0.95, 48, 0, 0.001),
+      new THREE.MeshBasicMaterial({ color:0xc65d3b, transparent:true, opacity:0.14,
+        side:THREE.DoubleSide, depthTest:false }));
+    wedge.renderOrder = 890;
+    arcMat = new THREE.MeshBasicMaterial({ color:0x1f3a93, transparent:true, opacity:0.9, side:THREE.DoubleSide, depthTest:false });
+    arc = new THREE.Mesh(new THREE.RingGeometry(0.72, 0.80, 40, 1, 0, 0.001), arcMat);
+    arc.renderOrder = 902;
+    distArrow = new THREE.ArrowHelper(new THREE.Vector3(0,-1,0), new THREE.Vector3(0,0,0), 0.7, 0xa83232, 0.18, 0.12);
+    distArrow.visible = false;
+    [setBlade, attBlade, wedge, arc, distArrow].forEach(o=>scene.add(o));
+    forRig = rig;
+  }
+  function bladeMesh(color, opacity){
+    const g = new THREE.Group();
+    const m = new THREE.MeshBasicMaterial({ color, transparent:true, opacity, depthTest:false });
+    const bar = new THREE.Mesh(new THREE.BoxGeometry(2.3, 0.014, 0.014), m);
+    bar.renderOrder = 891; g.add(bar);
+    [-1,1].forEach(s=>{
+      const cap = new THREE.Mesh(new THREE.ConeGeometry(0.032, 0.10, 10), m);
+      cap.position.x = s*1.19; cap.rotation.z = s>0 ? -Math.PI/2 : Math.PI/2;
+      cap.renderOrder = 891; g.add(cap);
+    });
+    g.renderOrder = 891;
+    return g;
+  }
+  function dispose(){
+    labelSprites.forEach(s=>{ if(s.material.map) s.material.map.dispose(); s.material.dispose(); });
+    labelSprites = [];
+    if(grp && grp.parent) grp.parent.remove(grp);
+    [setBlade, attBlade, wedge, arc, distArrow].forEach(o=>{ if(o && o.parent) o.parent.remove(o); });
+    bars = []; barMats = []; trims = []; anchors = []; grp = null; forRig = null;
+    setBlade = attBlade = wedge = arc = distArrow = null;
+  }
+  function hide(){ [grp,setBlade,attBlade,wedge,arc,distArrow].forEach(o=>{ if(o) o.visible = false; }); }
+  /* per-frame update. d = { T:[4 thrusts], Tmax, tau, tauMax, sat, roll, cmd, dist } */
+  function update(d){
+    if(!state.fc.annot || !d){ hide(); return; }
+    if(!grp || forRig !== rig) build();
+    if(!grp) return;
+    grp.visible = true;
+    // ── thrust columns ──
+    // Normalised against the mixer's usable band (hover trim ± the authority the
+    // motors actually have), NOT the wide-open ceiling — otherwise the roll
+    // differential, which is the entire point of the annotation, is a few pixels.
+    if(d.T && bars.length===4){
+      const span = Math.max(d.Tspan || d.Tmax, 1e-4);
+      const hTrim = 0.12 + Math.min((d.Th||0)/span, 1.25)*0.72;
+      for(let i=0;i<4;i++){
+        bars[i].visible = true; trims[i].visible = true;
+        const f = Math.max(0.01, Math.min(1.25, d.T[i]/span));
+        const h = 0.12 + f*0.72;
+        bars[i].scale.y = h;
+        bars[i].position.y = anchors[i].local.y + 0.10 + h/2;
+        trims[i].position.y = anchors[i].local.y + 0.10 + hTrim;
+        const over = (d.Tceil && d.T[i] >= d.Tceil*0.995) || d.T[i] <= 1e-3;
+        barMats[i].color.setHex(over ? 0xa83232 : d.T[i] > (d.Th||0) ? 0x1f8a5b : 0x4f6d9e);
+        barMats[i].opacity = 0.5 + 0.35*Math.min(f,1);
+      }
+    } else { bars.forEach(b=>b.visible=false); trims.forEach(b=>b.visible=false); }
+    // blades + error wedge, in world space at the rig's height
+    const y = rig ? rig.position.y : 1.15;
+    const cmdR = (d.cmd||0)*RAD, rollR = (d.roll||0)*RAD;
+    if(setBlade){ setBlade.visible = true; setBlade.position.set(0,y,0); setBlade.rotation.z = -cmdR; }
+    if(attBlade){ attBlade.visible = true; attBlade.position.set(0,y,0); attBlade.rotation.z = -rollR; }
+    if(wedge){
+      const err = cmdR - rollR;
+      const span = Math.min(Math.abs(err), Math.PI*0.9);
+      wedge.visible = span > 0.004;
+      if(wedge.visible){
+        wedge.geometry.dispose();
+        wedge.geometry = new THREE.CircleGeometry(1.25, 48, -Math.max(cmdR, rollR), span);
+        wedge.position.set(0,y,0);
+      }
+    }
+    // torque arc — magnitude and sign of the roll torque the mixer achieved
+    if(arc){
+      const tf = Math.max(-1, Math.min(1, (d.tau||0)/Math.max(d.tauMax||1,1e-6)));
+      const span = Math.abs(tf)*Math.PI*0.85;
+      arc.visible = span > 0.02;
+      if(arc.visible){
+        arc.geometry.dispose();
+        arc.geometry = new THREE.RingGeometry(0.72, 0.80, 44, 1, tf>=0 ? 0 : -span, span);
+        arc.position.set(0, y, 0);
+        arcMat.color.setHex(d.sat ? 0xa83232 : 0x1f3a93);
+      }
+    }
+    if(distArrow){
+      distArrow.visible = !!d.dist;
+      if(d.dist) distArrow.position.set(0.45, y + 0.18, 0);
+    }
+  }
+  return { build, update, dispose, hide };
+})();
+
+/* ════════════════════════════════════════════════════════════════════════════
+   ═══════════════  16 · CINEMATIC RUN DIRECTOR  ═══════════════
+   Run is not a 3-second twitch any more: it plays as a narrated shot-by-shot
+   film of the control loop. A storyboard maps windows of SIMULATION time onto
+   windows of WALL time, so the interesting 60 ms (the mixer split, the
+   overshoot peak) can be stretched to four seconds of slow motion while the
+   boring settle tail is played at speed. Each chapter also owns a camera move
+   and a caption. Transport: play/pause, scrub, 0.5× → 4×, chapter skip.
+   ═════════════════════════════════════════════════════════════════════════ */
+/* Framing note: the assembled drone is normalised to a 3.0-world-unit wheelbase
+   and the camera is a 38° FOV, so a subject distance below ~5.5 starts clipping
+   the propeller discs. Every shot below is checked against that. */
+const SHOTS = {
+  wide:   { pos:[5.8, 4.0, 6.4],  tgt:[0, 1.15, 0] },
+  hero:   { pos:[4.3, 2.7, 5.0],  tgt:[0, 1.20, 0] },
+  front:  { pos:[0.45, 2.10, 8.4],tgt:[0, 1.15, 0] },
+  frontC: { pos:[0.30, 1.75, 6.2],tgt:[0, 1.18, 0] },
+  left:   { pos:[-3.8, 2.3, 5.2], tgt:[-0.85, 1.30, 0] },
+  right:  { pos:[3.8, 2.3, 5.2],  tgt:[0.85, 1.30, 0] },
+  top:    { pos:[0.05, 7.6, 0.05],tgt:[0, 1.15, 0] },
+  low:    { pos:[1.0, 0.55, 6.6], tgt:[0, 1.25, 0] }
+};
+const Cine = (function(){
+  let on = false, chapters = [], wall = 0, dur = 0, idx = -1;
+  let paused = false, camFrom = null, camT = 0, camDur = 1.1, userCam = false;
+  const _p = new THREE.Vector3(), _t = new THREE.Vector3();
+  const ease = x => x<0 ? 0 : x>1 ? 1 : x*x*(3-2*x);
+
+  function start(story){
+    chapters = story || [];
+    if(!chapters.length){ on = false; return false; }
+    let acc = 0;
+    chapters.forEach(c=>{ c.w0 = acc; acc += c.wall; c.w1 = acc; });
+    dur = acc; wall = 0; idx = -1; paused = false; on = true; userCam = false;
+    if(controls) controls.enabled = false;
+    buildUI();
+    show(true);
+    return true;
+  }
+  function stop(){
+    on = false; chapters = []; idx = -1;
+    if(controls) controls.enabled = true;
+    show(false);
+  }
+  function active(){ return on; }
+  function finished(){ return on && wall >= dur - 1e-6; }
+  function chapterAt(w){
+    for(let i=0;i<chapters.length;i++) if(w < chapters[i].w1 || i===chapters.length-1) return i;
+    return 0;
+  }
+  /* wall clock → normalised progress through the simulation series */
+  function fracAt(w){
+    const i = chapterAt(w), c = chapters[i];
+    const k = c.wall > 0 ? Math.max(0, Math.min(1, (w - c.w0)/c.wall)) : 1;
+    return c.f0 + (c.f1 - c.f0)*k;
+  }
+  function tick(dt){
+    if(!on) return 1;
+    if(!paused) wall = Math.min(dur, wall + dt*(state.fc.cineSpeed||1));
+    const i = chapterAt(wall);
+    if(i !== idx){ enterChapter(i); idx = i; }
+    camT += dt;
+    driveCamera();
+    paintUI();
+    return fracAt(wall);
+  }
+  function enterChapter(i){
+    const c = chapters[i];
+    camFrom = { pos: camera.position.clone(), tgt: controls.target.clone() };
+    camT = 0; camDur = Math.min(1.25, Math.max(0.5, c.wall*0.45));
+    const cap = $("cineTxt"), chp = $("cineChap");
+    if(cap){ cap.innerHTML = c.text; cap.classList.remove("cine-in"); void cap.offsetWidth; cap.classList.add("cine-in"); }
+    if(chp) chp.textContent = String(i+1).padStart(2,"0")+" · "+c.title;
+    const st = $("cineStage"); if(st) st.textContent = c.tag || "";
+    if(c.beat) sfx("tick");
+  }
+  function driveCamera(){
+    if(userCam || !camera || !controls) return;
+    const c = chapters[idx]; if(!c) return;
+    const shot = SHOTS[c.shot] || SHOTS.wide;
+    const k = ease(camT/camDur);
+    // slow parallax drift within the shot so nothing is ever frozen
+    const drift = Math.sin((wall)*0.35)*(c.drift==null?0.12:c.drift);
+    _p.set(shot.pos[0], shot.pos[1], shot.pos[2]);
+    _p.x += drift; _p.z += drift*0.4;
+    _t.set(shot.tgt[0], shot.tgt[1], shot.tgt[2]);
+    if(camFrom){
+      camera.position.lerpVectors(camFrom.pos, _p, k);
+      controls.target.lerpVectors(camFrom.tgt, _t, k);
+    }else{ camera.position.copy(_p); controls.target.copy(_t); }
+    camera.lookAt(controls.target);
+  }
+  function releaseCamera(){ userCam = true; if(controls) controls.enabled = true; }
+
+  /* ── transport UI ── */
+  function show(v){ const o = $("vpCine"); if(o) o.hidden = !v; }
+  function buildUI(){
+    const track = $("cineTicks"); if(!track) return;
+    track.innerHTML = "";
+    chapters.forEach((c,i)=>{
+      const b = el("button","cine-tick"); b.type = "button";
+      b.style.left = (c.w0/dur*100)+"%";
+      b.style.width = (c.wall/dur*100)+"%";
+      b.title = (i+1)+" · "+c.title;
+      b.addEventListener("click", e=>{ e.stopPropagation(); seek(c.w0 + 0.001); });
+      track.appendChild(b);
+    });
+    const sp = $("cineSpeed");
+    if(sp) sp.querySelectorAll("button").forEach(b=>
+      b.classList.toggle("on", +b.dataset.sp === (state.fc.cineSpeed||1)));
+  }
+  function paintUI(){
+    const f = $("cineFill"); if(f) f.style.width = (wall/dur*100)+"%";
+    const tm = $("cineTime");
+    if(tm) tm.textContent = wall.toFixed(1)+" / "+dur.toFixed(1)+" s";
+    const ticks = $("cineTicks");
+    if(ticks) Array.prototype.forEach.call(ticks.children, (b,i)=>b.classList.toggle("on", i===idx));
+    const pb = $("cinePlay"); if(pb) pb.textContent = paused ? "▶" : "❚❚";
+  }
+  function seek(w){
+    wall = Math.max(0, Math.min(dur, w));
+    const i = chapterAt(wall);
+    if(i !== idx){ enterChapter(i); idx = i; camT = camDur; }
+    paintUI();
+  }
+  function jump(n){ const i = Math.max(0, Math.min(chapters.length-1, idx+n)); seek(chapters[i].w0 + 0.001); }
+  function togglePause(){ paused = !paused; paintUI(); }
+  function skipToEnd(){ seek(dur); }
+  return { start, stop, active, finished, tick, seek, jump, togglePause, skipToEnd,
+           releaseCamera, get paused(){ return paused; }, get wall(){ return wall; },
+           get dur(){ return dur; }, get chapters(){ return chapters; } };
+})();
+
+/* ── storyboard builders — every chapter window is derived from the DATA, not
+      hardcoded, so the film always cuts on the run's real events ───────────── */
+function tIndexOf(arr, t){ for(let i=0;i<arr.length;i++) if(arr[i] >= t) return i; return arr.length-1; }
+function fracOfT(s, t){ const T = s.t[s.t.length-1] || 1; return Math.max(0, Math.min(1, t/T)); }
+function argmax(a){ let bi=0; for(let i=1;i<a.length;i++) if(a[i]>a[bi]) bi=i; return bi; }
+function num(v, d){ return (v==null||!isFinite(v)) ? "—" : (+v).toFixed(d==null?2:d); }
+
+function storyPID(s){
+  const T = s.t[s.t.length-1] || 1;
+  const cmd = s.cmdDeg;
+  const iPk = argmax(s.th), tPk = s.t[iPk];
+  let tCross = tPk; for(let i=0;i<s.th.length;i++){ if(s.th[i] >= cmd*0.98){ tCross = s.t[i]; break; } }
+  const tMix = Math.min(T*0.06, Math.max(0.03, tCross*0.22));
+  const kp = state.fc.kp, ki = state.fc.ki, kd = state.fc.kd;
+  const tau0 = kp*cmd*RAD;
+  const act = s.act;
+  const Tl = s.M0 && s.M0.length ? s.M0[Math.min(tIndexOf(s.t,tMix), s.M0.length-1)] : null;
+  const Tr = s.M1 && s.M1.length ? s.M1[Math.min(tIndexOf(s.t,tMix), s.M1.length-1)] : null;
+  const ch = [];
+  ch.push({ title:"ARMED · HOVER TRIM", tag:"t = 0⁻", shot:"wide", wall:4.0, f0:0, f1:0, beat:true,
+    text:"The airframe is trimmed for hover: all four motors at <b>"+(act?num(act.Th,2):"—")+" N</b> each, "+
+      "roll torque exactly zero. A multirotor has <b>no passive roll stability</b> — nothing here holds it level "+
+      "except the loop we are about to close. Roll inertia of this build: <b>J = "+num(s.J,4)+" kg·m²</b>." });
+  ch.push({ title:"STEP COMMAND", tag:"θ_cmd applied", shot:"front", wall:3.6, f0:0, f1:fracOfT(s, tMix*0.35), beat:true,
+    text:"A <b>"+num(cmd,0)+"° roll</b> is commanded. The error jumps to its full value instantly, so the "+
+      "proportional term alone demands <b>K_p·e = "+num(kp,2)+" × "+num(cmd*RAD,3)+" = "+num(tau0,3)+" N·m</b>. "+
+      "That is a <i>request</i>. Whether the machine can deliver it is the next shot." });
+  ch.push({ title:"MIXER · WHERE TORQUE COMES FROM", tag:"ΔT × a = τ", shot:"left", wall:4.6, f0:fracOfT(s,tMix*0.35), f1:fracOfT(s,tMix), drift:0.05,
+    text:"Torque is not a knob — it is a <b>thrust difference</b>. The mixer spools the left pair up to "+
+      "<b>"+num(Tl,2)+" N</b> and the right pair down to <b>"+num(Tr,2)+" N</b>; multiplied by the moment arm "+
+      "<b>a = "+(act?num(act.a*1000,0):"—")+" mm</b> that is the roll torque. Ceiling: "+
+      "<b>τ_max = "+(act?num(act.tauMax,3):"—")+" N·m</b>"+(s.satPct>1?" — and this run clips it <b>"+num(s.satPct,0)+"%</b> of the time.":".") });
+  ch.push({ title:"RISE · P PUSHES, D BRAKES", tag:"θ̇ builds", shot:"frontC", wall:4.2, f0:fracOfT(s,tMix), f1:fracOfT(s,tCross),
+    text:"The airframe accelerates: <b>θ̈ = τ/J</b>. As rate builds, the derivative term turns on — "+
+      "<b>D = −K_d·θ̇</b>, with K_d = "+num(kd,3)+" — and starts subtracting from the demand. "+
+      (kd<=0.001 ? "<b>K_d is zero here, so nothing brakes.</b> Watch what that costs."
+                 : "It is the only term that anticipates; P and I only react to error that already exists.") });
+  ch.push({ title:"OVERSHOOT · THE PRICE OF MOMENTUM", tag:"peak θ", shot:"hero", wall:4.4, f0:fracOfT(s,tCross), f1:fracOfT(s,Math.min(T, tPk + (tPk-tCross)*0.8 + 0.05)), beat:true,
+    text:"θ crosses the setpoint with rate still positive, so it keeps going: peak <b>"+num(s.peakDeg,1)+"°</b>, "+
+      "overshoot <b>"+num(s.osSim,1)+"%</b>. Damping <b>ζ = "+num(s.met.zeta,3)+"</b> predicts "+num(s.met.Mp,1)+"% for the ideal plant; "+
+      (s.real ? "the real machine differs because of actuator lag, sensor noise and mixer limits." : "and the ideal plant delivers exactly that.") });
+  ch.push({ title:"SETTLE", tag:"±2 % band", shot:"wide", wall:4.4, f0:fracOfT(s,Math.min(T, tPk + (tPk-tCross)*0.8 + 0.05)), f1:1,
+    text:"Each swing decays by <b>e^(−ζω_n t)</b> with ω_n = "+num(s.met.wn,1)+" rad/s, so the envelope collapses "+
+      "into the ±2 % band at <b>t_s = "+num(s.tsSim,2)+" s</b>."+
+      (state.fc.dist ? " The CG-offset torque leaves a standing droop of <b>"+num(s.essDeg,2)+"°</b>"+
+        (ki>0 ? " — but K_i = "+num(ki,2)+" integrates it away." : " — and with <b>K_i = 0 nothing ever removes it</b>.") : "") });
+  if(s.diverged){
+    // overshoot / settling are not meaningful once it flips — replace both of
+    // those chapters with one that says what actually happened
+    const f0 = ch[4].f0;
+    ch.length = 4;
+    ch.push({ title:"DIVERGENCE · LOSS OF CONTROL", tag:"the aircraft flips", shot:"hero", wall:5.0, f0, f1:1, beat:true,
+      text:"Each swing is larger than the last. "+
+        (s.satPct > 1 ? "The demand outruns what the mixer can deliver — clipped <b>"+num(s.satPct,0)+"%</b> of the run — so for that whole time the loop is running <i>open</i>. "
+                      : "There is not enough damping to remove the energy the proportional term keeps putting in. ")+
+        "This is not a graph artefact: past about 120° of roll the thrust vector points sideways and <b>the aircraft is falling, not flying.</b> "+
+        "Add K_d, or back off K_p / K_i." });
+  }
+  ch.push({ title:"RESULT", tag:"verdict", shot:"hero", wall:3.2, f0:1, f1:1, beat:true,
+    text: s.diverged
+      ? "<b>ω_n "+num(s.met.wn,1)+" rad/s · ζ "+num(s.met.zeta,3)+" · loop unstable</b><br>"+
+        "ζ below roughly 0.2 rings; with the actuator lag and the mixer's ceiling on top of it, this tune never recovers. "+
+        "Raise K_d first — it is the only term that removes energy from the motion."
+      : "<b>ω_n "+num(s.met.wn,1)+" rad/s · ζ "+num(s.met.zeta,3)+" · overshoot "+num(s.osSim,1)+"% · t_s "+num(s.tsSim,2)+" s</b><br>"+
+        "Move one gain at a time and re-run: K_p sets how hard, K_d sets how damped, K_i sets what happens to the error that refuses to die." });
+  return ch;
+}
+function storyZN(s, g, zn, latched){
+  return [
+    { title:"WHY A PROCEDURE", tag:"inner rate loop", shot:"wide", wall:3.8, f0:0, f1:0, beat:true,
+      text:"Guessing three gains by hand is a search in 3-D. Ziegler-Nichols collapses it to <b>one measurement</b>: "+
+        "push the loop to the edge of instability, read two numbers off the oscillation, look up the rest." },
+    { title:"THE EDGE OF STABILITY", tag:"K_p → K_u", shot:"front", wall:4.2, f0:0, f1:0.18,
+      text:"With I and D switched off, raise K_p. The rate loop's three lags — mechanical <b>τ_m="+TAU_M+" s</b>, "+
+        "actuator <b>τ_a="+TAU_A+" s</b>, sensor <b>τ_s="+TAU_S+" s</b> — add up to 180° of phase. At "+
+        "<b>K_u = "+num(zn.Ku,2)+"</b> the loop rings forever without growing or decaying." },
+    { title:"READING P_u", tag:"period of the ring", shot:"frontC", wall:4.0, f0:0.18, f1:0.42,
+      text:"The sustained oscillation's period is the second number: <b>P_u = "+num(zn.Pu*1000,1)+" ms</b> "+
+        "(ω_u = "+num(zn.wu,1)+" rad/s). Everything Z-N needs is now measured — no model of the drone required." },
+    { title:"THE TABLE", tag:state.fc.znMethod, shot:"hero", wall:4.2, f0:0.42, f1:0.7, beat:true,
+      text:(state.fc.znMethod==="tyreus"
+        ? "<b>Tyreus-Luyben</b>: K_p=0.45K_u, T_i=2.2P_u, T_d=P_u/6.3 — deliberately detuned for robustness."
+        : "<b>Classic Z-N</b>: K_p=0.6K_u, T_i=0.5P_u, T_d=0.125P_u — quarter-amplitude decay, famously aggressive.")+
+        "<br>Here that gives <b>K_p "+num(g.kp,2)+" · K_i "+num(g.ki,0)+" · K_d "+num(g.kd,4)+"</b>." },
+    { title:"CLOSED LOOP AT THE TUNE", tag:"step response", shot:"wide", wall:4.4, f0:0.7, f1:1,
+      text:"The rate loop stepped with those gains."+(latched?"":" <b>K_u is not latched yet</b> — sweep the gain slider to sustained oscillation first.")+
+        " Classic buys speed with overshoot; Tyreus-Luyben trades response time for margin. On a real airframe with "+
+        "wind and prop wash, margin usually wins." }
+  ];
+}
+function storyFusion(s, tr, mm){
+  const im = imu();
+  return [
+    { title:"TWO IMPERFECT WITNESSES", tag:"accel vs gyro", shot:"wide", wall:4.0, f0:0, f1:0.08, beat:true,
+      text:"Attitude cannot be measured directly. The <b>"+im.name+"</b> offers two flawed estimates of it — "+
+        "and the controller has to fly on whatever they agree on." },
+    { title:"ACCELEROMETER · TRUE BUT LOUD", tag:"σ = "+im.sigma+"°", shot:"front", wall:4.0, f0:0.08, f1:0.32,
+      text:"Gravity gives an absolute angle with <b>no drift</b> — the pale trace never walks away from truth. "+
+        "But every prop vibration lands on it: <b>σ = "+num(im.sigma,2)+"°</b> of noise. Feed that straight to K_p and the motors scream." },
+    { title:"GYRO · SMOOTH BUT LYING", tag:"bias "+im.bias+" °/s", shot:"front", wall:4.2, f0:0.32, f1:0.62, beat:true,
+      text:"Integrating rate gives a beautifully clean angle — for a while. A bias of only <b>"+num(im.bias,2)+" °/s</b> "+
+        "integrates into <b>"+num(s.driftAt8,1)+"° after 8 s</b> and never stops growing. The red trace is what the drone would believe." },
+    { title:"THE COMPLEMENTARY BLEND", tag:"α = "+num(state.fc.alpha,3), shot:"hero", wall:4.4, f0:0.62, f1:0.88,
+      text:"<b>θ̂ = α(θ̂ + ω·Δt) + (1−α)·θ_accel</b> — a high-pass on the gyro and a low-pass on the accel that "+
+        "sum to exactly 1 at every frequency. Crossover: <b>τ_f = α·Δt/(1−α) = "+num(mm.tf,3)+" s</b>. "+
+        "Faster than that, believe the gyro; slower, believe gravity." },
+    { title:"CHOOSING α", tag:"drift vs noise", shot:"wide", wall:4.0, f0:0.88, f1:1,
+      text:"Push α up and drift takes over (<b>"+num(mm.drift,3)+"°</b>); pull it down and noise does (<b>"+num(mm.noise,3)+"°</b>). "+
+        "Their sum has one minimum: <b>α* = "+num(tr.bestAlpha,3)+"</b> for this IMU, total error "+num(tr.bestTotal,3)+"°. "+
+        "A quieter IMU moves that optimum — the filter must be tuned to the sensor, not copied from a forum." }
+  ];
+}
+function storyFull(r, board, isLeader){
+  return [
+    { title:"THE WHOLE LOOP", tag:"sensor → mix → airframe", shot:"wide", wall:4.0, f0:0, f1:0.08, beat:true,
+      text:"Everything at once: IMU → estimator → PID → mixer → motors → airframe → back to the IMU. "+
+        "Three tabs of theory now have to survive each other." },
+    { title:"THE CONTROLLER IS BLIND", tag:"e = θ_cmd − θ̂", shot:"front", wall:4.4, f0:0.08, f1:0.4, beat:true,
+      text:"The loop closes on the <b>estimate</b>, never on truth: <b>e = θ_cmd − θ̂</b>. The translucent ghost is what the "+
+        "flight controller believes; the solid airframe is where it really is. Every degree between them is error the "+
+        "controller will happily fly <i>into</i>." },
+    { title:"ESTIMATOR QUALITY DECIDES", tag:FC_ESTIMATORS[state.fc.estimator], shot:"hero", wall:4.4, f0:0.4, f1:0.72,
+      text:"Estimator RMS <b>"+num(r.estRMS,2)+"°</b> · tracking RMS <b>"+num(r.trackRMS,2)+"°</b>. "+
+        (state.fc.estimator==="gyro" ? "With a drifting gyro-only estimate the controller chases a phantom and banks the aircraft to hold a level it invented."
+         : state.fc.estimator==="accel" ? "Accel-only feeds vibration straight into the gains — the loop fights noise instead of physics."
+         : "The complementary estimate keeps ghost and airframe locked together, so the gains do what the maths says.") },
+    { title:"SCORE", tag:"9 systems ranked", shot:"wide", wall:4.0, f0:0.72, f1:1, beat:true,
+      text:"<b>Score "+r.score+"</b> · overshoot "+num(r.os,0)+"% · settling "+num(r.ts,2)+" s · saturation "+num(r.satPct,1)+"%."+
+        (isLeader ? " That is the best of the nine controller × estimator combinations."
+                  : " Best on the board right now: <b>"+board[0].ctrl+" + "+board[0].est+"</b> at "+board[0].score+".") }
+  ];
+}
+
+/* ════════════════════════════════════════════════════════════════════════════
+   ═══════════════  17 · DEPTH CHARTS  ═══════════════
+   Charts that answer "why", not just "what happened". One set per concept.
+   ═════════════════════════════════════════════════════════════════════════ */
+/* Durand-Kerner root finder — coeffs highest power first, real coefficients. */
+function polyRoots(c){
+  const n = c.length - 1;
+  if(n < 1) return [];
+  const a = c.map(v=>v/c[0]);
+  const re = [], im = [];
+  for(let i=0;i<n;i++){ const th = 2*Math.PI*i/n + 0.4; re.push(0.4*Math.cos(th)); im.push(0.4*Math.sin(th)); }
+  const evalP = (x,y)=>{ let pr=1, pi=0;
+    for(let k=1;k<=n;k++){ const nr = pr*x - pi*y + a[k], ni = pr*y + pi*x; pr=nr; pi=ni; }
+    return [pr,pi]; };
+  for(let it=0; it<220; it++){
+    let moved = 0;
+    for(let i=0;i<n;i++){
+      const p = evalP(re[i], im[i]);
+      let dr = 1, di = 0;
+      for(let j=0;j<n;j++){
+        if(j===i) continue;
+        const xr = re[i]-re[j], xi = im[i]-im[j];
+        const nr = dr*xr - di*xi, ni = dr*xi + di*xr; dr = nr; di = ni;
+      }
+      const den = dr*dr + di*di; if(den < 1e-300) continue;
+      const qr = (p[0]*dr + p[1]*di)/den, qi = (p[1]*dr - p[0]*di)/den;
+      re[i] -= qr; im[i] -= qi; moved += Math.abs(qr)+Math.abs(qi);
+    }
+    if(moved < 1e-13) break;
+  }
+  return re.map((r,i)=>({ re:r, im:im[i] }));
+}
+/* closed-loop poles of the angle loop: J s³ + (K_d+b) s² + K_p s + K_i = 0 */
+function pidPoles(kp, ki, kd){
+  const { J } = rollInertia();
+  const b = dragCoeff();
+  return (ki > 1e-9) ? polyRoots([J, kd+b, kp, ki]) : polyRoots([J, kd+b, kp]);
+}
+/* Tab 1 depth — s-plane pole map, live as the gains move */
+function cfgPidPoles(mini){
+  const f = state.fc;
+  const now = pidPoles(f.kp, f.ki, f.kd);
+  const key = f.lastGain || "kp";
+  const rng = { kp:[0.05,1.5], ki:[0,4], kd:[0,0.15] }[key] || [0.05,1.5];
+  const trail = [];
+  for(let i=0;i<=28;i++){
+    const v = rng[0] + (rng[1]-rng[0])*i/28;
+    pidPoles(key==="kp"?v:f.kp, key==="ki"?v:f.ki, key==="kd"?v:f.kd)
+      .forEach(z=>trail.push({ x:z.re, y:z.im }));
+  }
+  let lim = 8;
+  now.forEach(z=>{ lim = Math.max(lim, Math.abs(z.re)*1.2, Math.abs(z.im)*1.2); });
+  lim = Math.ceil(lim);
+  const zetaRay = z => { const th = Math.acos(Math.max(-1, Math.min(1, z)));
+    return [{x:-lim*Math.cos(th), y:-lim*Math.sin(th)}, {x:0,y:0}, {x:-lim*Math.cos(th), y:lim*Math.sin(th)}]; };
+  const ds = [
+    { label:"locus as "+({kp:"K_p",ki:"K_i",kd:"K_d"}[key])+" sweeps its range", data:trail, showLine:false,
+      pointRadius:mini?1.2:2.2, borderColor:"#c9d3d0", backgroundColor:"#c9d3d0" },
+    { label:"ζ = 0.7", data:zetaRay(0.7), borderColor:"#1f8a5b66", borderWidth:1, borderDash:[5,4], pointRadius:0, showLine:true },
+    { label:"ζ = 0.4", data:zetaRay(0.4), borderColor:"#c65d3b66", borderWidth:1, borderDash:[5,4], pointRadius:0, showLine:true },
+    { label:"stability boundary (Re = 0)", data:[{x:0,y:-lim},{x:0,y:lim}], borderColor:"#a83232", borderWidth:1.4, pointRadius:0, showLine:true },
+    { label:"closed-loop poles", data:now.map(z=>({x:z.re,y:z.im})), showLine:false,
+      pointRadius:mini?5:9, pointStyle:"crossRot", borderWidth:3, borderColor:FC_GOLD, backgroundColor:FC_GOLD }
+  ];
+  const opt = fcLineOpts("Real σ (1/s)","Imaginary jω (rad/s)", mini);
+  opt.scales.x.min = -lim; opt.scales.x.max = lim*0.3;
+  opt.scales.y.min = -lim; opt.scales.y.max = lim;
+  opt.plugins.tooltip = { enabled:!mini, callbacks:{ label:c=>" σ "+c.raw.x.toFixed(2)+"  jω "+c.raw.y.toFixed(2) } };
+  return { type:"scatter", data:{datasets:ds}, options:opt };
+}
+/* Tab 1 depth — family of step responses as ONE gain is swept, others frozen */
+function cfgPidFamily(mini){
+  const f = state.fc, key = f.lastGain || "kp";
+  const rng = { kp:[0.12,1.4], ki:[0,3.5], kd:[0,0.13] }[key] || [0.12,1.4];
+  const lab = { kp:"K_p", ki:"K_i", kd:"K_d" }[key] || "K_p";
+  const cols = ["#b7c2e0","#6c86c9","#1f3a93","#c65d3b","#a83232"];
+  const ds = [];
+  const yLo = -f.cmd*0.8, yHi = f.cmd*2.6;
+  let T = 1;
+  for(let i=0;i<5;i++){
+    const v = rng[0] + (rng[1]-rng[0])*i/4;
+    const s = pidStepSim({ [key]: v });
+    T = Math.max(T, s.t[s.t.length-1] || 1);
+    // a divergent member is clipped to null outside the frame so it exits the
+    // plot cleanly instead of drawing vertical whiskers across every other curve
+    ds.push({ label:lab+" = "+v.toFixed(key==="kd"?3:2),
+      data:s.t.map((t,k)=>({ x:t, y:(s.th[k] < yLo || s.th[k] > yHi) ? null : s.th[k] })),
+      borderColor:cols[i], spanGaps:false,
+      borderWidth:Math.abs(v - f[key]) < (rng[1]-rng[0])/9 ? 3 : 1.6, pointRadius:0, tension:.2 });
+  }
+  ds.push({ label:"setpoint", data:[{x:0,y:f.cmd},{x:T,y:f.cmd}], borderColor:"#8b9a95",
+    borderWidth:1.2, borderDash:[6,4], pointRadius:0 });
+  const opt = fcLineOpts("Time (s)","Roll angle (deg)", mini);
+  opt.scales.x.min = 0; opt.scales.x.max = Math.min(T, 3);
+  // a divergent member of the family would otherwise auto-scale the axis to
+  // hundreds of degrees and flatten every stable curve into the baseline
+  opt.scales.y.min = yLo; opt.scales.y.max = yHi;
+  return { type:"line", data:{datasets:ds}, options:opt };
+}
+/* Tab 1 depth — what the MOTORS were asked to do (the physical output of PID) */
+function cfgPidMotors(mini){
+  const s = pidRun();
+  if(!s.real || !s.M0.length) return null;
+  const act = s.act, T = s.t[s.t.length-1] || 1;
+  const ds = [
+    { label:"left pair thrust (N)", data:xy(s.t,s.M0), borderColor:FC_GREEN, borderWidth:2, pointRadius:0, tension:.15 },
+    { label:"right pair thrust (N)", data:xy(s.t,s.M1), borderColor:FC_BLUE, borderWidth:2, pointRadius:0, tension:.15 },
+    { label:"hover trim T_h", data:[{x:0,y:act.Th},{x:T,y:act.Th}], borderColor:"#8b9a95", borderWidth:1.2, borderDash:[6,4], pointRadius:0 },
+    { label:"motor ceiling T_max", data:[{x:0,y:act.TmaxEach},{x:T,y:act.TmaxEach}], borderColor:FC_RED, borderWidth:1.2, borderDash:[3,3], pointRadius:0 },
+    { label:"zero thrust", data:[{x:0,y:0},{x:T,y:0}], borderColor:FC_RED, borderWidth:1.2, borderDash:[3,3], pointRadius:0 }
+  ];
+  const opt = fcLineOpts("Time (s)","Per-motor thrust (N)", mini);
+  opt.scales.x.min = 0; opt.scales.x.max = T;
+  // frame the mixer's USABLE band, not the wide-open ceiling — otherwise the
+  // differential that actually produces the torque is a flat line at the bottom
+  const peak = Math.max.apply(null, s.M0.concat(s.M1));
+  opt.scales.y.min = -0.15;
+  opt.scales.y.max = Math.min(act.TmaxEach*1.08, Math.max(peak, act.Th + act.dMax)*1.3 + 0.2);
+  return { type:"line", data:{datasets:ds}, options:opt };
+}
+/* Tab 1 depth — the same gains on the textbook plant vs the real machine */
+function cfgPidIdealReal(mini){
+  const a = pidStepSim({ fidelity:"ideal" }), b = pidStepSim({ fidelity:"real" });
+  const T = Math.max(a.t[a.t.length-1]||1, b.t[b.t.length-1]||1);
+  const ds = [
+    { label:"ideal 1/(J s²) plant", data:xy(a.t,a.th), borderColor:FC_BLUE, borderWidth:2, borderDash:[6,4], pointRadius:0, tension:.2 },
+    { label:"real drone (discrete · noisy · saturating)", data:xy(b.t,b.th), borderColor:FC_GOLD, borderWidth:2.4, pointRadius:0, tension:.15 },
+    { label:"what the FC believes θ̂", data:xy(b.t,b.thm), borderColor:FC_RED, borderWidth:1, pointRadius:0, tension:.1 },
+    { label:"setpoint", data:[{x:0,y:a.cmdDeg},{x:T,y:a.cmdDeg}], borderColor:"#8b9a95", borderWidth:1.2, borderDash:[6,4], pointRadius:0 }
+  ];
+  const opt = fcLineOpts("Time (s)","Roll angle (deg)", mini);
+  opt.scales.x.min = 0; opt.scales.x.max = T; opt.scales.y.min = 0;
+  opt.scales.y.suggestedMax = state.fc.cmd*1.6;
+  return { type:"line", data:{datasets:ds}, options:opt };
+}
+/* Tab 2 depth — stability margin: overshoot & settling as K_p walks toward K_u */
+function cfgZNmargin(mini){
+  const zn = znUltimate();
+  const rat=[], os=[], ts=[];
+  for(let k=0.1;k<=1.25001;k+=0.05){
+    const r = rateLoopStep(k*zn.Ku, 0, 0, {});
+    rat.push(+k.toFixed(2));
+    os.push(r.diverged ? 200 : +Math.min(r.os,200).toFixed(1));
+    ts.push(r.diverged ? 0.5 : +r.ts.toFixed(3));
+  }
+  const g = znGains(state.fc.znMethod, zn.Ku, zn.Pu);
+  const ds = [
+    { label:"P-only overshoot (%)", data:xy(rat,os), borderColor:FC_RED, borderWidth:2, pointRadius:0, tension:.2, yAxisID:"y" },
+    { label:"settling t_s (s)", data:xy(rat,ts), borderColor:FC_BLUE, borderWidth:2, borderDash:[5,4], pointRadius:0, tension:.2, yAxisID:"y1" },
+    { label:"K_u — marginal stability", data:[{x:1,y:0},{x:1,y:200}], borderColor:"#a83232", borderWidth:1.4, borderDash:[4,3], pointRadius:0, yAxisID:"y" },
+    { label:state.fc.znMethod+" sits at K_p/K_u = "+(g.kp/zn.Ku).toFixed(2), data:[{x:g.kp/zn.Ku,y:0},{x:g.kp/zn.Ku,y:200}], borderColor:FC_GREEN, borderWidth:1.6, pointRadius:0, yAxisID:"y" }
+  ];
+  const opt = fcLineOpts("Proportional gain ratio K_p / K_u","Overshoot (%)", mini);
+  opt.scales.x.min = 0.1; opt.scales.x.max = 1.25;
+  opt.scales.y.min = 0; opt.scales.y.max = 200;
+  opt.scales.y1 = { position:"right", min:0, title:{display:!mini,text:"settling (s)"},
+    grid:{drawOnChartArea:false}, ticks:{font:{family:"'IBM Plex Mono'",size:mini?8:10}} };
+  return { type:"line", data:{datasets:ds}, options:opt };
+}
+/* Tab 3 depth — the filter in the FREQUENCY domain: the two paths sum to 1 */
+function cfgFusionSpectrum(mini){
+  const m = alphaMetrics(state.fc.alpha), tf = Math.max(m.tf, 1e-4);
+  const f=[], hp=[], lp=[], sum=[];
+  for(let e=-2; e<=1.7001; e+=0.05){
+    const w = Math.pow(10,e)*2*Math.PI, x = w*tf;
+    const H = x/Math.sqrt(1+x*x), L = 1/Math.sqrt(1+x*x);
+    f.push(+Math.pow(10,e).toFixed(4)); hp.push(H); lp.push(L); sum.push(Math.sqrt(H*H+L*L));
+  }
+  const fc = 1/(2*Math.PI*tf);
+  const ds = [
+    { label:"gyro path (high-pass)", data:xy(f,hp), borderColor:FC_RED, borderWidth:2, pointRadius:0, tension:.2 },
+    { label:"accel path (low-pass)", data:xy(f,lp), borderColor:FC_BLUE, borderWidth:2, pointRadius:0, tension:.2 },
+    { label:"power sum ≡ 1", data:xy(f,sum), borderColor:"#1e2a29", borderWidth:1.6, borderDash:[5,4], pointRadius:0 },
+    { label:"crossover 1/(2πτ_f) = "+fc.toFixed(2)+" Hz", data:[{x:fc,y:0},{x:fc,y:1.1}], borderColor:FC_GREEN, borderWidth:1.6, pointRadius:0 }
+  ];
+  const opt = fcLineOpts("Frequency (Hz)","Weight |H(jω)|", mini);
+  opt.scales.x = { type:"logarithmic", min:0.01, max:50, title:{display:!mini,text:"Frequency (Hz)"},
+    grid:{color:C_COL.grid}, ticks:{font:{family:"'IBM Plex Mono'",size:mini?8:10}} };
+  opt.scales.y.min = 0; opt.scales.y.max = 1.15;
+  return { type:"line", data:{datasets:ds}, options:opt };
+}
+/* Tab 3 depth — estimator error over time for four candidate α values */
+function cfgFusionAlphaCompare(mini){
+  const tr = fusionTradeoff();
+  const cands = [0.90, state.fc.alpha, tr.bestAlpha, 0.999];
+  const cols = [FC_BLUE, FC_GOLD, FC_GREEN, FC_RED];
+  const tag = ["", " (yours)", " (optimum)", " (pure gyro)"];
+  const ds = cands.map((a,i)=>{
+    const s = fusionSim(a);
+    return { label:"α = "+a.toFixed(3)+tag[i], data:xy(s.t, s.fused.map((v,k)=>v - s.tru[k])),
+      borderColor:cols[i], borderWidth:i===1?2.4:1.4, pointRadius:0, tension:.1 };
+  });
+  ds.push({ label:"zero error", data:[{x:0,y:0},{x:8,y:0}], borderColor:"#8b9a95", borderWidth:1, borderDash:[6,4], pointRadius:0 });
+  const opt = fcLineOpts("Time (s)","Estimate − truth (deg)", mini);
+  opt.scales.x.min = 0; opt.scales.x.max = 8;
+  return { type:"line", data:{datasets:ds}, options:opt };
+}
+/* Tab 4 depth — estimator error vs tracking error, the whole point of the tab */
+function cfgFullError(mini){
+  const r = fullSystemSim(state.fc.controller, state.fc.estimator, {escFault:state.fc.escFault});
+  const ds = [
+    { label:"estimator error θ̂ − θ", data:r.t.map((t,i)=>({x:t, y:r.est[i]-r.tru[i]})), borderColor:FC_RED, borderWidth:2, pointRadius:0, tension:.15 },
+    { label:"tracking error θ − θ_cmd", data:r.t.map((t,i)=>({x:t, y:r.tru[i]-r.cmdArr[i]})), borderColor:FC_BLUE, borderWidth:2, pointRadius:0, tension:.15 },
+    { label:"zero", data:[{x:0,y:0},{x:4,y:0}], borderColor:"#8b9a95", borderWidth:1, borderDash:[6,4], pointRadius:0 }
+  ];
+  const opt = fcLineOpts("Time (s)","Error (deg)", mini);
+  opt.scales.x.min = 0; opt.scales.x.max = 4;
+  return { type:"line", data:{datasets:ds}, options:opt };
+}
+
+/* ════════════════════════════════════════════════════════════════════════════
+   ═══════════════  18 · CONCEPT DEEP-DIVE  ═══════════════
+   One floating window per tab: a live block diagram of the actual loop, the
+   equations wired to the numbers this build is producing right now, a
+   knob-by-knob table of physical consequence, and the failure modes with the
+   symptom you would see on the airframe.
+   ═════════════════════════════════════════════════════════════════════════ */
+function svgLoop(nodes, links, w, h){
+  let s = '<svg class="cx-svg" viewBox="0 0 '+w+' '+h+'" xmlns="http://www.w3.org/2000/svg">';
+  s += '<defs><marker id="cxa" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto">'+
+       '<path d="M0 0 L10 5 L0 10 z" fill="#4f6d9e"/></marker></defs>';
+  links.forEach(l=>{
+    s += '<path d="'+l.d+'" fill="none" stroke="'+(l.c||"#4f6d9e")+'" stroke-width="'+(l.w||1.6)+'"'+
+         (l.dash?' stroke-dasharray="5 4"':'')+' marker-end="url(#cxa)"/>';
+    if(l.t) s += '<text class="cx-lt" x="'+l.tx+'" y="'+l.ty+'">'+l.t+'</text>';
+  });
+  nodes.forEach(n=>{
+    if(n.sum){
+      s += '<circle cx="'+(n.x+n.w/2)+'" cy="'+(n.y+n.h/2)+'" r="'+(n.h/2)+'" fill="#fff" stroke="'+(n.c||"#1f3a93")+'" stroke-width="1.8"/>'+
+           '<text class="cx-nt" x="'+(n.x+n.w/2)+'" y="'+(n.y+n.h/2+5)+'">'+n.label+'</text>';
+    }else{
+      s += '<rect x="'+n.x+'" y="'+n.y+'" width="'+n.w+'" height="'+n.h+'" rx="7" fill="'+(n.fill||"#f4f6f5")+'" stroke="'+(n.c||"#4f6d9e")+'" stroke-width="1.6"/>'+
+           '<text class="cx-nt" x="'+(n.x+n.w/2)+'" y="'+(n.y+n.h/2+(n.sub?-2:4))+'">'+n.label+'</text>';
+      if(n.sub) s += '<text class="cx-ns" x="'+(n.x+n.w/2)+'" y="'+(n.y+n.h/2+13)+'">'+n.sub+'</text>';
+    }
+  });
+  return s+'</svg>';
+}
+function cxBlock(title, html){ return '<div class="cx-block"><h3>'+title+'</h3>'+html+'</div>'; }
+function cxTable(head, rows){
+  return '<table class="cx-table"><thead><tr>'+head.map(h=>'<th>'+h+'</th>').join("")+'</tr></thead><tbody>'+
+    rows.map(r=>'<tr>'+r.map((c,i)=>'<td'+(i===r.length-1?' class="cx-live mono"':'')+'>'+c+'</td>').join("")+'</tr>').join("")+
+    '</tbody></table>';
+}
+function conceptPID(){
+  const s = pidRun(), f = state.fc, r = rollInertia(), act = rollActuator();
+  const b = dragCoeff();
+  const nodes = [
+    { x:6,  y:52, w:74, h:38, label:"θ_cmd", sub:num(f.cmd,0)+"°", fill:"#eef2f7" },
+    { x:100,y:56, w:30, h:30, label:"−", sum:true },
+    { x:150,y:14, w:104,h:30, label:"K_p · e", sub:"stiffness" },
+    { x:150,y:54, w:104,h:30, label:"K_i ∫e dt", sub:"bias removal" },
+    { x:150,y:94, w:104,h:30, label:"−K_d · θ̇", sub:"damping" },
+    { x:274,y:56, w:30, h:30, label:"Σ", sum:true },
+    { x:324,y:52, w:96, h:38, label:"MIXER", sub:"τ → 4 × ΔT" },
+    { x:440,y:52, w:96, h:38, label:"MOTORS", sub:"lag τ_a = "+TAU_A+" s" },
+    { x:556,y:52, w:104,h:38, label:"AIRFRAME", sub:"1/(J s²)", fill:"#fdf4e6" },
+    { x:400,y:150,w:150,h:36, label:"IMU + FILTER", sub:"θ̂ ≠ θ", fill:"#f7eeea" }
+  ];
+  const links = [
+    { d:"M80 71 H98" },
+    { d:"M130 71 H146 M138 71 V29 H146 M138 71 V109 H146" },
+    { d:"M254 29 H266 V58 M254 71 H270 M254 109 H266 V84" },
+    { d:"M304 71 H320", t:"τ demand", tx:312, ty:44 },
+    { d:"M420 71 H436" },
+    { d:"M536 71 H552" },
+    { d:"M660 71 H676 V168 H552", t:"θ (truth)", tx:676, ty:120 },
+    { d:"M400 168 H126 V88", dash:true, c:"#c65d3b", t:"θ̂ (belief)", tx:250, ty:184 }
+  ];
+  let h = "";
+  h += cxBlock("The loop you are actually flying",
+    '<div class="cx-diagram">'+svgLoop(nodes, links, 700, 200)+'</div>'+
+    '<p class="cx-p">A multirotor has no passive roll stability: tilt it and nothing pushes it back. '+
+    'Every bit of "stability" you see is this loop running a few hundred times a second. '+
+    'The controller never touches torque directly — it asks the mixer for a torque, and the mixer '+
+    'can only deliver it by making one pair of propellers push harder than the other.</p>');
+  h += cxBlock("From gains to motion — the chain, with this build's numbers",
+    '<pre class="cx-eq">e(t)      = θ_cmd − θ̂                      = '+num(f.cmd,0)+'° − θ̂\n'+
+    'τ_demand  = K_p·e + K_i∫e dt − K_d·θ̇      K_p '+num(f.kp,2)+'  K_i '+num(f.ki,2)+'  K_d '+num(f.kd,3)+'\n'+
+    'δ         = τ_demand / (4a)               a = '+num(act.a*1000,0)+' mm   (arm/√2)\n'+
+    'T_left    = T_h + δ,   T_right = T_h − δ  T_h = '+num(act.Th,2)+' N,  T_max = '+num(act.TmaxEach,2)+' N\n'+
+    'τ_actual  = (T_left − T_right)·2a         ceiling τ_max = '+num(act.tauMax,3)+' N·m\n'+
+    'θ̈         = (τ_actual − b·θ̇ − τ_d) / J    J = '+num(r.J,4)+' kg·m²,  b = '+num(b,4)+'</pre>'+
+    '<p class="cx-p">Read it downward and the abstraction disappears: a gain is a number that ends up as '+
+    'grams of thrust on one side of the airframe. Read it upward and you can see why an under-powered '+
+    'build cannot be tuned out of trouble — <b>τ_max</b> is set by the propulsion system, not the software.</p>');
+  h += cxBlock("What each gain physically does", cxTable(
+    ["Gain","Term","Physical consequence","Failure when overdone","Live"],
+    [["<b>K_p</b>","K_p·e","Rotational stiffness. ω_n = √(K_p/J) = <b>"+num(s.met.wn,1)+" rad/s</b> — how fast the aircraft answers.",
+      "Oscillation, then divergence: the demand outruns τ_max and the loop feeds its own lag.","ω_n "+num(s.met.wn,1)],
+     ["<b>K_i</b>","K_i∫e dt","Removes any error that refuses to die — CG offset, a heavy payload on one arm, steady wind.",
+      "Wind-up: the integral keeps growing while the mixer is clipped, then dumps a huge torque late.","e_ss "+(f.dist?num(s.essDeg,2)+"°":"—")],
+     ["<b>K_d</b>","−K_d·θ̇","Damping. ζ = (K_d+b)/(2√(K_p·J)) = <b>"+num(s.met.zeta,3)+"</b> — the only term that acts before the error exists.",
+      "Amplifies gyro noise into motor chatter; the aircraft buzzes and heats up.","ζ "+num(s.met.zeta,3)]]));
+  h += cxBlock("Reading the response",
+    cxTable(["Metric","Definition","This run"],
+      [["Overshoot M_p","100·e^(−πζ/√(1−ζ²)) — how far past the setpoint momentum carries it","<b>"+num(s.osSim,1)+" %</b>"],
+       ["Settling t_s","time to stay inside ±2 % of θ_cmd ≈ 4/(ζω_n)","<b>"+num(s.tsSim,2)+" s</b>"],
+       ["Rise t_r","first approach to the setpoint","<b>"+num(s.met.tr,3)+" s</b>"],
+       ["Steady-state e_ss","the error left when everything has stopped moving","<b>"+(f.dist?num(s.essDeg,2)+"°":"0° (no disturbance armed)")+"</b>"],
+       ["Mixer saturation","fraction of the run where a motor hit 0 N or T_max","<b>"+num(s.satPct,1)+" %</b>"]])+
+    '<p class="cx-p">Two of these are <i>predictions</i> from the ideal second-order model and the rest are '+
+    '<i>measurements</i> off the simulated flight. Switch the fidelity control to <b>Ideal plant</b> and they '+
+    'agree to three decimals; switch back to <b>Real drone</b> and they part company — that gap is discretisation, '+
+    'sensor noise, actuator lag and thrust limits, i.e. every reason real tuning is done in the air.</p>');
+  return h;
+}
+function conceptZN(){
+  const zn = znUltimate(), gc = znGains("classic",zn.Ku,zn.Pu), gt = znGains("tyreus",zn.Ku,zn.Pu);
+  const nodes = [
+    { x:10, y:44,w:96,h:38, label:"ω_cmd", sub:"rate setpoint", fill:"#eef2f7" },
+    { x:126,y:48,w:30,h:30, label:"−", sum:true },
+    { x:176,y:44,w:104,h:38, label:"K_p only", sub:"I = D = 0" },
+    { x:300,y:44,w:92,h:38, label:"τ_a", sub:TAU_A+" s" },
+    { x:412,y:44,w:92,h:38, label:"τ_m", sub:TAU_M+" s" },
+    { x:524,y:44,w:92,h:38, label:"τ_s", sub:TAU_S+" s" }
+  ];
+  const links = [
+    { d:"M106 63 H124" }, { d:"M156 63 H172" }, { d:"M280 63 H296" },
+    { d:"M392 63 H408" }, { d:"M504 63 H520" },
+    { d:"M616 63 H636 V140 H141 V80", t:"measured rate", tx:400, ty:156 }
+  ];
+  let h = "";
+  h += cxBlock("Why the ultimate-gain experiment works",
+    '<div class="cx-diagram">'+svgLoop(nodes, links, 700, 170)+'</div>'+
+    '<p class="cx-p">Three first-order lags in series each contribute up to 90° of phase. Somewhere there is a '+
+    'frequency ω_u where they total exactly 180° — feedback that was meant to be negative arrives inverted. '+
+    'Raise K_p until the loop gain at that frequency is exactly 1 and the ring neither grows nor decays. '+
+    'You have just measured the plant without ever modelling it.</p>'+
+    '<pre class="cx-eq">ω_u = √[(τ_m+τ_a+τ_s)/(τ_m·τ_a·τ_s)]  = '+num(zn.wu,1)+' rad/s\n'+
+    'P_u = 2π/ω_u                          = '+num(zn.Pu*1000,1)+' ms\n'+
+    'K_u = (τ_mτ_a+τ_mτ_s+τ_aτ_s)(τ_m+τ_a+τ_s)/(τ_mτ_aτ_s) − 1 = '+num(zn.Ku,2)+'</pre>');
+  h += cxBlock("The two tables, and why you would pick each", cxTable(
+    ["Method","K_p","T_i","T_d","Character","Gains here"],
+    [["Classic Z-N","0.6 K_u","0.5 P_u","0.125 P_u","Quarter-amplitude decay. Fast, and famously twitchy — roughly 25 % overshoot by design.",
+      "K_p "+num(gc.kp,2)+" · K_i "+num(gc.ki,0)+" · K_d "+num(gc.kd,4)],
+     ["Tyreus-Luyben","0.45 K_u","2.2 P_u","P_u/6.3","Deliberately detuned: much longer integral time, far more gain margin.",
+      "K_p "+num(gt.kp,2)+" · K_i "+num(gt.ki,0)+" · K_d "+num(gt.kd,4)]])+
+    '<p class="cx-p">Z-N was derived for industrial process loops, not for something that falls out of the sky when '+
+    'it is wrong. On an airframe the honest use of it is as a <b>starting point</b>: take the numbers, then back '+
+    'K_p off until the aircraft stops complaining. The margin chart shows exactly how much room you have left.</p>');
+  h += cxBlock("Free damping you did not have to tune",
+    '<pre class="cx-eq">b   = 0.0667·(air%/100)·(L/0.11)³·(ρ/1.225) = '+num(dragCoeff(),4)+' N·m·s/rad\n'+
+    'ζ_eff = (K_d + b)/(2√(K_p·J))</pre>'+
+    '<p class="cx-p">Aerodynamic drag on the arms and props enters the damping term in exactly the same place as '+
+    'K_d. A big slow airframe at low altitude arrives partly pre-damped; the same tune at 3000 m, where ρ has '+
+    'dropped, is measurably livelier. That is why the density-altitude slider changes these curves.</p>');
+  return h;
+}
+function conceptFusion(){
+  const im = imu(), m = alphaMetrics(state.fc.alpha), tr = fusionTradeoff();
+  const nodes = [
+    { x:10, y:16,w:120,h:38, label:"GYROSCOPE", sub:"ω, bias "+im.bias+" °/s", fill:"#f7eeea" },
+    { x:10, y:106,w:120,h:38, label:"ACCELEROMETER", sub:"θ, σ "+im.sigma+"°", fill:"#eef2f7" },
+    { x:170,y:16,w:150,h:38, label:"∫ ω dt", sub:"high-pass α" },
+    { x:170,y:106,w:150,h:38, label:"atan2(a_y, a_z)", sub:"low-pass (1−α)" },
+    { x:370,y:61,w:30,h:30, label:"+", sum:true },
+    { x:440,y:56,w:150,h:44, label:"θ̂", sub:"τ_f = "+num(m.tf,3)+" s", fill:"#fdf4e6" }
+  ];
+  const links = [
+    { d:"M130 35 H166" }, { d:"M130 125 H166" },
+    { d:"M320 35 H352 V64" }, { d:"M320 125 H352 V88" },
+    { d:"M400 76 H436" },
+    { d:"M520 100 V150 H236 V54", dash:true, c:"#c65d3b", t:"previous estimate", tx:360, ty:166 }
+  ];
+  let h = "";
+  h += cxBlock("Two sensors, opposite lies",
+    '<div class="cx-diagram">'+svgLoop(nodes, links, 700, 180)+'</div>'+
+    cxTable(["Sensor","Measures","Strength","Failure mode","This IMU"],
+      [["Gyroscope","angular RATE","No noise to speak of; usable to hundreds of Hz","Bias integrates without bound — the error grows linearly forever",
+        "bias "+num(im.bias,2)+" °/s → <b>"+num(im.bias*30,1)+"° in 30 s</b>"],
+       ["Accelerometer","gravity DIRECTION","Absolute; never drifts, no matter how long you fly","Every propeller vibration and every linear acceleration looks like tilt",
+        "σ = <b>"+num(im.sigma,2)+"°</b> per sample"]]));
+  h += cxBlock("The complementary filter",
+    '<pre class="cx-eq">θ̂ₖ = α·(θ̂ₖ₋₁ + ω·Δt) + (1−α)·θ_accel        α = '+num(state.fc.alpha,3)+',  Δt = 1/'+im.hz+' s\n'+
+    'τ_f = α·Δt/(1−α)                            = '+num(m.tf,3)+' s\n'+
+    'gyro path  H(s) = τ_f s/(τ_f s + 1)         high-pass\n'+
+    'accel path L(s) = 1/(τ_f s + 1)             low-pass    →   H(s) + L(s) ≡ 1</pre>'+
+    '<p class="cx-p">The two weights sum to exactly one at every frequency, which is what "complementary" means: '+
+    'nothing is double-counted and nothing is lost. Above the crossover, the estimate is the gyro. Below it, gravity '+
+    'quietly drags the estimate back onto truth — that is what stops the drift, and it costs one multiply per axis '+
+    'per sample. A Kalman filter does the same job with a state-dependent gain instead of a fixed α; on a hobby-class '+
+    'IMU the difference is usually smaller than the mounting error.</p>');
+  h += cxBlock("Choosing α is choosing which error you would rather have",
+    '<pre class="cx-eq">drift  = bias · τ_f                = '+num(m.drift,3)+'°\n'+
+    'noise  = σ · √((1−α)/(1+α))        = '+num(m.noise,3)+'°\n'+
+    'total  = drift + noise             = '+num(m.total,3)+'°      minimum at α* = '+num(tr.bestAlpha,3)+'</pre>'+
+    '<p class="cx-p">Raise α and you trust the gyro for longer, so its bias has longer to accumulate. Lower it and '+
+    'accelerometer noise leaks straight through into the estimate — and from there into K_p, into the mixer, and into '+
+    'the motors as audible chatter. The sum has exactly one minimum, and it moves when you change IMU: <b>α is a '+
+    'property of the sensor, not a constant to copy from a forum post.</b></p>');
+  return h;
+}
+function conceptFull(){
+  const r = fullSystemSim(state.fc.controller, state.fc.estimator, {escFault:state.fc.escFault});
+  const nodes = [
+    { x:10, y:52,w:86,h:38, label:"θ_cmd", fill:"#eef2f7" },
+    { x:116,y:56,w:30,h:30, label:"−", sum:true },
+    { x:166,y:52,w:104,h:38, label:"PID", sub:FC_CONTROLLERS[state.fc.controller].name },
+    { x:290,y:52,w:96,h:38, label:"MIXER" },
+    { x:406,y:52,w:96,h:38, label:"MOTORS" },
+    { x:522,y:52,w:110,h:38, label:"AIRFRAME", sub:"1/(J s²)", fill:"#fdf4e6" },
+    { x:330,y:148,w:180,h:38, label:"ESTIMATOR", sub:FC_ESTIMATORS[state.fc.estimator], fill:"#f7eeea" }
+  ];
+  const links = [
+    { d:"M96 71 H114" }, { d:"M146 71 H162" }, { d:"M270 71 H286" },
+    { d:"M386 71 H402" }, { d:"M502 71 H518" },
+    { d:"M632 71 H656 V167 H514", t:"θ (truth — nobody measures this)", tx:600, ty:120 },
+    { d:"M330 167 H131 V88", dash:true, c:"#c65d3b", t:"θ̂ — the only thing the loop can see", tx:230, ty:184 }
+  ];
+  let h = "";
+  h += cxBlock("The complete flight control system",
+    '<div class="cx-diagram">'+svgLoop(nodes, links, 700, 200)+'</div>'+
+    '<p class="cx-p">The single most important line in the diagram is the dashed one. The loop closes on <b>θ̂</b>, '+
+    'never on θ. If the estimator says level and the aircraft is not, the controller will actively bank it further to '+
+    '"correct" — a perfectly tuned PID will fly a drifting estimate straight into the ground, and the step response '+
+    'will look beautiful while it does so.</p>');
+  h += cxBlock("Where this run's score comes from", cxTable(
+    ["Contribution","Meaning","This system"],
+    [["Tracking RMS","how far the true attitude sat from the command, after the transient","<b>"+num(r.trackRMS,2)+"°</b>"],
+     ["Estimator RMS","how far the belief sat from the truth","<b>"+num(r.estRMS,2)+"°</b>"],
+     ["Overshoot","transient quality","<b>"+num(r.os,0)+" %</b>"],
+     ["Settling","time to hold ±2°","<b>"+num(r.ts,2)+" s</b>"],
+     ["Saturation","share of the run with a clipped actuator","<b>"+num(r.satPct,1)+" %</b>"],
+     ["<b>Score</b>","weighted, estimator quality dominating","<b>"+r.score+"</b>"]])+
+    '<p class="cx-p">Nine combinations exist (three controllers × three estimators) and the leaderboard ranks all of '+
+    'them live. The ordering is the lesson: the best controller on a bad estimator loses to a mediocre controller on '+
+    'a good one. Sensing first, control second.</p>');
+  return h;
+}
+function openConcept(){
+  const exp = currentExp().exp.id;
+  const title = { pid:"PID Control", zn:"Ziegler-Nichols Tuning", fusion:"Sensor Fusion", full:"Full Flight Control System" }[exp];
+  const body = openModal(txt(title)+' <em>· how it works</em>', "#1f3a93",
+    'every number in this window is computed live from the assembled airframe and the current controls');
+  const wrap = el("div","cx-wrap");
+  wrap.innerHTML = exp==="pid" ? conceptPID() : exp==="zn" ? conceptZN() :
+                   exp==="fusion" ? conceptFusion() : conceptFull();
+  body.appendChild(wrap);
 }

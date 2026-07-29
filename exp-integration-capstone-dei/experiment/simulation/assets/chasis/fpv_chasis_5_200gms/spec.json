@@ -1,0 +1,26 @@
+{
+  "name": "FPV 5\" Chassis",
+  "mass_g": 200,
+  "qty": 1,
+  "size_mm": [
+    220,
+    40,
+    220
+  ],
+  "model": "model.glb",
+  "specs": {
+    "Prop size": "5 in",
+    "Wheelbase": "220 mm",
+    "Material": "Carbon fibre"
+  },
+  "physics": {
+    "wheelbase_mm": 220,
+    "recommended_prop_in": [
+      5,
+      6
+    ],
+    "frontal_area_m2": 0.0085,
+    "cd": 1.05,
+    "arm_length_mm": 95
+  }
+}

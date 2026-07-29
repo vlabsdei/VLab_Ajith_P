@@ -1,9 +1,6 @@
 /* ════════════════════════════════════════════════════════════
-   AERODYNAMIC ANALYSIS LAB — main.css
-   Ported verbatim from the Drone Technology Lab reference platform
-   (same grid / palette / component classes) + additive rules for
-   airfoil & aero-parameter widgets at the bottom of this file.
-   Light research theme · teal #1f3a93 · slate #4f6d9e · amber #c65d3b
+   DRONE TECHNOLOGY LAB — main.css
+   Light research theme · teal #2a6f5e · slate #3d5a80 · amber #c9a02a
    ════════════════════════════════════════════════════════════ */
 
 :root{
@@ -111,7 +108,7 @@ input[type=range]::-webkit-slider-thumb{
 input[type=range]::-moz-range-thumb{width:12px;height:12px;border-radius:50%;background:#fff;border:2.5px solid var(--teal)}
 .slider-card .scale{display:flex;justify-content:space-between;font-size:8.5px;color:var(--faint)}
 
-/* ─────────── mass budget mini (reused for Aero Summary) ─────────── */
+/* ─────────── mass budget mini ─────────── */
 .mass-mini{display:flex;flex-direction:column;gap:4px}
 .mass-row{display:flex;align-items:center;gap:7px}
 .mass-row .lbl{font-size:9.5px;color:var(--ink-3);width:64px;flex:none}
@@ -142,7 +139,7 @@ input[type=range]::-moz-range-thumb{width:12px;height:12px;border-radius:50%;bac
 .vp-modules button.active{background:var(--amber);border-color:var(--amber);color:#fff}
 
 .vp-telemetry{
-  position:absolute;top:10px;right:10px;width:170px;
+  position:absolute;top:10px;right:10px;width:158px;
   background:rgba(255,255,255,.92);backdrop-filter:blur(4px);
   border:1px solid #e8cabc;border-radius:9px;padding:8px 10px;
   box-shadow:0 2px 8px rgba(20,40,40,.08);
@@ -150,7 +147,7 @@ input[type=range]::-moz-range-thumb{width:12px;height:12px;border-radius:50%;bac
 .tel-head{display:flex;align-items:center;gap:5px;font-size:8.5px;font-weight:700;letter-spacing:.09em;color:var(--amber-ink);margin-bottom:5px}
 .tel-dot{width:6px;height:6px;border-radius:50%;background:#b7c4bf;flex:none}
 .tel-dot.on{background:#2fa47c;animation:glow 1.4s infinite}
-.tel-rows{display:flex;flex-direction:column;gap:2px;font-size:9.5px;color:var(--ink-2)}
+.tel-rows{display:flex;flex-direction:column;gap:2.5px;font-size:9.5px;color:var(--ink-2)}
 .tel-rows div{display:flex;justify-content:space-between}
 .tel-rows b{font-weight:600;color:var(--ink)}
 
@@ -163,8 +160,6 @@ input[type=range]::-moz-range-thumb{width:12px;height:12px;border-radius:50%;bac
 .vp-exps button .done{color:#b7c9ef;margin-right:3px}
 .vp-exps button:not(.active) .done{color:var(--teal)}
 .vp-hint{position:absolute;bottom:10px;right:10px;font-size:8.5px;color:var(--faint);background:rgba(255,255,255,.7);border-radius:5px;padding:3px 7px}
-.vp-exps button:disabled{opacity:.45;cursor:not-allowed}
-.vp-modules button:disabled{opacity:.45;cursor:not-allowed}
 
 /* ─────────── run row ─────────── */
 .run-row{display:flex;align-items:center;gap:9px;flex-wrap:wrap}
@@ -172,7 +167,6 @@ input[type=range]::-moz-range-thumb{width:12px;height:12px;border-radius:50%;bac
 .btn-run{background:var(--teal);color:#fff;box-shadow:0 3px 10px rgba(31,58,147,.3)}
 .btn-run:hover{background:#182f7a}
 .btn-run.running{background:var(--danger);box-shadow:0 3px 10px rgba(168,50,50,.3)}
-.btn-run.blocked{background:#c2c9c6;box-shadow:none;cursor:not-allowed;color:#fff}
 .btn-ghost{background:#fff;border:1px solid #d5ddda;color:var(--ink-2);font-weight:600;padding:9px 18px}
 .btn-ghost:hover{border-color:var(--muted)}
 .progress-wrap{margin-left:auto;display:flex;align-items:center;gap:8px}
@@ -182,7 +176,7 @@ input[type=range]::-moz-range-thumb{width:12px;height:12px;border-radius:50%;bac
 #progressTxt{font-size:10px;font-weight:600}
 
 /* ─────────── calculations strip ─────────── */
-.calc-chips{display:flex;gap:16px;flex-wrap:wrap}
+.calc-chips{display:flex;gap:18px;flex-wrap:wrap}
 .calc-chip{display:flex;flex-direction:column;gap:1px}
 .calc-chip .k{font-size:8.5px;font-weight:600;letter-spacing:.06em;color:var(--muted);text-transform:uppercase}
 .calc-chip .v{font-family:'IBM Plex Mono',monospace;font-size:12.5px;font-weight:600;color:var(--ink)}
@@ -195,9 +189,9 @@ input[type=range]::-moz-range-thumb{width:12px;height:12px;border-radius:50%;bac
 .chart-box{position:relative;width:100%;height:160px;background:#fbfcfc;border-radius:7px;padding:5px 6px;box-sizing:border-box;overflow:hidden}
 button.out-card:hover{border-color:var(--slate)}
 
-.reward-card{flex:1;min-height:150px}
+.reward-card{flex:0 0 auto;min-height:0}
 .head-unlock{margin-top:6px}
-.reward-body{flex:1;display:flex;flex-direction:column;min-height:120px}
+.reward-body{flex:1;display:flex;flex-direction:column;min-height:0}
 .reward-locked{
   flex:1;border-radius:9px;background:#f2f5f4;border:1px dashed #ccd6d2;
   display:flex;flex-direction:column;align-items:center;justify-content:center;gap:6px;padding:14px;
@@ -206,7 +200,10 @@ button.out-card:hover{border-color:var(--slate)}
 .reward-locked p{margin:0;font-size:9.5px;font-weight:600;color:var(--muted);text-align:center;line-height:1.5}
 .reward-open{
   flex:1;border-radius:9px;border:1px solid #e8cabc;overflow:hidden;display:flex;flex-direction:column;
-  background:linear-gradient(165deg,rgba(198,93,59,.10),rgba(31,58,147,.06));
+  /* neutral studio backdrop — a soft vignette so the component reads as a lit
+     object on a sweep, instead of the old amber/navy wash that tinted the mesh */
+  background:
+    radial-gradient(120% 90% at 50% 28%, #ffffff 0%, #f2f5f4 46%, #e3e9e7 100%);
   animation:cardIn .5s ease;
 }
 .reward-open .view{flex:1;min-height:96px}
@@ -264,7 +261,7 @@ button.out-card:hover{border-color:var(--slate)}
   display:flex;align-items:center;justify-content:center;
 }
 .modal{
-  width:760px;max-width:100%;max-height:86vh;
+  width:720px;max-width:100%;max-height:86vh;
   background:#fdfefd;border-radius:16px;overflow:hidden;
   box-shadow:0 24px 70px rgba(20,40,40,.35);
   display:flex;flex-direction:column;animation:cardIn .22s ease;
@@ -299,6 +296,38 @@ button.out-card:hover{border-color:var(--slate)}
 .pick-opt .specs .mass{border-top:1px dashed #e2e8e5;padding-top:3px;margin-top:1px}
 .pick-opt .specs .mass .v{color:var(--teal);font-weight:600}
 
+/* mass detail */
+.mass-table{display:flex;flex-direction:column;gap:8px}
+.mass-thead,.mass-trow{display:grid;grid-template-columns:104px 1fr 42px 66px;gap:8px;align-items:center}
+.mass-thead{font-size:8.5px;font-weight:700;letter-spacing:.07em;color:var(--muted);text-transform:uppercase}
+.mass-thead :nth-child(3),.mass-thead :nth-child(4){text-align:right}
+.mass-trow{background:#fff;border:1px solid var(--line-soft);border-radius:9px;padding:8px 10px}
+.mass-trow .comp{font-size:10.5px;font-weight:700}
+.mass-trow .selname{font-size:10px;color:var(--ink-2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.mass-trow .bar{height:4px;border-radius:2px;background:#edf1ef;margin-top:4px;overflow:hidden}
+.mass-trow .bar i{display:block;height:100%;background:linear-gradient(90deg,#1f3a93,#6c86c9);border-radius:2px}
+.mass-trow .qty{font-family:'IBM Plex Mono',monospace;font-size:10px;color:var(--muted);text-align:right}
+.mass-trow .sub{font-family:'IBM Plex Mono',monospace;font-size:10.5px;font-weight:600;text-align:right}
+.mass-grand{display:flex;justify-content:space-between;align-items:center;background:var(--ink);border-radius:10px;padding:12px 14px;margin-top:4px}
+.mass-grand span{font-size:11px;font-weight:700;color:#fff}
+.mass-grand span em{font-style:normal;font-weight:500;color:rgba(255,255,255,.55)}
+.mass-grand b{font-family:'IBM Plex Mono',monospace;font-size:17px;font-weight:600;color:#9fb8e8}
+.mass-note{font-size:9.5px;color:var(--muted);line-height:1.55;margin-top:6px}
+.mass-note b{font-family:'IBM Plex Mono',monospace}
+.mass-note .good{color:var(--teal)} .mass-note .warn{color:var(--danger)}
+
+/* graphs modal */
+.runs-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:12px}
+.run-card{border:1px solid var(--line-soft);border-radius:12px;background:#fff;padding:10px;display:flex;flex-direction:column;gap:7px}
+.run-card .top{display:flex;justify-content:space-between;align-items:baseline}
+.run-card .name{font-size:10.5px;font-weight:700}
+.run-card .when{font-family:'IBM Plex Mono',monospace;font-size:8.5px;color:var(--muted)}
+.run-card canvas{width:100%;height:96px;display:block;border-radius:7px;background:#fbfcfc}
+.run-card .foot{display:flex;justify-content:space-between;font-family:'IBM Plex Mono',monospace;font-size:9px;color:var(--ink-3)}
+.run-card .foot b{color:var(--teal);font-weight:600}
+.runs-empty{border:1px dashed #ccd6d2;border-radius:12px;padding:34px 20px;text-align:center;color:var(--muted);font-size:11px;line-height:1.6}
+.runs-empty b{color:var(--teal)}
+
 /* calc modal */
 .calc-blocks{display:flex;flex-direction:column;gap:10px}
 .calc-block{border:1px solid var(--line-soft);border-radius:11px;background:#fff;padding:11px 13px;display:flex;flex-direction:column;gap:5px}
@@ -311,35 +340,32 @@ button.out-card:hover{border-color:var(--slate)}
 @keyframes pulse{0%,100%{box-shadow:0 6px 18px rgba(43,64,102,.45)}50%{box-shadow:0 6px 26px rgba(43,64,102,.75)}}
 @keyframes glow{0%,100%{opacity:.55}50%{opacity:1}}
 @keyframes cardIn{from{opacity:0;transform:translateY(10px) scale(.985)}to{opacity:1;transform:none}}
-@keyframes spin{to{transform:rotate(360deg)}}
 
-/* ────────────────────── RESPONSIVE ────────────────────── */
+/* ════════════════════ RESPONSIVE ════════════════════ */
 @media (max-width:1180px){
   .lab{grid-template-columns:268px minmax(0,1fr);height:auto;overflow:visible}
   .col{overflow:visible}
   .col-right{grid-column:1/-1;border-left:none;border-top:1px solid var(--line)}
   .out-pair{display:grid;grid-template-columns:1fr 1fr;gap:12px}
-  .reward-card{min-height:210px}
+  .reward-card{min-height:0}
 }
 @media (max-width:820px){
   .lab{display:flex;flex-direction:column;gap:12px;padding:12px 12px 80px}
   .col{display:contents}
-  /* mobile order: viewport → inputs (slidable) → blade geom → operating point → altitude → aero summary → calc → outputs → diagnostics → unlocked */
+  /* mobile order: viewport → inputs (slidable) → altitude → mass → calc → outputs → diagnostics → unlocked */
   .viewport-frame{order:1;height:min(52vh,460px)}
   .run-row{order:2}
   .head-inputs{order:3}
   .param-grid{order:4;display:flex;overflow-x:auto;gap:9px;padding-bottom:6px;scroll-snap-type:x mandatory;-webkit-overflow-scrolling:touch}
   .param-grid .tile{flex:0 0 148px;scroll-snap-align:start}
-  #bladeGeomCard{order:5}
-  #opCard{order:6}
-  .slider-card:not(#bladeGeomCard):not(#opCard){order:7}
-  .mass-card{order:8}
-  .calc-card{order:9}
-  .head-outputs{order:10}
-  .out-pair{order:11;display:grid;grid-template-columns:1fr 1fr;gap:10px}
-  .log-card{order:12}
-  .head-unlock{order:13;margin-top:2px}
-  .reward-card{order:14;min-height:200px}
+  .slider-card{order:5}
+  .mass-card{order:6}
+  .calc-card{order:7}
+  .head-outputs{order:8}
+  .out-pair{order:9;display:grid;grid-template-columns:1fr 1fr;gap:10px}
+  .log-card{order:10}                 /* Diagnostics Log: below Outputs, above Components */
+  .head-unlock{order:11;margin-top:2px}
+  .reward-card{order:12;min-height:0}
   .chart-box{height:132px}
   .tabbar{display:flex}
   .instructor{bottom:76px;right:12px}
@@ -349,6 +375,10 @@ button.out-card:hover{border-color:var(--slate)}
 @media (max-width:400px){
   .vp-telemetry{width:132px;padding:6px 8px}
 }
+
+/* ─────────── telemetry (6 rows) ─────────── */
+.vp-telemetry{width:170px}
+.tel-rows{gap:2px}
 
 /* ─────────── diagnostics log ─────────── */
 .log-card{gap:7px}
@@ -372,7 +402,10 @@ button.out-card:hover{border-color:var(--slate)}
 .log-item.err .ic{background:var(--danger)}
 .log-empty{font-size:9.5px;color:var(--muted);padding:6px 2px}
 
-/* verdict banner */
+/* run-blocked state */
+.btn-run.blocked{background:#c2c9c6;box-shadow:none;cursor:not-allowed;color:#fff}
+
+/* ─────────── verdict banner (flight/thrust result) ─────────── */
 .verdict{display:flex;align-items:center;gap:11px;border-radius:11px;padding:12px 14px;margin-bottom:12px}
 .verdict.pass{background:linear-gradient(120deg,rgba(31,138,91,.12),rgba(31,138,91,.04));border:1px solid rgba(31,138,91,.3)}
 .verdict.fail{background:linear-gradient(120deg,rgba(168,50,50,.1),rgba(168,50,50,.03));border:1px solid rgba(168,50,50,.3)}
@@ -394,7 +427,7 @@ button.out-card:hover{border-color:var(--slate)}
 .chart-legend{display:flex;gap:14px;flex-wrap:wrap;margin-top:6px;font-size:9.5px;color:var(--ink-3)}
 .chart-legend i{display:inline-block;width:11px;height:3px;border-radius:2px;margin-right:5px;vertical-align:middle}
 
-/* chart gallery (Chart.js modal) */
+/* ─────────── chart gallery (Chart.js modal) ─────────── */
 .chart-box-lg{position:relative;width:100%;height:280px;background:#fbfcfc;border-radius:8px;padding:6px;box-sizing:border-box;overflow:hidden}
 .chart-box-lg canvas{max-width:100%}
 .gchart-head{display:flex;align-items:center;justify-content:space-between;gap:8px}
@@ -402,12 +435,22 @@ button.out-card:hover{border-color:var(--slate)}
 .gchart-expand{border:1px solid var(--line-soft);background:#fff;border-radius:7px;width:27px;height:27px;cursor:pointer;font-size:14px;color:var(--slate);flex:none;line-height:1}
 .gchart-expand:hover{background:#f2f5f4;border-color:var(--slate)}
 .chart-footnote{margin:5px 0 0;font-size:10px;color:var(--muted);font-family:'IBM Plex Mono',monospace}
-.runs-empty{border:1px dashed #ccd6d2;border-radius:12px;padding:34px 20px;text-align:center;color:var(--muted);font-size:11px;line-height:1.6}
-.runs-empty b{color:var(--teal)}
+.runs-empty{padding:26px 18px;text-align:center;color:var(--ink-3);font-size:12.5px;line-height:1.7}
 .modal-back{border:1px solid var(--line-soft);background:#fff;border-radius:8px;padding:5px 12px;cursor:pointer;font-size:12px;color:var(--slate)}
 .modal-back:hover{background:#f2f5f4;border-color:var(--slate)}
+.circuit-flow{display:flex;gap:10px;align-items:stretch;font-family:'IBM Plex Mono',monospace;padding:8px 0;flex-wrap:wrap}
+.circuit-flow .cbox{flex:1;min-width:132px;text-align:center;padding:12px 6px;border:1px solid var(--line-soft);border-radius:8px;display:flex;flex-direction:column;gap:4px}
+.circuit-flow .ck{font-size:9.5px;color:var(--muted);letter-spacing:.04em}
+.circuit-flow .cv{font-size:20px;font-weight:700}
+.circuit-flow .cop{align-self:center;font-size:18px;color:var(--muted)}
+.sankey{font-family:'IBM Plex Mono',monospace;font-size:12px;padding:6px 0 2px;display:flex;flex-direction:column;gap:9px}
+.sankey .srow{display:flex;align-items:center;gap:10px}
+.sankey .srow>span{width:150px;color:var(--ink-3)}
+.sankey .srow>b{width:70px;text-align:right;color:var(--ink)}
+.sankey .sbar{flex:1;background:#e7edeb;border-radius:4px;height:14px;overflow:hidden}
+.sankey .sbar i{display:block;height:100%}
 
-/* boot overlay */
+/* ─────────── boot overlay ─────────── */
 .boot-overlay{position:fixed;inset:0;z-index:200;background:linear-gradient(175deg,#f7f9f8,#e8efec);display:flex;align-items:center;justify-content:center;transition:opacity .45s}
 .boot-overlay.gone{opacity:0;pointer-events:none}
 .boot-card{display:flex;flex-direction:column;align-items:center;gap:14px;padding:30px}
@@ -416,58 +459,124 @@ button.out-card:hover{border-color:var(--slate)}
 .boot-sub{font-size:10px;color:var(--muted)}
 .boot-track{width:220px;height:4px;border-radius:2px;background:#dbe3df;overflow:hidden}
 .boot-fill{height:100%;width:0%;background:linear-gradient(90deg,#1f3a93,#4a67c0);border-radius:2px;transition:width .3s}
+@keyframes spin{to{transform:rotate(360deg)}}
 
+/* ─────────── bench / flight controls ─────────── */
+.mode-group{display:flex;border:1px solid #d5ddda;border-radius:9px;overflow:hidden}
+.mode-btn{border:none;background:#fff;color:var(--ink-2);font-size:10.5px;font-weight:600;padding:9px 14px;cursor:pointer}
+.mode-btn.active{background:var(--slate);color:#fff}
+.throttle-wrap{display:flex;align-items:center;gap:8px;min-width:200px;flex:1;max-width:280px}
+.throttle-wrap[hidden]{display:none}
+.throttle-wrap input[type=range]{flex:1;margin:0}
+#throttleVal{font-size:11px;font-weight:600;min-width:34px;text-align:right}
+.tel-phase{margin-top:6px;border-top:1px dashed #e8cabc;padding-top:5px;font-size:9.5px;font-weight:700;letter-spacing:.06em;color:var(--ink-2)}
+.tel-phase.good{color:#1f8a5b}
+.tel-phase.warn{color:var(--amber-ink)}
+.tel-phase.danger{color:var(--danger)}
 .ff-badge{position:absolute;bottom:44px;right:10px;background:var(--amber);color:#fff;font-size:9px;font-weight:700;letter-spacing:.06em;border-radius:5px;padding:3px 8px;box-shadow:0 2px 8px rgba(198,93,59,.4);animation:glow 1.2s infinite}
 .ff-badge[hidden]{display:none}
+.vp-exps button:disabled{opacity:.45;cursor:not-allowed}
+.vp-modules button:disabled{opacity:.45;cursor:not-allowed}
 
+/* ═══════════ AERO-SPECIFIC CONTROLS (on the propulsion theme) ═══════════ */
+/* blade-geometry + operating-point mini sliders — compact, matches propulsion card text */
+.mini-slider{display:flex;flex-direction:column;gap:1px}
+.mini-slider input[type=range]{margin:2px 0 4px}
+.mini-slider .row-between{font-size:10px}
+.mini-slider .row-between>span:first-child{color:var(--ink-2);font-weight:500;letter-spacing:.01em}
+.mini-slider .row-between>span:first-child em{font-size:9px}
+.mini-slider .mono.accent{font-size:10.5px;font-weight:600}
+.slider-card .card-title{margin-bottom:2px}
+.link-hint em,.card-title em{font-style:normal;color:var(--muted);font-weight:500}
 
-/* ════════════════════════════════════════════════════════════
-   ADDITIVE — airfoil / aero parameter widgets (exp-3 only)
-   ════════════════════════════════════════════════════════════ */
+/* blade-count segmented selector */
+.blade-count{display:flex;border:1px solid #d5ddda;border-radius:8px;overflow:hidden;margin-top:4px}
+.blade-count button{flex:1;border:none;border-right:1px solid #e2e8e5;background:#fff;color:var(--ink-2);font-size:10.5px;font-weight:600;padding:7px 0;cursor:pointer}
+.blade-count button:last-child{border-right:none}
+.blade-count button.active{background:var(--teal);color:#fff}
 
-/* mini sliders packed inside Blade Geometry / Operating Point cards */
-.mini-slider{display:flex;flex-direction:column;gap:2px}
-.mini-slider span{font-size:9.5px;color:var(--ink-3)}
-.mini-slider input[type=range]{margin:2px 0}
-.wash-row{padding-top:2px}
-
-/* iOS-style toggle switch (Rotor Wash) */
-.toggle{
-  width:38px;height:21px;border-radius:11px;border:none;background:#d5ddda;
-  position:relative;cursor:pointer;flex:none;padding:0;transition:background .18s;
-}
-.toggle i{
-  position:absolute;top:2px;left:2px;width:17px;height:17px;border-radius:50%;
-  background:#fff;box-shadow:0 1px 3px rgba(20,40,40,.3);transition:left .18s;display:block;
-}
+/* rotor-wash toggle switch */
+.wash-row{margin-top:2px}
+.toggle{width:38px;height:20px;border-radius:20px;border:none;background:#cdd6d2;position:relative;cursor:pointer;flex:none;transition:background .18s}
+.toggle i{position:absolute;top:2px;left:2px;width:16px;height:16px;border-radius:50%;background:#fff;box-shadow:0 1px 3px rgba(20,40,40,.3);transition:left .18s}
 .toggle.on{background:var(--teal)}
-.toggle.on i{left:19px}
+.toggle.on i{left:20px}
 
-/* context-sensitive emphasis: highlight the slider relevant to the active module */
-.mini-slider.emph{background:var(--teal-soft);border-radius:8px;padding:4px 6px;margin:-4px -6px}
-.mini-slider.emph span{color:var(--teal);font-weight:600}
-.wash-row.emph{background:var(--teal-soft);border-radius:8px;padding:4px 6px;margin:2px -6px -2px}
+/* airfoil section tile canvas (2D profile) */
+.tile-view.airfoil-view{background:linear-gradient(160deg,#eef3f7,#e2e9f0)}
 
-/* airfoil-shape canvas used in tiles / pickers / charts */
-.airfoil-canvas{width:100%;height:100%;display:block;background:linear-gradient(160deg,#f0f4f2,#e5ecea)}
-.pick-opt .view canvas.airfoil-canvas{background:linear-gradient(160deg,#f0f4f2,#e3eae7)}
+/* aero-summary mini reuses .mass-mini rows */
+.aero-mini .mass-row .val{width:auto;min-width:52px}
 
-/* Aero Summary rows (value-only, no bar — reuses .mass-row layout minus the bar) */
-.aero-mini .aero-row{display:flex;justify-content:space-between;align-items:center;gap:6px;font-size:9.5px}
-.aero-mini .aero-row .lbl{color:var(--ink-3)}
-.aero-mini .aero-row .val{font-family:'IBM Plex Mono',monospace;font-size:10px;font-weight:600;color:var(--ink)}
-.aero-mini .aero-row .val.warn{color:var(--danger)}
-
-/* blade-count stepper picker (opens via the Blade Count tile) */
-.blade-pick{display:flex;gap:10px;flex-wrap:wrap}
-.blade-pick button{
-  flex:1;min-width:110px;border:1.5px solid var(--line-soft);border-radius:12px;background:#fff;
-  padding:14px 10px;cursor:pointer;display:flex;flex-direction:column;align-items:center;gap:6px;
-  transition:border-color .15s,box-shadow .15s;
+/* ═══ aero mobile stacking (extra design cards → propulsion-style single column) ═══ */
+@media (max-width:820px){
+  #airfoilCard{order:5}
+  #bladeGeomCard{order:6}
+  #opCard{order:7}
+  #altCard{order:8}
+  #aeroCard{order:9}
+  .calc-card{order:10}
+  .head-outputs{order:11}
+  .out-pair{order:12}
+  .log-card{order:13}
+  .head-unlock{order:14}
+  .reward-card{order:15}
+  #airfoilCard .tile-view{height:56px}
 }
-.blade-pick button:hover{box-shadow:0 4px 14px rgba(31,58,147,.13)}
-.blade-pick button.selected{border-color:var(--teal);background:#f4f6fc}
-.blade-pick .n{font-size:22px;font-weight:700;color:var(--ink)}
-.blade-pick .lab{font-size:9.5px;color:var(--muted);font-weight:600;letter-spacing:.04em;text-transform:uppercase}
 
-/* wind-tunnel / regression footnote row inside calc blocks reuse .calc-block styles already above */
+/* ═══════════ OPERATING-POINT FLOATING SHEET (mobile, exp2 pattern) ═══════════ */
+/* desktop: a normal inline card — the FAB/backdrop/Done are hidden, sheet-head is a title row */
+.slider-sheet-toggle{display:none}
+.slider-fab{display:none}
+.slider-backdrop{display:none}
+.slider-panel .sheet-head{display:flex;align-items:center;justify-content:space-between;gap:8px}
+.slider-panel .sheet-done{display:none}
+
+@media (max-width:820px){
+  /* Operating Point becomes a floating bottom-sheet toggled by a FAB */
+  .slider-panel{
+    position:fixed;left:0;right:0;bottom:0;width:100%;margin:0;
+    max-height:78vh;height:auto;overflow-y:auto;z-index:1200;
+    transform:translateY(102%);
+    transition:transform .3s cubic-bezier(.4,0,.2,1);
+    border-radius:16px 16px 0 0;border-bottom:none;
+    box-shadow:0 -12px 40px rgba(20,40,40,.28);
+  }
+  #opSheetToggle:checked ~ .slider-panel{transform:translateY(0)}
+  .slider-panel .sheet-head{
+    position:sticky;top:0;z-index:2;margin:-11px -12px 8px;padding:12px 14px;
+    background:var(--card);border-bottom:1px solid var(--line-soft);font-size:11px;
+  }
+  .slider-panel .sheet-done{
+    display:inline-block;cursor:pointer;padding:5px 12px;border-radius:6px;
+    background:var(--panel);font-size:10px;font-weight:600;color:var(--ink-2);
+  }
+  .slider-fab{
+    display:inline-flex;align-items:center;gap:7px;
+    position:fixed;left:14px;bottom:74px;z-index:1300;
+    padding:11px 17px;border-radius:999px;border:none;
+    background:var(--teal);color:#fff;font-family:'IBM Plex Sans',sans-serif;
+    font-size:11.5px;font-weight:700;cursor:pointer;
+    box-shadow:0 6px 18px rgba(31,58,147,.32);
+  }
+  .slider-fab .ic{font-size:13px}
+  #opSheetToggle:checked ~ .slider-fab{display:none}          /* hide FAB while the sheet is open */
+  .slider-backdrop{display:none;position:fixed;inset:0;z-index:1100;background:rgba(20,40,40,.44)}
+  #opSheetToggle:checked ~ .slider-backdrop{display:block}
+}
+
+/* ─────────── reward card (unlocked component) ─────────── */
+.reward-open .view{position:relative}
+.reward-open .view::after{            /* contact shadow under the floating part */
+  content:"";position:absolute;left:50%;bottom:8%;transform:translateX(-50%);
+  width:52%;height:9px;border-radius:50%;pointer-events:none;
+  background:radial-gradient(ellipse at center, rgba(30,42,41,.20), rgba(30,42,41,0) 70%);
+}
+.reward-open .meta{display:flex;flex-direction:column;gap:3px;border-top:1px solid rgba(232,202,188,.7)}
+.rw-kind{font-size:8px;font-weight:700;letter-spacing:.10em;text-transform:uppercase;color:var(--amber)}
+.reward-open .meta b{font-size:11px;line-height:1.25;color:var(--ink)}
+.rw-specs{display:flex;flex-wrap:wrap;gap:4px 10px;margin-top:1px}
+.rw-specs span{display:flex;gap:4px;font-size:8.5px;color:var(--ink-3);white-space:nowrap}
+.rw-specs i{font-style:normal;color:var(--faint)}
+.reward-final .lock{background:#fdf1d8;color:#9a7a1e}
+.reward-final p{color:var(--amber-ink)}

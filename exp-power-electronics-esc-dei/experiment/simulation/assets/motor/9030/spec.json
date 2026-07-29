@@ -1,6 +1,6 @@
 {
-  "name": "9030 \u2014 120 KV",
-  "mass_g": 720,
+  "name": "9030 — 1250 KV",
+  "mass_g": 320,
   "qty": 4,
   "size_mm": [
     105,
@@ -12,16 +12,16 @@
     "rotar.glb"
   ],
   "specs": {
-    "KV": "120 rpm/V",
-    "Max current": "90 A",
-    "Stator": "90 \u00d7 30"
+    "KV": "1250 rpm/V",
+    "Max current": "80 A",
+    "Stator": "90 × 30"
   },
   "physics": {
-    "kv": 120,
-    "rm_ohm": 0.045,
-    "i0_a": 1.5,
-    "max_current_a": 90,
-    "max_power_w": 5200,
+    "kv": 1250,
+    "rm_ohm": 0.0056,
+    "i0_a": 3.0,
+    "max_current_a": 80,
+    "max_power_w": 3900,
     "k_fe": 0.0012,
     "max_cells": 12
   }

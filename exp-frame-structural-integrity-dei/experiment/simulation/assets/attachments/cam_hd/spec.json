@@ -1,0 +1,22 @@
+{
+  "name": "HD Digital Camera",
+  "mass_g": 20,
+  "qty": 1,
+  "size_mm": [
+    24,
+    24,
+    28
+  ],
+  "model": "assets/attachments/camera/camera.glb",
+  "specs": {
+    "Type": "Digital HD",
+    "FOV": "150°",
+    "Resolution": "1080p60",
+    "Latency": "22 ms"
+  },
+  "physics": {
+    "payload": true,
+    "mount_type": "camera",
+    "sensor_mp": 4.0
+  }
+}

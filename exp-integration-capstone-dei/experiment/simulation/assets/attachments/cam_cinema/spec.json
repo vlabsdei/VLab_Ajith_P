@@ -1,0 +1,22 @@
+{
+  "name": "Cinema Camera Module",
+  "mass_g": 72,
+  "qty": 1,
+  "size_mm": [
+    36,
+    36,
+    48
+  ],
+  "model": "assets/attachments/camera/camera.glb",
+  "specs": {
+    "Type": "Cinema",
+    "FOV": "120°",
+    "Resolution": "6K24 ProRes",
+    "Stabilised": "Yes"
+  },
+  "physics": {
+    "payload": true,
+    "mount_type": "camera",
+    "sensor_mp": 24.0
+  }
+}

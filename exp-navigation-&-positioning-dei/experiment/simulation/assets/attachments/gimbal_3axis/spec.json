@@ -1,0 +1,23 @@
+{
+  "name": "Pro 3-Axis Gimbal",
+  "mass_g": 245,
+  "qty": 1,
+  "size_mm": [
+    72,
+    105,
+    62
+  ],
+  "model": "assets/attachments/gimbal/NL_DRONE_GIMBAL_GC.glb",
+  "specs": {
+    "Axes": "3 (brushless)",
+    "Payload": "Mirrorless, 400 g",
+    "Tilt": "-120° / +45°",
+    "Roll": "±45°"
+  },
+  "physics": {
+    "payload": true,
+    "mount_type": "payload",
+    "axes": 3,
+    "max_payload_g": 400
+  }
+}

@@ -1,0 +1,175 @@
+{
+  "version": 2.0,
+  "questions": [
+    {
+      "question": "Q1. In an integrated drone build, why can a design that passes every individual subsystem test still fail as a whole?",
+      "answers": {
+        "a": "Because the subsystems are electrically isolated from each other",
+        "b": "Because the subsystems are coupled — a change to one shifts mass, current, heat and endurance in the others",
+        "c": "Because individual tests are always wrong",
+        "d": "Because the battery is the only component that matters"
+      },
+      "explanations": {
+        "a": "Incorrect — the subsystems share mass, current and heat; they are strongly coupled.",
+        "b": "Correct — integration fails when the coupled operating point does not satisfy every constraint at once.",
+        "c": "Incorrect — the isolated tests are valid; integration adds new coupling constraints.",
+        "d": "Incorrect — every component contributes to the coupled result."
+      },
+      "correctAnswer": "b",
+      "difficulty": "beginner"
+    },
+    {
+      "question": "Q2. Adding a larger battery to increase flight time can paradoxically reduce it. Why?",
+      "answers": {
+        "a": "A larger battery outputs less voltage",
+        "b": "Extra battery mass lowers TWR, raising hover throttle and hover current, which drains capacity faster",
+        "c": "Larger batteries always have lower capacity",
+        "d": "The ESC ignores the extra mass"
+      },
+      "explanations": {
+        "a": "Incorrect — voltage is set by cell count, not size.",
+        "b": "Correct — added mass raises the hover power draw, and beyond a point the extra draw outweighs the extra capacity.",
+        "c": "Incorrect — larger packs usually have more capacity.",
+        "d": "Incorrect — mass directly changes the required hover thrust and current."
+      },
+      "correctAnswer": "b",
+      "difficulty": "intermediate"
+    },
+    {
+      "question": "Q3. A build meets its weight and payload targets but the ESC runs above its thermal limit at hover. Which two concepts must be revisited?",
+      "answers": {
+        "a": "Aerodynamics and Navigation",
+        "b": "ESC power electronics and Thermal Management",
+        "c": "Flight Control and Frame Integrity",
+        "d": "Energy Storage and Propulsion only"
+      },
+      "explanations": {
+        "a": "Incorrect — the failure is electrical/thermal, not aerodynamic or positioning.",
+        "b": "Correct — conduction loss (I²·R) and steady-state temperature rise are the ESC and Thermal Management concepts.",
+        "c": "Incorrect — control and structure are unrelated to the overheating cause.",
+        "d": "Incorrect — the direct cause is ESC conduction loss and cooling, not capacity."
+      },
+      "correctAnswer": "b",
+      "difficulty": "intermediate"
+    },
+    {
+      "question": "Q4. Which single ratio best summarises whether a loaded aircraft has enough thrust to fly safely?",
+      "answers": {
+        "a": "Capacity-to-voltage ratio",
+        "b": "Thrust-to-weight ratio (TWR)",
+        "c": "KV-to-diameter ratio",
+        "d": "ESC-to-motor mass ratio"
+      },
+      "explanations": {
+        "a": "Incorrect — that describes the battery, not lift capacity.",
+        "b": "Correct — TWR = 4·Tmax /(m·g); a loaded TWR below ~2 leaves no control margin.",
+        "c": "Incorrect — KV and diameter matter but do not summarise lift capacity alone.",
+        "d": "Incorrect — component mass ratios do not describe flight capability."
+      },
+      "correctAnswer": "b",
+      "difficulty": "beginner"
+    },
+    {
+      "question": "Q5. The capstone mission specifies a maximum all-up weight, a minimum flight time and a required payload. Why is the payload treated as a constraint rather than an option?",
+      "answers": {
+        "a": "Because payload mass is negligible and can be ignored",
+        "b": "Because the mission exists to carry it, so a build that only flies unloaded has not met the requirement",
+        "c": "Because payload only affects the appearance of the aircraft",
+        "d": "Because the payload powers the flight controller"
+      },
+      "explanations": {
+        "a": "Incorrect — the required payload is a substantial fraction of the mass budget and changes every downstream number.",
+        "b": "Correct — the aircraft is a means to carry the payload. Verifying an unloaded build answers a question nobody asked.",
+        "c": "Incorrect — payload is a mass and a power consequence, not a cosmetic choice.",
+        "d": "Incorrect — the payload is a load on the system, not a source of power."
+      },
+      "correctAnswer": "b",
+      "difficulty": "beginner"
+    },
+    {
+      "question": "Q6. The mission is flown at 300 m density altitude rather than at sea level. What does that change?",
+      "answers": {
+        "a": "Nothing, since 300 m is a small height",
+        "b": "Air density falls, so the same propeller at the same RPM produces less thrust",
+        "c": "The battery delivers less voltage at altitude",
+        "d": "The flight controller has to be recalibrated for gravity"
+      },
+      "explanations": {
+        "a": "Incorrect — it is a modest effect, but it moves thrust in the unhelpful direction and eats margin.",
+        "b": "Correct — thrust scales with air density, so a build that just barely lifts at sea level has less margin at altitude.",
+        "c": "Incorrect — pack voltage is unaffected by air density.",
+        "d": "Incorrect — gravity is effectively unchanged over a few hundred metres."
+      },
+      "correctAnswer": "b",
+      "difficulty": "intermediate"
+    },
+    {
+      "question": "Q7. Why does a heavier motor not automatically produce a better aircraft?",
+      "answers": {
+        "a": "Heavier motors are always less powerful",
+        "b": "It adds thrust but also mass and current draw, which affect TWR, ESC heating and endurance at the same time",
+        "c": "Heavier motors cannot be fitted to standard frames",
+        "d": "Motor mass has no effect on the design"
+      },
+      "explanations": {
+        "a": "Incorrect — larger motors generally produce more thrust; that is not the objection.",
+        "b": "Correct — every upgrade propagates. More thrust costs mass, current and heat, and whether it is a net gain depends on the whole coupled system.",
+        "c": "Incorrect — mounting is a compatibility question the diagnostics handle separately.",
+        "d": "Incorrect — motor mass enters the all-up weight four times over."
+      },
+      "correctAnswer": "b",
+      "difficulty": "intermediate"
+    },
+    {
+      "question": "Q8. What does it mean for a build to be self-consistent?",
+      "answers": {
+        "a": "All the components come from the same manufacturer",
+        "b": "Every subsystem satisfies its own limits at the same shared operating point, rather than each being acceptable in isolation",
+        "c": "The build uses the cheapest available parts",
+        "d": "The aircraft is symmetrical about both axes"
+      },
+      "explanations": {
+        "a": "Incorrect — brand has no bearing on whether the physics closes.",
+        "b": "Correct — there is one current, one mass and one hover throttle. Self-consistency means every constraint is met at those actual values, not at convenient assumed ones.",
+        "c": "Incorrect — cost is not a constraint in this experiment.",
+        "d": "Incorrect — geometric symmetry matters for balance but is not what self-consistency means."
+      },
+      "correctAnswer": "b",
+      "difficulty": "intermediate"
+    },
+    {
+      "question": "Q9. The mission requires positioning capability. Which components satisfy that requirement?",
+      "answers": {
+        "a": "A GPS module together with a radio receiver",
+        "b": "A larger battery",
+        "c": "A heatsink on the ESC",
+        "d": "A stiffer propeller"
+      },
+      "explanations": {
+        "a": "Correct — the verifier checks for a fitted GPS attachment and a receiver when the mission calls for positioning.",
+        "b": "Incorrect — capacity extends endurance but provides no position information.",
+        "c": "Incorrect — cooling addresses a thermal constraint, not a navigation one.",
+        "d": "Incorrect — propeller stiffness is a structural and aerodynamic property."
+      },
+      "correctAnswer": "a",
+      "difficulty": "beginner"
+    },
+    {
+      "question": "Q10. Hover throttle is a useful health indicator for a build. What does a very high hover throttle tell you?",
+      "answers": {
+        "a": "The aircraft is efficient and well matched",
+        "b": "Most of the available thrust is already being used just to stay up, leaving little margin for manoeuvre or gusts",
+        "c": "The battery is fully charged",
+        "d": "The propellers are too small for the motors"
+      },
+      "explanations": {
+        "a": "Incorrect — a high hover throttle is the opposite of a comfortable design point.",
+        "b": "Correct — control authority lives in the difference between hover throttle and full throttle. Hovering near the top of the stick means there is almost nothing left to correct with.",
+        "c": "Incorrect — a full pack lowers hover throttle slightly, if anything.",
+        "d": "Incorrect — undersized propellers are one possible cause among several, not the reading itself."
+      },
+      "correctAnswer": "b",
+      "difficulty": "intermediate"
+    }
+  ]
+}

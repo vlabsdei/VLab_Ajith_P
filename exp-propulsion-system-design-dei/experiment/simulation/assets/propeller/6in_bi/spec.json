@@ -1,0 +1,21 @@
+{
+  "name": "6\" Bi-blade  (4 pitch)",
+  "mass_g": 5.0,
+  "qty": 4,
+  "size_mm": [
+    152.4,
+    9.1,
+    152.4
+  ],
+  "model": "6inch_bi.glb",
+  "specs": {
+    "Diameter": "6 in",
+    "Pitch": "4 in",
+    "Blades": "2"
+  },
+  "physics": {
+    "diameter_in": 6.0,
+    "pitch_in": 4.0,
+    "blades": 2
+  }
+}

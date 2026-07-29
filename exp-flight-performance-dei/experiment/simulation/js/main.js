@@ -80,16 +80,52 @@ async function loadCatalog(){
     const opts = (byCat[c.key] || []).sort((a,b)=>order.indexOf(a.id)-order.indexOf(b.id));
     return { key:c.key, label:c.label, multi:!!c.multi, options:opts };
   });
+  /* Reward pool. The reward names a CATEGORY and the unlock draws a random real
+     component from it. That category is not always a selectable one in this
+     experiment (exp-03 awards a propeller but never lets you pick one), so any
+     option that wasn't already loaded is fetched straight from its spec.json. */
+  const rwCfg = manifest.reward || {};
+  let rewardPool = [];
+  if(rwCfg.category){
+    const inCat = byCat[rwCfg.category] || [];
+    const wantIds = rwCfg.options || inCat.map(o=>o.id);
+    const missing = wantIds.filter(id => !inCat.some(o=>o.id===id));
+    let extra = [];
+    if(missing.length){
+      extra = (await Promise.all(missing.map(async id=>{
+        const base = "assets/" + rwCfg.category + "/" + id;
+        try{
+          const spec = await (await fetch(base + "/spec.json", {cache:"no-store"})).json();
+          let files = [];
+          if(spec.model){
+            const arr = Array.isArray(spec.model) ? spec.model : [spec.model];
+            files = arr.map(f => f.includes("/") ? f : base + "/" + f);
+          }
+          return { id, name: spec.name || id, catKey: rwCfg.category,
+                   mass: spec.mass_g || 0, qty: spec.qty || 1,
+                   size: spec.size_mm || null, view: spec.view || null,
+                   specs: Object.entries(spec.specs || {}), phys: spec.physics || {},
+                   files, mounts: null,
+                   fallback: { kind: rwCfg.fallback || "none", color: 0x5a6672, s: 1 } };
+        }catch(e){ console.warn("reward spec missing for", base); return null; }
+      }))).filter(Boolean);
+    }
+    const all = inCat.concat(extra);
+    rewardPool = wantIds.map(id => all.find(o=>o.id===id)).filter(Boolean);
+  }
   DRONE_DB = {
     categories,
     defaults: manifest.defaults || {},
     modules: manifest.modules,
     instructor: manifest.instructor,
-    reward: {
-      name: manifest.reward.name, desc: manifest.reward.desc,
-      files: manifest.reward.model ? [manifest.reward.model] : [],
-      fallback: { kind: manifest.reward.fallback || "lidar", color: 0x845b23, s: 1 }
-    }
+    /* The reward is no longer one hardcoded mesh: it names a CATEGORY, and the
+       unlock draws a random real component from it (a random motor, a random
+       airframe, …). Because the drawn option is a genuine catalogue entry it
+       carries its own catKey, so fitUnit applies the same orientation rule the
+       component uses everywhere else — the old reward object had no catKey at
+       all, which is why it rendered at an arbitrary angle. */
+        reward: { category: rwCfg.category || null, name: rwCfg.name || "", desc: rwCfg.desc || "",
+              fallback: { kind: rwCfg.fallback || "lidar", color: 0x845b23, s: 1 }, pool: rewardPool }
   };
 }
 
@@ -241,6 +277,14 @@ function propulsionParams(){
     motorMaxCells: mp.max_cells || 6       // motor voltage rating (cell count)
   };
 }
+/* ── Pack energy, ONE definition used by both the Calculations chip and the
+      flight runner. Mean cell voltage is the integral of the OCV curve this sim
+      actually uses, cellOCV(soc) = 3.50 + 0.70·soc + 0.10·soc³, over soc 0→1:
+        ∫ = 3.50 + 0.35 + 0.025 = 3.875 V/cell.
+      USABLE_FRAC is the standard LiPo reserve rule (fly 80%, land on 20%), which
+      is also where the sim's reserve auto-land triggers. */
+const USABLE_FRAC = 0.80, MEAN_CELL_V = 3.875;
+function packEnergyJ(p){ return (p.cap/1000) * (p.cells*MEAN_CELL_V) * 3600; }
 /* battery open-circuit voltage per cell (soc 0..1) — nonlinear discharge curve */
 const cellOCV = soc => { soc = Math.max(0, Math.min(1, soc)); return 3.50 + 0.70*soc + 0.10*soc*soc*soc; };
 /* per-cell internal resistance incl. low-SoC swell */
@@ -252,7 +296,22 @@ function cellIR(p, soc){
 }
 function motorRm(p, tempC){ return p.rm20 * (1 + ALPHA_CU*((tempC==null?20:tempC) - 20)); }
 
-/* BEMT-lite propeller aero coefficients — pitch/diameter + Reynolds + induced-flow corrected */
+/* BEMT-lite propeller aero coefficients — pitch/diameter + Reynolds + figure of merit.
+
+   Ct is a static thrust coefficient fitted to the catalogue's hand-authored
+   empirical propellers (5x4.3 tri -> 0.130, 10x4.5 bi -> 0.100).
+
+   Cq is NOT an independent fit. Hover shaft power must equal the induced power
+   divided by the rotor's figure of merit:
+
+       2*pi*Cq*rho*n^3*D^5  =  T^1.5 / (FoM * sqrt(2*rho*A)),   T = Ct*rho*n^2*D^4
+
+   which reduces to  Cq = Ct^1.5 * 0.12699 / FoM.  Deriving Cq this way keeps
+   thrust and torque thermodynamically consistent — the previous independent
+   `ct*(0.045*reFactor + 0.11*pd)` fit drifted about 30% high on torque while Ct
+   itself read ~20% low, so every build drew far more current than the same parts
+   would in reality. Bigger discs are more efficient; low Reynolds (small, slow
+   props) costs figure of merit. */
 function propAero(p, omega){
   const pd = Math.max(0.2, Math.min(1.2, p.pitchIn / Math.max(p.diaIn,1)));
   const R = p.D/2, chord = 0.1*p.D;
@@ -260,17 +319,15 @@ function propAero(p, omega){
   const rho = rhoNow();
   const Re = Math.max(rho * Vtip * chord / MU_AIR, 1000);
   const reFactor = Math.pow(150000/Re, 0.25);
-  const ctStatic = p.ctRaw!=null ? p.ctRaw : 0.115 * pd;
-  const cqBase = p.cqRaw!=null ? p.cqRaw : ctStatic * (0.045*reFactor + 0.11*pd);
-  const Ji = Math.sqrt(Math.max(2*ctStatic/Math.PI, 0));
-  const ctEff = ctStatic;                    // authored Ct is already an empirical hover measurement
-  const cqEff = cqBase * (1 + 1.5*Ji*Ji);     // induced-power penalty still raises torque/current/heat
-  return { ctEff, cqEff, rho };
+  const ctStatic = p.ctRaw!=null ? p.ctRaw : 0.067 + 0.073*pd;
+  const fom = Math.max(0.40, Math.min(0.78, 0.42 + 0.022*p.diaIn)) / Math.sqrt(Math.max(reFactor,1));
+  const cqEff = p.cqRaw!=null ? p.cqRaw : Math.pow(ctStatic,1.5)*0.12699/Math.max(fom,0.25);
+  return { ctEff: ctStatic, cqEff, rho };
 }
 /* solve steady-state motor+prop point via quadratic torque balance. returns null on stall. */
 function calcMotorPoint(duty, V, Rm, Resc){
   const p = propulsionParams();
-  if(duty <= 0 || V <= 0) return { rpm:0, omega:0, T:0, Q:0, I:p.i0*0, P:0, Pmech:0, stalled:false };
+  if(duty <= 0 || V <= 0) return { rpm:0, omega:0, T:0, Q:0, I:p.i0*0, Idc:0, P:0, Pmech:0, stalled:false };
   Rm = Rm==null ? motorRm(p,20) : Rm;
   const Reff = Rm + (Resc||0);
   const ke = 60/(2*Math.PI*p.kv), kt = ke;
@@ -286,13 +343,24 @@ function calcMotorPoint(duty, V, Rm, Resc){
     if(!isFinite(next) || next < 0){ stalled = true; omega = 0; break; }
     omega += (next - omega) * 0.6;
   }
-  if(stalled) return { rpm:0, omega:0, T:0, Q:0, I:0, P:0, Pmech:0, stalled:true };
+  if(stalled) return { rpm:0, omega:0, T:0, Q:0, I:0, Idc:0, P:0, Pmech:0, stalled:true };
   const n = omega/(2*Math.PI);
   const T = aero.ctEff * aero.rho * n*n * Math.pow(p.D,4);
   const Q = aero.cqEff * aero.rho * n*n * Math.pow(p.D,5);
   const I = Math.min(Q/kt + p.i0, p.imax*1.6);
   const Vterm = Math.max(V*duty - I*Reff, 0);
-  return { rpm: n*60, omega, T:Math.max(T,0), Q, I, P: Vterm*I + I*I*Reff, Pmech: Q*omega, stalled:false };
+  // Two different currents, and mixing them up is the classic drive-train error:
+  //   I    — PHASE current in the motor branch. Sets copper loss, motor heating
+  //          and the motor / ESC per-channel ratings.
+  //   Idc  — DC-LINK current the PACK actually supplies. The ESC is a switching
+  //          converter, so it steps V down to V·duty: power in = power out gives
+  //          V·Idc = (V·duty)·I, i.e. Idc = duty·I. The two coincide at full
+  //          throttle, but at a ~30 % hover the pack sees roughly a third of the
+  //          phase current — treating them as equal made hover draw ~3× too high
+  //          and cut every endurance figure to a third of the real value.
+  const Idc = duty * I;
+  return { rpm: n*60, omega, T:Math.max(T,0), Q, I, Idc,
+           P: Vterm*I + I*I*Reff, Pmech: Q*omega, stalled:false };
 }
 /* full quad at throttle d + state-of-charge soc (0..1), incl. pack sag under 4-motor draw */
 function solveQuad(d, soc){
@@ -301,11 +369,14 @@ function solveQuad(d, soc){
   const rIR = cellIR(p, s), Rpack = p.cells*rIR;
   let V = cellOCV(s)*p.cells, r = calcMotorPoint(d, V, motorRm(p,20), p.rdsOn);
   for(let k=0;k<6;k++){
-    V = Math.max(cellOCV(s)*p.cells - 4*r.I*Rpack, p.cells*2.8);
+    // the pack sags against what it actually delivers — the DC-link current
+    V = Math.max(cellOCV(s)*p.cells - 4*r.Idc*Rpack, p.cells*2.8);
     r = calcMotorPoint(d, V, motorRm(p,20), p.rdsOn);
   }
-  return { rpm:r.rpm, omega:r.omega, Tper:r.T, Ttot:4*r.T, Iper:r.I, Itot:4*r.I,
-           V, P:V*4*r.I, Pmech:4*r.Pmech, Q:r.Q, stalled:r.stalled };
+  return { rpm:r.rpm, omega:r.omega, Tper:r.T, Ttot:4*r.T,
+           Iper:r.I,          // phase current — motor / ESC channel ratings, heating
+           Itot:4*r.Idc,      // pack current  — C-rating, sag, coulomb count
+           V, P:4*r.P, Pmech:4*r.Pmech, Q:r.Q, stalled:r.stalled };
 }
 /* single motor on the bench (1 motor draws from the pack); tempC = winding temp for Rm */
 function solveBench(d, soc, tempC){
@@ -315,7 +386,7 @@ function solveBench(d, soc, tempC){
   const Rm = motorRm(p, tempC==null?20:tempC);
   let V = cellOCV(s)*p.cells, r = calcMotorPoint(d, V, Rm, p.rdsOn);
   for(let k=0;k<6;k++){
-    V = Math.max(cellOCV(s)*p.cells - r.I*Rpack, p.cells*2.8);
+    V = Math.max(cellOCV(s)*p.cells - r.Idc*Rpack, p.cells*2.8);
     r = calcMotorPoint(d, V, Rm, p.rdsOn);
   }
   return Object.assign(r, { V, Rm });
@@ -378,7 +449,10 @@ function calc(){
     hover = solveQuad(hoverD, 0.6);
   }
   const hoverI = hover ? hover.Itot : full.Itot;
-  const endur = hoverI > 0 && hover ? (p.cap/1000 * 0.8) / hoverI * 60 : 0;
+  // Endurance from the SAME energy model the flight runner drains, so the chip and
+  // the simulated flight agree instead of differing by a quarter.
+  const hoverP = hover ? hover.P : 0;
+  const endur = (hoverP > 0) ? (packEnergyJ(p)*USABLE_FRAC) / hoverP / 60 : 0;
   const effFull = full.P > 0 ? full.Pmech/full.P : 0;
   const gPerW = full.P > 0 ? (Tmax/G*1000)/full.P : 0;
   const hoverPct = hoverD*100;
@@ -455,7 +529,9 @@ function diagnostics(){
   }
   // 3 · motor over-current at full throttle
   if(mo){
-    if(c.full.Iper > p.imax){
+    // max_current_a is a short-burst (~60 s) rating, so a modest exceedance at
+    // wide-open throttle is a warning, not a dead build.
+    if(c.full.Iper > p.imax*1.15){
       items.push({ sev:"err", block:false,
         msg:"Motor over-current — draws "+c.full.Iper.toFixed(1)+" A vs "+p.imax+" A rating at full throttle.",
         fix:"Use a smaller prop, lower cell count, or a higher-current motor." });
@@ -468,10 +544,19 @@ function diagnostics(){
   // 4 · ESC current rating
   if(esc && esc.phys && esc.phys.current_a){
     const escA = esc.phys.current_a;
-    if(c.full.Iper > escA){
+    // Judge against the ESC's authored BURST rating (burst_current_a) when the
+    // spec carries one — it was present in every ESC spec.json but unused — and
+    // fall back to +25% headroom otherwise. current_a is the continuous figure,
+    // and wide-open throttle is a burst condition.
+    const escBurst = (esc.phys.burst_current_a || escA*1.25);
+    if(c.full.Iper > escBurst){
       items.push({ sev:"err", block:false,
         msg:"ESC under-rated — "+escA+" A/ch vs "+c.full.Iper.toFixed(1)+" A motor draw.",
         fix:"Choose an ESC rated above the motor's peak current." });
+    } else if(c.full.Iper > escA){
+      items.push({ sev:"warn",
+        msg:"ESC above continuous rating ("+c.full.Iper.toFixed(1)+" / "+escA+" A per channel).",
+        fix:"Survivable in bursts; it will run hot at sustained full throttle." });
     }
   }
   // 5 · battery discharge capability — burst (warn) vs continuous (error)
@@ -479,14 +564,23 @@ function diagnostics(){
     const capAh = ba.phys.capacity_mah/1000;
     const burstA = capAh * (ba.phys.c_rating||30);
     const contA  = capAh * p.cRatingCont;
-    if(c.full.Itot > contA){
+    // Full throttle is a BURST condition, not a sustained one — a pack may legally
+    // exceed its continuous rating in a punch-out and only has to survive its burst
+    // rating. The previous ordering tested continuous first, so the burst branch was
+    // unreachable and every build that merely bursted past continuous was failed
+    // outright. Sustained overdraw is judged separately, at the hover point.
+    if(c.full.Itot > burstA){
       items.push({ sev:"err", block:false, tag:"batt-crate",
-        msg:"Battery continuous C-rate exceeded — pack sustains "+contA.toFixed(0)+" A but the build pulls "+c.full.Itot.toFixed(0)+" A; cells overheat and vent.",
+        msg:"Battery burst limit exceeded — pack peaks at "+burstA.toFixed(0)+" A but full throttle pulls "+c.full.Itot.toFixed(0)+" A; cells overheat and vent.",
         fix:"Higher C-rating / capacity, or a lower-current motor & prop." });
-    } else if(c.full.Itot > burstA){
+    } else if(c.hoverI > contA){
+      items.push({ sev:"err", block:false, tag:"batt-crate",
+        msg:"Battery continuous C-rate exceeded in the hover — pack sustains "+contA.toFixed(0)+" A but hover alone needs "+c.hoverI.toFixed(0)+" A.",
+        fix:"Higher C-rating / capacity, or a more efficient motor & prop." });
+    } else if(c.full.Itot > contA){
       items.push({ sev:"warn",
-        msg:"Battery burst limit exceeded — pack "+burstA.toFixed(0)+" A vs "+c.full.Itot.toFixed(0)+" A full-throttle draw.",
-        fix:"Higher C-rating or capacity keeps voltage sag in check." });
+        msg:"Full throttle ("+c.full.Itot.toFixed(0)+" A) is above the pack's "+contA.toFixed(0)+" A continuous rating.",
+        fix:"Fine in bursts; sustained wide-open throttle will heat the cells." });
     }
   }
   // 6 · over-voltage — pack cell count above ESC / motor rating (burns the ESC on spin-up)
@@ -776,7 +870,20 @@ function seatModel(g, mode){
   else                g.position.y += (c.y - b.min.y) / s;
 }
 /* immediate placeholder group; swaps in the real oriented+fitted model on arrival */
-function modelFor(o, span, onReady){
+/* Orientation used for the small PREVIEW renders only (tiles, picker, reward
+   card). The assembled drone seats attachments with its own mount logic
+   (orientThinUp / orientCameraForward / seatModel "hang"), so this deliberately
+   does NOT touch the spec files — changing those would double-rotate the parts
+   on the rig. ORIENT has attachments:"none", which left a GPS board standing on
+   edge and a gimbal lying on its side in every preview. */
+function previewOrient(o){
+  if(!o || o.catKey !== "attachments") return undefined;
+  const mt = (o.phys && o.phys.mount_type) || "";
+  if(mt === "gps") return "flat";        // thin PCB face → horizontal
+  if(mt === "payload") return "axis";    // gimbal yoke → long axis vertical
+  return undefined;
+}
+function modelFor(o, span, onReady, orientRule){
   span = span || 1.6;
   const g = new THREE.Group();
   const fb = buildFallback((o && o.fallback) || {kind:"none",color:0xcccccc,s:1});
@@ -787,7 +894,7 @@ function modelFor(o, span, onReady){
       const parts = masters.map(m=>m.clone(true));
       parts.forEach(p=>merged.add(p));
       const oriented = o.catKey === "motor" && orientMotorCombo(merged, parts);
-      const fitted = fitUnit(merged, span, o, oriented ? "none" : undefined);
+      const fitted = fitUnit(merged, span, o, oriented ? "none" : orientRule);
       while(g.children.length) g.remove(g.children[0]);
       g.add(fitted);
       if(onReady) onReady(g);
@@ -861,23 +968,76 @@ function detectArmTips(root, fallbackR){
 /* ════════════ 7 · PREVIEW ENGINE ════════════ */
 let previewRenderer = null;
 const previews = new Map();
+/* Supersample factor for every preview render. The canvas backing store is sized
+   to its ON-SCREEN size x this, so on a retina panel the component is rendered at
+   the display's real pixel density instead of half of it. Capped at 3 so a 4K
+   display doesn't quietly cost 16x the fill rate. */
+const PREVIEW_DPR = Math.max(2, Math.min(window.devicePixelRatio || 1, 3));
+/* A tiny sky/ground gradient, prefiltered through PMREM. Without an environment
+   map three.js MeshStandardMaterial metals have nothing to reflect and read as
+   flat grey plastic — this is what makes the motor bell and prop hub look
+   machined rather than painted. */
+let ENV_TEX = null;
+function ensureEnv(rnd){
+  if(ENV_TEX || !rnd || !THREE.PMREMGenerator) return ENV_TEX;
+  try{
+    const c = document.createElement("canvas"); c.width = 64; c.height = 32;
+    const x = c.getContext("2d"), grd = x.createLinearGradient(0,0,0,32);
+    grd.addColorStop(0,"#eef2f6"); grd.addColorStop(.45,"#b9c2cc");
+    grd.addColorStop(.58,"#6e7681"); grd.addColorStop(1,"#2b3036");
+    x.fillStyle = grd; x.fillRect(0,0,64,32);
+    const tex = new THREE.CanvasTexture(c);
+    tex.mapping = THREE.EquirectangularReflectionMapping;
+    const pm = new THREE.PMREMGenerator(rnd); pm.compileEquirectangularShader();
+    ENV_TEX = pm.fromEquirectangular(tex).texture; tex.dispose();
+  }catch(e){ ENV_TEX = null; }
+  return ENV_TEX;
+}
 function initPreviewEngine(){
-  previewRenderer = new THREE.WebGLRenderer({antialias:true, alpha:true});
-  previewRenderer.setSize(220,150);
-  previewRenderer.setPixelRatio(1);
+  previewRenderer = new THREE.WebGLRenderer({ antialias:true, alpha:true,
+                                              powerPreference:"high-performance" });
+  previewRenderer.setPixelRatio(1);          // sizes below are already device pixels
+  if(THREE.sRGBEncoding !== undefined) previewRenderer.outputEncoding = THREE.sRGBEncoding;
+  if(THREE.ACESFilmicToneMapping !== undefined){
+    previewRenderer.toneMapping = THREE.ACESFilmicToneMapping;
+    previewRenderer.toneMappingExposure = 0.82;   // calibrated against the env map below
+  }
+  previewRenderer.setSize(320,220,false);
+}
+/* The environment map is a full-strength reflection by default, which blows the
+   pale plastics out. Dial it back per material and keep a floor on roughness so
+   nothing turns into a mirror. */
+function tunePreviewMaterials(root){
+  if(!root || !root.traverse) return;
+  root.traverse(function(m){
+    if(!m.isMesh || !m.material) return;
+    (Array.isArray(m.material) ? m.material : [m.material]).forEach(function(mat){
+      if(mat.envMapIntensity !== undefined) mat.envMapIntensity = 0.38;
+      if(mat.roughness !== undefined) mat.roughness = Math.max(mat.roughness, 0.32);
+      mat.needsUpdate = true;
+    });
+  });
 }
 function registerPreview(canvas, o){
   if(!canvas || !o || !previewRenderer) return;
   const scene = new THREE.Scene();
-  scene.add(new THREE.AmbientLight(0xffffff,.85));
-  const d = new THREE.DirectionalLight(0xffffff,.9); d.position.set(2,3,2); scene.add(d);
-  const d2 = new THREE.DirectionalLight(0xdce3f2,.35); d2.position.set(-2,-1,-2); scene.add(d2);
-  const group = modelFor(o); scene.add(group);
-  const camera = new THREE.PerspectiveCamera(34, 220/150, .1, 50);
+  scene.environment = ensureEnv(previewRenderer);   // reflections for metal parts
+  // Studio 3-point rig. Ambient is dialled back from .85 because the environment
+  // map now supplies the fill — leaving it high washed every material out flat.
+  scene.add(new THREE.AmbientLight(0xffffff,.20));
+  const d = new THREE.DirectionalLight(0xffffff,.62); d.position.set(2.4,3.2,2.2); scene.add(d);
+  const d2 = new THREE.DirectionalLight(0xdce3f2,.26); d2.position.set(-2.6,-.6,-1.8); scene.add(d2);
+  const d3 = new THREE.DirectionalLight(0xffffff,.18); d3.position.set(-1.4,2.0,-2.6); scene.add(d3);
+  const group = modelFor(o, undefined, function(g){ tunePreviewMaterials(g); }, previewOrient(o));
+  tunePreviewMaterials(group);
+  scene.add(group);
+  const aspect = (canvas.width && canvas.height) ? canvas.width/canvas.height : 220/150;
+  const camera = new THREE.PerspectiveCamera(34, aspect, .1, 50);
   camera.position.set(1.9,1.35,1.9); camera.lookAt(0,0,0);
   previews.set(canvas, {scene, camera, group});
 }
 let frameNo = 0;
+let previewW = 0, previewH = 0;
 function blitPreviews(){
   if(!previewRenderer) return;
   let i = 0;
@@ -885,10 +1045,25 @@ function blitPreviews(){
     if(!cv.isConnected){ previews.delete(cv); continue; }
     if((i++ + frameNo) % 2 !== 0) continue;
     p.group.rotation.y += .022;
+    // Size the backing store to the canvas's ON-SCREEN box x PREVIEW_DPR. The
+    // markup ships a fixed width/height (280x190 for the reward card) while CSS
+    // stretches the element to fill its panel, so the old fixed buffer was both
+    // upscaled and rendered at half density on a retina display — that is what
+    // made the parts look jagged and soft.
+    const r = cv.getBoundingClientRect();
+    if(!r.width || !r.height) continue;
+    const w = Math.max(2, Math.round(r.width  * PREVIEW_DPR));
+    const h = Math.max(2, Math.round(r.height * PREVIEW_DPR));
+    if(cv.width !== w || cv.height !== h){ cv.width = w; cv.height = h; }
+    if(previewW !== w || previewH !== h){
+      previewW = w; previewH = h;
+      previewRenderer.setSize(w, h, false);
+    }
+    if(p.camera.aspect !== w/h){ p.camera.aspect = w/h; p.camera.updateProjectionMatrix(); }
     previewRenderer.render(p.scene, p.camera);
     const ctx = cv.getContext("2d");
-    ctx.clearRect(0,0,cv.width,cv.height);
-    ctx.drawImage(previewRenderer.domElement, 0,0, cv.width, cv.height);
+    ctx.clearRect(0,0,w,h);
+    ctx.drawImage(previewRenderer.domElement, 0,0, w, h);
   }
 }
 
@@ -1009,7 +1184,8 @@ function initViewport(){
   scene.add(new THREE.AmbientLight(0xffffff,.62));
   const key = new THREE.DirectionalLight(0xffffff,.9); key.position.set(4,6,3); scene.add(key);
   const fill = new THREE.DirectionalLight(0xdde5f0,.4); fill.position.set(-4,2,-4); scene.add(fill);
-  scene.add(new THREE.GridHelper(14,28,0xc4d1cc,0xe1e9e6));
+  groundGrid = new THREE.GridHelper(14,28,0xc4d1cc,0xe1e9e6);
+  scene.add(groundGrid);
   FX.init(scene);
   camera = new THREE.PerspectiveCamera(38, w/h, .1, 200);
   camera.position.set(4.2,3.0,4.6);
@@ -1596,7 +1772,7 @@ function renderLog(){
     const d = el("div","log-item "+it.sev);
     d.innerHTML = '<span class="ic">'+icon(it.sev)+'</span>'+
       '<div class="body"><span class="msg">'+txt(it.msg)+'</span>'+
-      (it.fix ? '<span class="fix">→ '+txt(it.fix)+'</span>' : '')+'</div>';
+      (it.fix ? '<span class="fix">Fix: '+txt(it.fix)+'</span>' : '')+'</div>';
     list.appendChild(d);
   });
   const badge = $("logBadge"), sum = $("logSummary");
@@ -1611,22 +1787,71 @@ function renderLog(){
   else { rb.classList.remove("blocked"); }
   return dg;
 }
+/* local mass formatter — exp-04 has no fmtMass() of its own */
+function rwMass(g){
+  if(typeof fmtMass === "function") return fmtMass(g);
+  return g >= 1000 ? (g/1000).toFixed(2)+" kg" : (g<10 && g>0 ? g.toFixed(1) : Math.round(g))+" g";
+}
+/* Draw a random component from the reward category and REMEMBER the draw, so the
+   card doesn't reshuffle on every re-render. Kept in localStorage under its own
+   key (not the experiment's state schema, which differs per experiment) so a
+   fresh play-through can award a different part. */
+let _rewardPick = null;
+function rewardPick(r){
+  if(!r || !r.pool || !r.pool.length) return null;
+  if(_rewardPick && r.pool.indexOf(_rewardPick) !== -1) return _rewardPick;
+  const KEY = "dtl-reward-" + (r.category || "x");
+  let id = null; try{ id = localStorage.getItem(KEY); }catch(e){}
+  let p = id ? r.pool.filter(function(o){ return o.id === id; })[0] : null;
+  if(!p){
+    p = r.pool[Math.floor(Math.random()*r.pool.length)];
+    try{ localStorage.setItem(KEY, p.id); }catch(e){}
+  }
+  _rewardPick = p;
+  return p;
+}
 function renderReward(){
-  const body = $("rewardBody");
+  const body = $("rewardBody"); if(!body) return;
+  const DB = (typeof DRONE_DB !== "undefined" && DRONE_DB) ? DRONE_DB
+           : (typeof ESC_DB   !== "undefined" && ESC_DB)   ? ESC_DB : null;
+  const r = (DB && DB.reward) || { pool: [] };
   const unlocked = allDone();
-  $("rewardBadge").textContent = (unlocked?1:0)+" / 1";
+  const badge = $("rewardBadge");
   body.innerHTML = "";
-  if(unlocked){
-    const r = DRONE_DB.reward;
-    const d = el("div","reward-open");
-    d.innerHTML = '<div class="view"><canvas width="280" height="190"></canvas></div>'+
-      '<div class="meta"><b>★ '+txt(r.name)+'</b><p>'+txt(r.desc)+'</p></div>';
+  // capstone: the experiment IS the showdown, so there is nothing to unlock
+  if(!r.category){
+    if(badge) badge.textContent = unlocked ? "PASS" : "—";
+    const d = el("div","reward-locked"+(unlocked?" reward-final":""));
+    d.innerHTML = '<div class="lock">'+(unlocked?"🏆":"🔒")+'</div><p>'+
+      (unlocked ? "Full system verified — the build flies."
+                : txt(r.desc || "Complete every check to clear the flight test."))+'</p>';
     body.appendChild(d);
-    registerPreview(d.querySelector("canvas"), r);
+    return;
+  }
+  if(badge) badge.textContent = (unlocked?1:0)+" / 1";
+  if(unlocked){
+    const pick = rewardPick(r);
+    const d = el("div","reward-open");
+    const specs = (pick && pick.specs && pick.specs.length)
+      ? pick.specs.slice(0,3).map(function(s){ return '<span><i>'+txt(s[0])+'</i>'+txt(s[1])+'</span>'; }).join("")
+      : "";
+    d.innerHTML =
+      '<div class="view"><canvas width="280" height="190"></canvas></div>'+
+      '<div class="meta"><span class="rw-kind">'+txt(r.name)+' unlocked</span>'+
+      '<b>'+txt(pick ? pick.name : r.name)+'</b>'+
+      (specs ? '<div class="rw-specs mono">'+specs+'</div>' : '')+
+      (pick && pick.mass ? '<div class="rw-specs mono"><span><i>Mass</i>'+rwMass(pick.mass)+
+        (pick.qty>1?" × "+pick.qty:"")+'</span></div>' : '')+
+      '</div>';
+    body.appendChild(d);
+    // pick is a REAL catalogue option, so it carries catKey → fitUnit applies the
+    // same orientation rule this component uses everywhere else in the lab.
+    registerPreview(d.querySelector("canvas"), pick || { fallback:r.fallback });
   }else{
     const total = allExperiments().length;
     const d = el("div","reward-locked");
-    d.innerHTML = '<div class="lock">🔒</div><p>Complete all '+total+' experiments<br>to unlock a reward component</p>';
+    d.innerHTML = '<div class="lock">🔒</div><p>Complete all '+total+' experiments<br>to unlock a '+
+      txt((r.name||"reward component").toLowerCase())+'</p>';
     body.appendChild(d);
   }
 }
@@ -1914,7 +2139,7 @@ function renderSankeyDOM(host){
     '</div><p class="chart-footnote">At '+Math.round(d*100)+'% throttle · motor efficiency '+(pMech/pElec*100).toFixed(0)+'%.</p>';
 }
 /* registry of every analysis chart — drives both the gallery and single-chart view */
-function chartDefs(){
+function plotDefsAll(){
   return [
     // Lead with the Exp-6 drone-level performance charts (all live from the
     // inherited Exp-1 motor/prop data + the mass budget).
@@ -1928,13 +2153,56 @@ function chartDefs(){
     { id:"tc",     title:"Thrust & current vs throttle",      cfg:cfgThrustCurrent },
     { id:"tacho",  title:"Virtual tachometer",                cfg:cfgTacho, note:()=>{ const t=tachoData(); return "free "+Math.round(t.free).toLocaleString()+" · loaded "+Math.round(t.loaded).toLocaleString()+" · loss "+Math.round(t.lost).toLocaleString()+" rpm ("+t.lossPct.toFixed(1)+"%) @ "+Math.round(t.d*100)+"% throttle"; } },
     { id:"circ",   title:"Equivalent-circuit voltage split",  dom:renderCircuitDOM },
-    { id:"sank",   title:"Power flow · P_elec → P_mech + loss", dom:renderSankeyDOM }
+    { id:"sank",   title:"Power flow · P_elec to P_mech + loss", dom:renderSankeyDOM }
   ];
 }
 /* single-chart floating detail — reached by clicking any chart's expand button */
-function openSingleChart(def){
+/* ── Graphs vs Charts split ───────────────────────────────────────────────────
+   A plot belongs on the Graphs card when it is drawn as a CURVE — a line chart,
+   or a scatter with showLine (the sweep / CDF style). Everything else — bars,
+   radars, doughnuts, clouds, histograms — stays in Charts. The kind is read off
+   the built config, so a new plot lands in the right panel without a flag. A def
+   with an `empty` fallback is a recorded-run plot: it is a line too, and the
+   Graphs modal shows it as the full-width live block instead of a tile. */
+function plotIsLine(def){
+  if(def.dom) return false;
+  if(def.empty) return true;
+  try{
+    const c = def.cfg();
+    if(!c) return true;
+    if(c.type === "line") return true;
+    return c.type === "scatter" && (c.data.datasets||[]).some(d=>d.showLine);
+  }catch(e){ return false; }
+}
+function graphDefs(){ return plotDefsAll().filter(plotIsLine); }
+function chartDefs(){
+  const out = plotDefsAll().filter(d=>!plotIsLine(d));
+  // Some experiments plot nothing but curves — say so instead of an empty panel.
+  return out.length ? out : [{ id:"nocharts", title:"No non-line charts in this experiment",
+    cfg:()=>null, empty:"Every plot here is a curve — they are all on the Graphs card." }];
+}
+/* gallery body shared by the Graphs modal: one block per def + expand button */
+function renderGraphBlocks(wrap, defs){
+  const pending = [];
+  defs.forEach(def=>{
+    const block = el("div","calc-block gchart");
+    const head = el("div","gchart-head");
+    head.innerHTML = '<h3>'+txt(def.title)+'</h3><button type="button" class="gchart-expand" title="Expand">⤢</button>';
+    head.querySelector("button").addEventListener("click", ()=>openSingleChart(def, "graphs"));
+    block.appendChild(head);
+    const cfg = def.cfg();
+    if(cfg){ const box = el("div","chart-box-lg");
+      box.innerHTML = '<canvas id="gc_'+def.id+'"></canvas>'; block.appendChild(box);
+      pending.push({ id:"gc_"+def.id, cfg }); }
+    else block.appendChild(el("div","runs-empty", txt(def.empty||"No data yet.")));
+    if(def.note) block.appendChild(el("p","chart-footnote", txt(def.note())));
+    wrap.appendChild(block);
+  });
+  return pending;
+}
+function openSingleChart(def, backTo){
   const body = openModal(txt(def.title)+' <em>· detail</em>', "#c65d3b",
-    '<button type="button" class="modal-back" id="chartBack">‹ all charts</button>');
+    '<button type="button" class="modal-back" id="chartBack">‹ all '+(backTo==="graphs"?"graphs":"charts")+'</button>');
   const wrap = el("div"); wrap.style.cssText = "height:62vh;min-height:340px;position:relative";
   if(def.dom){ wrap.style.height="auto"; def.dom(wrap); }
   else{ wrap.innerHTML = '<canvas id="gc_single"></canvas>'; }
@@ -1942,20 +2210,29 @@ function openSingleChart(def){
   if(def.cfg){ const c = def.cfg(); if(c) ChartHub.put("gc_single", c);
     else wrap.innerHTML = '<div class="runs-empty">'+txt(def.empty||"No data yet.")+'</div>'; }
   if(def.note) body.appendChild(el("p","chart-footnote", txt(def.note())));
-  const back = $("chartBack"); if(back) back.addEventListener("click", openChartsDetail);
+  const back = $("chartBack"); if(back) back.addEventListener("click", backTo==="graphs"?openGraphDetail:openChartsDetail);
 }
 /* live telemetry graph detail — reached by clicking the Graphs card */
 function openGraphDetail(){
+  ChartHub.killPrefix("gc_");
   const { mod, exp } = currentExp();
-  const key = mod.id+":"+exp.id, metric = exp.metric;
-  const body = openModal('Live Graph <em>· '+txt(exp.name)+'</em>', "#4f6d9e");
+  const key = mod.id+":"+exp.id;
+  const body = openModal('Graphs <em>· live run + parameter sweeps</em>', "#4f6d9e");
+  const wrap = el("div","calc-blocks");
   let data, data2, flightT;
   if(simActive && sim.data.length>1){ data=sim.data; data2=sim.data2; flightT=sim.flightT||0; }
   else if(lastRun.key===key && lastRun.data.length>1){ data=lastRun.data; data2=lastRun.data2; flightT=lastRun.flightT; }
-  if(!data){ body.appendChild(el("div","runs-empty","No data yet for <b>"+txt(exp.name)+"</b>.<br>Press <b>▶ Run Sim</b> to plot this experiment.")); return; }
-  const wrap = el("div"); wrap.style.cssText = "height:62vh;min-height:340px;position:relative";
-  wrap.innerHTML = '<canvas id="gc_single"></canvas>'; body.appendChild(wrap);
-  ChartHub.put("gc_single", telemetryConfig(metric, data, data2, flightT, {mini:false}));
+  const live = el("div","calc-block gchart");
+  live.innerHTML = '<div class="gchart-head"><h3>Live run · '+txt(exp.name)+'</h3></div>';
+  if(data){ const box = el("div","chart-box-lg");
+    box.innerHTML = '<canvas id="gc_live"></canvas>'; live.appendChild(box); }
+  else live.appendChild(el("div","runs-empty",
+    "No data yet for <b>"+txt(exp.name)+"</b>.<br>Press <b>▶ Run Sim</b> to plot this experiment."));
+  wrap.appendChild(live);
+  const pending = renderGraphBlocks(wrap, graphDefs().filter(d=>!d.empty));
+  body.appendChild(wrap);
+  if(data) ChartHub.put("gc_live", telemetryConfig(exp.metric, data, data2, flightT, {mini:false}));
+  pending.forEach(p=>ChartHub.put(p.id, p.cfg));
 }
 
 /* ════════════ 10 · FLOATING WINDOWS ════════════ */
@@ -2134,15 +2411,19 @@ const SIM_DURATION = 12;
 // flight-phase constants (ported from the reference FlightSim: real phase machine +
 // 60x fast-forward once stable in hover so multi-minute endurance reads in a short run)
 const LAUNCH_ALT = 0.10, TARGET_ALT = 2.00, PID_KP = 2.80, PID_KD = 1.90;
-const AUTO_FF = 60, SHUTDOWN_SOC = 0.20, ALERT_SOC = 0.25;
+const AUTO_FF = 60;
+// Reserve threshold IS the complement of the usable-capacity rule above, so the
+// auto-land fires exactly when the endurance figure says the flight is over.
+const SHUTDOWN_SOC = 1 - USABLE_FRAC, ALERT_SOC = SHUTDOWN_SOC + 0.05;
 const fmtMMSS = s => { s = Math.max(0, Math.floor(s)); const m = Math.floor(s/60), ss = s%60; return (m<10?"0":"")+m+":"+(ss<10?"0":"")+ss; };
-let simActive = false;
+let simActive = false, speedMulPrev = 1;
 const sim = { t:0, data:[], data2:[], key:null, exp:null, mod:null,
               alt:0, vel:0, soc:1, temp:T_AMB, escTemp:T_AMB, timeScale:1, hoverD:.5,
               lastRpm:0, lastThr:0, verdict:null, rpmCold:0, overT:0, phase:"STANDBY", ff:false,
               flightT:0, tPhase:0, tBurn:0, cutPwr:false, overheatLatch:false, isStall:false,
               eRem:0, eTot:0, fwdVel:0,
-              pitch:0, fwdDist:0, hoverHold:0, groundT:0, maxAlt:0, windDrift:false };
+              pitch:0, fwdDist:0, hoverHold:0, groundT:0, maxAlt:0, windDrift:false,
+              bestOk:false, bestVerdict:null, autoLand:false, landed:false, holdBest:0 };
 let calcCache = null, calcCacheAge = 0;
 function calcCached(){
   if(!calcCache || (performance.now()-calcCacheAge) > 500){ calcCache = calc(); calcCacheAge = performance.now(); }
@@ -2168,7 +2449,9 @@ function runSim(){
   sim.key = mod.id+":"+exp.id; sim.alt = 0; sim.vel = 0; sim.soc = 1;
   sim.temp = T_AMB; sim.escTemp = T_AMB; sim.verdict = null; sim.lastRpm = 0; sim.lastThr = 0;
   sim.overT = 0; sim.phase = "GROUND"; sim.ff = false;
-  sim._pop = false; sim._popAt = 0; sim.batStress = 0;
+  sim._pop = false; sim._popAt = 0; sim.batStress = 0; sim.liveI = 0;
+  sim.bestOk = false; sim.bestVerdict = null; sim.autoLand = false; sim.landed = false; sim.holdBest = 0;
+  sim.landTgt = null; sim.touchdown = false; speedMulPrev = 1; fwdVisX = 0; groundScroll = 0;
   const c = calc(); sim.hoverD = c.hoverD;
   sim.rpmCold = solveBench(0.85,1,20).rpm;
   // flight state — manual ground-start hover
@@ -2176,7 +2459,12 @@ function runSim(){
   sim.pitch = 0; sim.fwdDist = 0; sim.fwdVel = 0; sim.hoverHold = 0; sim.groundT = 0; sim.maxAlt = 0;
   sim.isStall = c.full.stalled;
   sim.windDrift = c.twEff > 1.0 && c.twEff < 1.5;   // marginal-lift unstable sway (see loop())
-  sim.eTot = (c.p.cap/1000) * (c.p.cells*3.7) * 3600;   // J — nominal 3.7 V/cell pack energy
+  // Pack energy, single source of truth (see USABLE_FRAC / packEnergyJ). The old
+  // line used a flat 3.7 V/cell nominal while the sim integrates an OCV curve
+  // averaging ~3.86 V/cell, and applied no usable-capacity rule at all — so the
+  // runner and the Calculations chip disagreed on endurance by ~24%.
+  sim.eTot = packEnergyJ(c.p);
+  sim.eRem = sim.eTot;
   sim.eRem = sim.eTot;
   syncRunControls();
   audioStart();
@@ -2193,9 +2481,14 @@ function stopSim(completed){
   audioStop();
   $("ffBadge").hidden = true;
   if(completed && sim.data.length > 3){
-    // Exp-6 completion rule: only a genuine PASS marks the experiment done —
-    // fault / marginal / warn verdicts do NOT complete it, so the student must
-    // fix the configuration (or payload) to reach a true pass.
+    // Exp-6 completion rule: a genuine PASS marks the experiment done. The result
+    // is LATCHED (sim.bestOk / sim.bestVerdict) rather than read off the final
+    // frame — a flight that demonstrably held a stable hover has proved the point,
+    // and it must still count after the aircraft descends, auto-lands or runs the
+    // pack down. Previously the verdict tracked only the CURRENT state, so the
+    // moment the drone came back down "Stable hover" was overwritten by "Not yet
+    // settled" and a perfectly good run scored nothing.
+    if(sim.bestOk){ sim.verdictOk = true; sim.verdict = sim.bestVerdict || sim.verdict; }
     if(sim.verdictOk) state.done[sim.key] = true;
     // keep ONLY this iteration's output (no history) — downsampled for snappy charts
     lastRun = { key:sim.key, metric:sim.exp.metric,
@@ -2242,12 +2535,27 @@ function simStep(dt){
   const metric = sim.exp.metric;
   let tel = { temp: sim.temp };
 
-  // ── battery stress → venting smoke: build pulls past its continuous C-rate,
-  //    or the pack is deep-discharged in flight.
+  // ── battery stress → venting smoke: the pack is drawn past its CONTINUOUS
+  //    C-rate right now, or it is being deep-discharged in flight.
+  //    This must key off the LIVE current (sim.liveI, refreshed from each
+  //    frame's solved operating point), NOT cc.full.Itot. cc.full.Itot is the
+  //    build's WIDE-OPEN-THROTTLE draw — a static property of the parts list
+  //    that never changes during a run. Most builds sit near their pack's
+  //    continuous rating at full throttle, so using it meant the battery vented
+  //    smoke from the first frame of every run on virtually every combination,
+  //    even while hovering at a third of that current.
   const contA = (p.cap/1000) * p.cRatingCont;
+  // A pack does not vent because it is EMPTY — it vents because it is being
+  // pulled hard. The deep-discharge term therefore only bites when the cells are
+  // both low AND still under a heavy draw (a flat pack sags, heats and gasses
+  // under load). With the reserve auto-land armed this should never fire on a
+  // healthy build; previously every run ended in smoke simply because it flew the
+  // pack down to 2%.
+  const lowSoc = sim.soc < 0.06 ? smokeRamp(0.06 - sim.soc, 0, 0.05) : 0;
+  const loadFrac = contA > 0 ? Math.min((sim.liveI || 0)/contA, 2) : 0;
   sim.batStress = Math.max(
-    smokeRamp(cc.full.Itot, contA*0.95, contA*1.55),
-    sim.soc < 0.08 ? smokeRamp(0.08 - sim.soc, 0, 0.06) : 0
+    smokeRamp(sim.liveI || 0, contA, contA*1.6),
+    lowSoc * Math.max(0, Math.min(1, (loadFrac - 0.55)/0.35))
   );
 
   // ── instant electrical pop: an over-voltage pack burns the ESC on spin-up.
@@ -2284,13 +2592,16 @@ function simStep(dt){
     const dryKg = cc.dryKg;
     const sweepMax = Math.max(cc.payloadTheoMax_g * 1.15, 50);
     const cargo = Math.min(sim.t / SIM_DURATION, 1) * sweepMax;
+    sim.cargoG = cargo; sim.cargoMaxG = sweepMax;
     const Wtest = (dryKg + cargo/1000) * G;
     const twTest = Wtest > 0 ? cc.Tmax / Wtest : 0;
+    sim.cargoTw = twTest;
     sim.data.push(+twTest.toFixed(3));
     const sagT = Math.max(0, Math.min(1, (twTest-1)/0.5));   // 0 at TWR 1.0, 1 at TWR ≥1.5
     const targetAlt = LAUNCH_ALT + (TARGET_ALT-LAUNCH_ALT)*sagT;
     sim.alt += (targetAlt - sim.alt) * Math.min(dt*2, 1);
     sim.lastRpm = twTest>0 ? Math.round(3000*Math.min(twTest,2)) : 0; sim.lastThr = cc.Tmax;
+    sim.liveI = cc.full.Itot;      // the payload sweep genuinely runs at wide-open thrust
     tel = { thrust:cc.Tmax, rpm:sim.lastRpm, cur:cc.full.Itot, pwr:cc.full.P, temp:sim.temp, esc:sim.escTemp, alt:sim.alt,
             phase:(twTest<1?"CANNOT LIFT":twTest<1.5?"OVERLOADED":"SAFE")+" · cargo "+Math.round(cargo)+" g",
             phaseCls: twTest<1?"danger":twTest<1.5?"warn":"good" };
@@ -2338,7 +2649,28 @@ function simStep(dt){
   }
 
   // throttle → target hover height
-  const targetAlt = d <= 0.02 ? 0 : (LAUNCH_ALT + (CEIL - LAUNCH_ALT)*d);
+  let targetAlt = d <= 0.02 ? 0 : (LAUNCH_ALT + (CEIL - LAUNCH_ALT)*d);
+
+  // ── RESERVE AUTO-LAND ────────────────────────────────────────────────────
+  // A real flight controller does not fly a pack to zero: at the reserve
+  // threshold it takes the height command away from the pilot and brings the
+  // aircraft down under power. Latches on, so nudging the throttle back up
+  // cannot cancel it — exactly like a failsafe RTL/land.
+  if(!sim.autoLand && sim.soc <= SHUTDOWN_SOC && sim.alt > 0.02){
+    sim.autoLand = true;
+    sfx("warn");
+  }
+  if(sim.autoLand){
+    // controlled descent: walk the setpoint down at ~0.45 m/s of SIMULATED time
+    sim.landTgt = (sim.landTgt == null ? sim.alt : sim.landTgt);
+    sim.landTgt = Math.max(0, sim.landTgt - 0.45*dt*(speedMulPrev||1));
+    targetAlt = sim.landTgt;
+    // Touchdown: inside ground effect the rotor gains ~20% thrust, so a PD that
+    // is merely commanded to zero settles a few centimetres up and hovers there
+    // forever. A real controller detects the touchdown window and DISARMS. Below
+    // 0.15 m and descending slowly, cut to idle and let it settle.
+    if(sim.alt <= 0.15 && Math.abs(sim.vel) < 0.45){ targetAlt = -0.5; sim.touchdown = true; }
+  }
 
   // pitch → lerp toward the forward-flight target; vertical thrust fraction = cos(pitch)
   const pitchTarget = state.forwardFlight ? Math.PI/6 : 0;   // 30°
@@ -2346,16 +2678,41 @@ function simStep(dt){
   const cosP = Math.max(0.2, Math.cos(sim.pitch));
   const T_hoverReq = W / (4*cosP);                    // per-motor thrust to hold altitude (cos-loss aware)
 
+  // Translational-lift credit: at airspeed V the rotor's induced velocity (and so
+  // its induced power) drops from the hover value, which is why cruise costs less
+  // than hover. Applied as a power/current scale on the operating point below.
+  const AdiskRef = Math.PI*(cc.p.D/2)*(cc.p.D/2);
+  const vHoverRef = Math.sqrt(Math.max(W/4, 0.05) / (2*cc.rho*AdiskRef));
+  const viFwd = (function(){ let vi=vHoverRef; for(let k=0;k<12;k++) vi = vHoverRef*vHoverRef/Math.sqrt(sim.fwdVel*sim.fwdVel+vi*vi+1e-9); return vi; })();
+  const transLift = Math.max(0.55, Math.min(1, vHoverRef>1e-6 ? viFwd/vHoverRef : 1));
+
   // per-frame thrust ceiling at the current pack sag (a fresh full-throttle solve)
   const opMax = solveQuad(1, socStart);
   const Tmax1 = opMax.stalled ? 0 : opMax.Tper;
 
-  // fast-forward only once already stable-hovering, so long holds resolve quickly
-  const speedMul = (!sim.cutPwr && sim.hoverHold > 0.4) ? AUTO_FF : 1;
+  // fast-forward only once already stable-hovering, so long holds resolve quickly.
+  // The descent is flown at real time so the operator can actually watch it.
+  const speedMul = (!sim.cutPwr && !sim.autoLand && sim.hoverHold > 0.4) ? AUTO_FF : 1;
+  speedMulPrev = speedMul;
   const dtAcc = dt * speedMul;
 
   const ch = opt("chasis"), Aq = (ch && ch.phys.frontal_area_m2) || 0.01, Cdq = (ch && ch.phys.cd) || 1.05;
   const Adisk = Math.PI*(cc.p.D/2)*(cc.p.D/2);
+  // Hover induced velocity (momentum theory) — computed once above as vHoverRef.
+  const vHover = vHoverRef;
+  /* ── Forward-flight induced velocity ────────────────────────────────────────
+     Glauert's momentum relation for an edgewise rotor:
+        v_i = v_h² / √(V² + v_i²)
+     solved by fixed-point iteration. As airspeed rises the rotor stops having to
+     accelerate its own stagnant column of air and v_i collapses, so the induced
+     power T·v_i falls — this is TRANSLATIONAL LIFT, the single biggest effect in
+     a forward-flight power curve and the reason the classic power-vs-speed curve
+     is U-shaped rather than flat. */
+  function inducedVel(V){
+    let vi = vHover;
+    for(let k=0;k<12;k++) vi = vHover*vHover / Math.sqrt(V*V + vi*vi + 1e-9);
+    return vi;
+  }
   // th = per-motor thrust; only cos(pitch) of it holds altitude
   function getAcc(y, vy, thrPerMotor){
     const standoff = Math.max(y, cc.p.D*0.25);
@@ -2367,30 +2724,59 @@ function simStep(dt){
     const drag = 0.5*cc.rho*Cdq*Aq*vy*Math.abs(vy);
     return (th*4 - W - drag) / m;
   }
+  /* ── Horizontal axis ────────────────────────────────────────────────────────
+     Forward speed used to be a hardcoded 2.2 m/s with no force balance at all,
+     roughly 10x slower than the real equilibrium for a 5" airframe. It is now
+     integrated properly:  m·dV/dt = T·sin(θ) − ½ρ·C_d·A·V²,  so the aircraft
+     accelerates to whatever airspeed its pitch attitude and drag actually
+     support, and `sim.fwdVel` (previously declared but never read) is live. */
+  function stepForward(thrPerMotor, h){
+    const Fx = 4*thrPerMotor*Math.sin(sim.pitch);
+    const D  = 0.5*cc.rho*Cdq*Aq*sim.fwdVel*Math.abs(sim.fwdVel);
+    sim.fwdVel = Math.max(0, sim.fwdVel + (Fx - D)/m*h);
+    sim.fwdDist += sim.fwdVel*h;
+  }
 
-  // altitude-hold PD: command per-motor thrust, clamped to the real ceiling
-  let Tcmd = T_hoverReq + PID_KP*(targetAlt - sim.alt) + PID_KD*(-sim.vel);
-  Tcmd = Math.max(0, Math.min(Tcmd, Tmax1));
-  const curThrust = Tcmd;
-
-  // vertical dynamics: RK4 substeps at the PD-commanded thrust
-  const subDt = 0.005, steps = Math.max(1, Math.ceil(dtAcc/subDt)), dtStep = dtAcc/steps;
+  // ── vertical dynamics: RK4 substeps with the altitude-hold PD running INSIDE
+  //    the loop. This matters: once fast-forward engages, one animation frame
+  //    covers dt·60 ≈ 1–3 s of simulated time. Holding a single thrust command
+  //    across all of that is a 3-second control delay on a plant whose natural
+  //    frequency is ~4.6 rad/s — the aircraft was being flung into the ceiling
+  //    or the pad the instant FF kicked in, which reset the hover-hold timer and
+  //    made a stable hover literally unreachable. Recomputing the command every
+  //    substep costs nothing (it is pure arithmetic — no solveQuad in here) and
+  //    keeps the controller at a realistic ~200 Hz of simulated time.
+  const subDt = 0.005;
+  const steps = Math.max(1, Math.min(Math.ceil(dtAcc/subDt), 400));
+  const dtStep = dtAcc/steps;
+  const pdThrust = () => Math.max(0, Math.min(
+    T_hoverReq + PID_KP*(targetAlt - sim.alt) + PID_KD*(-sim.vel), Tmax1));
+  let curThrust = pdThrust();                       // also the frame's reported command
   for(let s=0; s<steps; s++){
+    const th = pdThrust();
     // planted on the pad while the target is the pad or thrust can't lift it
-    if(sim.alt <= 0 && (targetAlt <= 0 || 4*curThrust*cosP <= W)){ sim.alt = 0; sim.vel = 0; continue; }
-    const k1y = sim.vel,                       k1v = getAcc(sim.alt, sim.vel, curThrust);
-    const k2y = sim.vel+0.5*dtStep*k1v,        k2v = getAcc(sim.alt+0.5*dtStep*k1y, k2y, curThrust);
-    const k3y = sim.vel+0.5*dtStep*k2v,        k3v = getAcc(sim.alt+0.5*dtStep*k2y, k3y, curThrust);
-    const k4y = sim.vel+dtStep*k3v,            k4v = getAcc(sim.alt+dtStep*k3y, k4y, curThrust);
+    if(sim.alt <= 0 && (targetAlt <= 0 || 4*th*cosP <= W)){ sim.alt = 0; sim.vel = 0; continue; }
+    // disarmed on touchdown — settle onto the pad instead of floating in ground effect
+    if(sim.touchdown && sim.alt <= 0.02){ sim.alt = 0; sim.vel = 0; continue; }
+    const k1y = sim.vel,                       k1v = getAcc(sim.alt, sim.vel, th);
+    const k2y = sim.vel+0.5*dtStep*k1v,        k2v = getAcc(sim.alt+0.5*dtStep*k1y, k2y, th);
+    const k3y = sim.vel+0.5*dtStep*k2v,        k3v = getAcc(sim.alt+0.5*dtStep*k2y, k3y, th);
+    const k4y = sim.vel+dtStep*k3v,            k4v = getAcc(sim.alt+dtStep*k3y, k4y, th);
     sim.alt += (dtStep/6)*(k1y+2*k2y+2*k3y+k4y);
     sim.vel += (dtStep/6)*(k1v+2*k2v+2*k3v+k4v);
     sim.vel = Math.max(-3, Math.min(3, sim.vel));
     if(sim.alt <= 0){ sim.alt = 0; if(sim.vel < 0) sim.vel = 0; }
     if(sim.alt >= CEIL){ sim.alt = CEIL; if(sim.vel > 0) sim.vel = 0; }   // BUG-FIX 1: kill +vel at ceiling
     sim.maxAlt = Math.max(sim.maxAlt, sim.alt);
-    // forward translation while airborne — the drone flies FORWARD, not just tilts
-    if(sim.alt > LAUNCH_ALT+0.05) sim.fwdDist += Math.sin(sim.pitch)*2.2*dtStep;
+    // forward translation while airborne — integrated from the real force balance
+    if(sim.alt > LAUNCH_ALT+0.05) stepForward(th, dtStep);
+    else { sim.fwdVel *= (1 - Math.min(dtStep*3,1)); }
     if(sim.alt > 0.02) sim.flightT += dtStep;
+    // hover-hold accumulates on SIMULATED time, so a 60× frame credits 60× the
+    // hold — otherwise a fast-forwarded hover takes a real minute to qualify.
+    if(targetAlt > 0.2 && Math.abs(targetAlt - sim.alt) < 0.2 && Math.abs(sim.vel) < 0.12) sim.hoverHold += dtStep;
+    else sim.hoverHold = 0;
+    curThrust = th;
   }
   const airborne = sim.alt > 0.02;
 
@@ -2403,7 +2789,12 @@ function simStep(dt){
     duty = (lo+hi)/2;
   }
   const op = solveQuad(duty, socStart);
-  sim.eRem = Math.max(0, sim.eRem - op.P*dtAcc);
+  // Cruise costs less than hover: the induced-power term falls with airspeed
+  // (Glauert), so scale the drawn power/current by the translational-lift factor.
+  // At hover transLift = 1 and this is a no-op.
+  const opP = op.P*transLift, opI = op.Itot*transLift;
+  sim.liveI = opI;                // what the pack is ACTUALLY delivering this frame
+  sim.eRem = Math.max(0, sim.eRem - opP*dtAcc);
   sim.soc = sim.eTot>0 ? sim.eRem/sim.eTot : 0;
   const indVel = Math.sqrt(Math.max(op.Tper,0) / Math.max(2*cc.rho*Adisk, .001));
   sim.temp = motorThermalStep(sim.temp, op.Iper*op.Iper*motorRm(cc.p, sim.temp), indVel, cc.p, dtAcc);
@@ -2427,10 +2818,9 @@ function simStep(dt){
   sim.data.push(+sim.alt.toFixed(3));
   sim.data2.push(Math.round(state.manualThrottle||0));
 
-  // stable-hover detection: near the commanded height with low velocity, held ~1.5 s
-  const holdTgt = targetAlt > 0.2;
-  if(holdTgt && Math.abs(targetAlt - sim.alt) < 0.2 && Math.abs(sim.vel) < 0.12) sim.hoverHold += dtAcc;
-  else sim.hoverHold = 0;
+  // stable-hover detection now runs per substep, inside the integrator above —
+  // it has to, because that is the only place the state is sampled finely
+  // enough to be meaningful once fast-forward is active.
 
   // BUG-FIX 2: live phase text (no longer stuck on "GROUND")
   let phaseText, phaseCls;
@@ -2441,15 +2831,30 @@ function simStep(dt){
   else if(sim.vel > 0.15){ phaseText = "CLIMB"; phaseCls = ""; }
   else if(sim.vel < -0.15){ phaseText = "DESCEND"; phaseCls = "warn"; }
   else{ phaseText = "FLIGHT"; phaseCls = ""; }
-  tel = { thrust:curThrust*4, rpm:op.rpm, cur:op.Itot, pwr:op.P, temp:sim.temp, esc:sim.escTemp, soc:sim.soc, alt:sim.alt,
+  sim.phase = phaseText;                    // keep the sim record in step with the HUD
+  tel = { thrust:curThrust*4, rpm:op.rpm, cur:opI, pwr:opP, temp:sim.temp, esc:sim.escTemp, soc:sim.soc, alt:sim.alt,
           phase: phaseText+" · "+fmtMMSS(sim.flightT), phaseCls };
   updateTelemetry(tel);
 
   // ── completion / verdict paths ──
-  // Battery died airborne → genuine failure, force-ends the run.
+  // Battery died airborne → genuine failure, force-ends the run. With the reserve
+  // auto-land armed this should now be unreachable on a healthy build; it remains
+  // as the honest outcome if the pack collapses faster than the descent.
   if(sim.soc <= 0.02 && airborne){
     sim.verdictOk = false;
     sim.verdict = "Battery depleted mid-air — hard landing from "+sim.alt.toFixed(1)+" m";
+    stopSim(true); return;
+  }
+  // Reserve auto-land completed — touchdown with charge still in the pack.
+  if(sim.autoLand && (sim.alt <= 0.03 || (sim.touchdown && sim.alt <= 0.16)) && !sim.landed){
+    sim.landed = true;
+    if(sim.bestOk){
+      sim.verdictOk = true;
+      sim.verdict = sim.bestVerdict;
+    }else{
+      sim.verdictOk = false;
+      sim.verdict = "Landed on reserve — never held a steady height, trim the throttle and re-fly";
+    }
     stopSim(true); return;
   }
   // Live verdict — tracks the CURRENT state every frame; nothing here force-ends
@@ -2458,7 +2863,14 @@ function simStep(dt){
   if(sim.hoverHold >= 1.5){
     if(cc.effMargin >= 12){
       sim.verdictOk = true;
-      sim.verdict = "Stable hover — throttle "+Math.round(cc.hoverPct)+"%, control margin "+Math.round(cc.effMargin)+"%";
+      sim.verdict = "Stable hover — throttle "+Math.round(cc.hoverPct)+"%, control margin "+Math.round(cc.effMargin)+"%"
+        + (state.forwardFlight ? ", 30° forward flight" : "")
+        + " · held "+fmtMMSS(Math.max(sim.holdBest, sim.hoverHold));
+      // LATCH it: this run has proved a stable hover, and that stays true after
+      // the aircraft descends or auto-lands.
+      sim.holdBest = Math.max(sim.holdBest, sim.hoverHold);
+      if(!sim.bestOk){ sim.bestOk = true; }
+      sim.bestVerdict = sim.verdict;
     }else{
       sim.verdictOk = false;
       sim.verdict = "Twitchy — only "+Math.round(cc.effMargin)+"% effective authority, add thrust or shed payload";
@@ -2471,6 +2883,55 @@ function simStep(dt){
     sim.verdict = "Not yet settled — trim the throttle to hold a height";
   }
 }
+
+
+/* ════════════ PAYLOAD LOAD INDICATOR ════════════
+   During the payload sweep the cargo is otherwise invisible — the only cue was
+   the drone sagging. This hangs a real slung load under the airframe: a tether,
+   a crate whose size tracks the cargo mass, and a downward weight arrow whose
+   length scales with the load. Colour follows the TWR verdict bands so the
+   moment the build crosses TWR 1.5 (and then 1.0) is visible in the viewport,
+   not just on the chart. */
+let loadRig = null, loadParts = null;
+function ensureLoadRig(){
+  if(loadRig || !scene || typeof THREE === "undefined") return loadRig;
+  const g = new THREE.Group();
+  const matLine = new THREE.LineBasicMaterial({ color:0x1e2a29, transparent:true, opacity:.55 });
+  const tether = new THREE.Line(
+    new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(0,0,0), new THREE.Vector3(0,-1,0)]), matLine);
+  const boxMat = new THREE.MeshStandardMaterial({ color:0x1f8a5b, roughness:.72, metalness:.05 });
+  const crate = new THREE.Mesh(new THREE.BoxGeometry(1,1,1), boxMat);
+  const arrowMat = new THREE.MeshBasicMaterial({ color:0xc65d3b, depthTest:false });
+  const shaft = new THREE.Mesh(new THREE.CylinderGeometry(0.028,0.028,1,10), arrowMat);
+  const head  = new THREE.Mesh(new THREE.ConeGeometry(0.085,0.20,14), arrowMat);
+  shaft.renderOrder = head.renderOrder = 950;
+  g.add(tether, crate, shaft, head);
+  scene.add(g);
+  loadRig = g; loadParts = { tether, crate, shaft, head, boxMat, arrowMat };
+  return g;
+}
+function updateLoadRig(cargoG, maxG, twNow, dronePos){
+  if(!ensureLoadRig()) return;
+  const p = loadParts;
+  const frac = maxG > 0 ? Math.max(0, Math.min(cargoG/maxG, 1.25)) : 0;
+  if(cargoG < 1){ loadRig.visible = false; return; }
+  loadRig.visible = true;
+  const side = 0.16 + Math.cbrt(Math.max(frac,0.02))*0.34;   // volume ∝ mass
+  const drop = 0.30 + side*0.5;
+  p.crate.scale.set(side, side*0.72, side);
+  p.crate.position.set(0, -drop - side*0.36, 0);
+  p.tether.scale.y = drop;
+  // weight arrow: length ∝ load, hanging below the crate
+  const aLen = 0.22 + frac*0.85;
+  p.shaft.scale.y = aLen;
+  p.shaft.position.set(0, -drop - side*0.72 - aLen/2 - 0.05, 0);
+  p.head.position.set(0, -drop - side*0.72 - aLen - 0.15, 0);
+  p.head.rotation.set(Math.PI, 0, 0);
+  const col = twNow < 1 ? 0xa83232 : twNow < 1.5 ? 0xd99b1c : 0x1f8a5b;
+  p.boxMat.color.setHex(col); p.arrowMat.color.setHex(col);
+  loadRig.position.copy(dronePos);
+}
+function hideLoadRig(){ if(loadRig) loadRig.visible = false; }
 
 /* ════════════ 12 · PROCEDURAL AUDIO ENGINE ════════════ */
 let actx = null, aMaster = null, noiseBuf = null;
@@ -2688,6 +3149,15 @@ $("modalOverlay").addEventListener("click", e=>{ if(e.target === $("modalOverlay
 document.addEventListener("keydown", e=>{ if(e.key==="Escape" && !$("modalOverlay").hidden) closeModal(); });
 
 let lastT = 0, graphEvery = 0;
+/* ── propeller spin ─────────────────────────────────────────────────────────
+   True shaft speed is ω = rpm/60·2π rad/s. Drawing that literally only strobes
+   (a 2-blade prop at 9 000 rpm passes a blade every 3 ms — far under a frame),
+   so the view runs at a fixed fraction of real ω: PROP_VIS. Every rpm RATIO
+   stays exact — double the rpm, double the on-screen rate — and the result is
+   integrated against dt, so it no longer runs faster on a 120 Hz display than
+   on a 60 Hz one the way the old per-frame constant did. */
+const PROP_VIS = 1/12;
+function propSpinRate(rpm){ return Math.max(0, (rpm||0)/60*2*Math.PI*PROP_VIS); }
 function loop(t){
   requestAnimationFrame(loop);
   frameNo++;
@@ -2709,21 +3179,38 @@ function loop(t){
         sz += Math.cos(windPhase*0.7)*.07;
         yawTarget = Math.sin(windPhase*0.25)*.35;
       }
-      // forward-flight: the drone TRANSLATES forward across the chamber (mapped
-      // from sim.fwdDist, wrapped to stay in view) and pitches nose-down.
-      const worldX = ((sim.fwdDist*0.5 + 2.5) % 5 + 5) % 5 - 2.5;
-      rig.position.set(sx + worldX, y, sz);
+      // ── Forward flight ──────────────────────────────────────────────────
+      // The drone holds STATION in the chamber and the ground slides beneath it,
+      // which is what a wind-tunnel / treadmill test looks like. It used to be
+      // positioned by `((fwdDist*0.5 + 2.5) % 5) - 2.5`: during 60x fast-forward
+      // fwdDist advances ~2.2 m per simulated second, so that modulo wrapped
+      // several times per frame and the aircraft appeared to teleport side to
+      // side across the chamber. Station-keeping removes the wrap entirely.
+      const cruising = state.forwardFlight && sim.alt > LAUNCH_ALT + 0.05;
+      const xTarget = cruising ? 0.55 : 0;        // ease slightly downwind, then hold
+      fwdVisX += (xTarget - fwdVisX) * Math.min(dt*1.6, 1);
+      rig.position.set(sx + fwdVisX, y, sz);
       rig.rotation.y += (yawTarget - rig.rotation.y)*0.04;
       rig.rotation.x += (-sim.pitch - rig.rotation.x)*0.10;
+      // scroll the grid under the aircraft so the forward motion is legible
+      if(groundGrid){
+        const spacing = 0.5;
+        groundScroll = cruising
+          ? (groundScroll + Math.sin(sim.pitch)*2.2*dt*(sim.ff?AUTO_FF:1)) % spacing
+          : groundScroll * (1 - Math.min(dt*2,1));
+        groundGrid.position.x = -groundScroll;
+      }
       if(controls){
         const targetY = y + 0.05;
         const dy = (targetY - controls.target.y) * 0.08;
         controls.target.y += dy; camera.position.y += dy;
       }
+      hideLoadRig();
     }else if(payloadSag){
       // payload sweep: altitude sags as cargo approaches the limit
       const y = REST_Y + Math.min(sim.alt,4.5)*0.75;
       rig.position.set((Math.random()-.5)*.01, y, 0);
+      updateLoadRig(sim.cargoG||0, sim.cargoMaxG||0, sim.cargoTw||0, rig.position);
       const pitchTarget = state.forwardFlight ? -Math.PI/6 : 0;
       rig.rotation.x += (pitchTarget - rig.rotation.x)*0.06;
       if(controls){
@@ -2732,6 +3219,7 @@ function loop(t){
         controls.target.y += dy; camera.position.y += dy;
       }
     }else if(!simActive){
+      hideLoadRig();
       // idle — the assembled drone RESTS ON THE GROUND whenever the
       // simulation is not running (seat the drone's lowest point on the grid)
       const box = new THREE.Box3().setFromObject(rig);
@@ -2750,10 +3238,10 @@ function loop(t){
       rig.rotation.y += (0 - rig.rotation.y)*0.06;
     }
     // props are stationary when the drone is landed / powered down
-    const spin = simActive ? Math.min((sim.lastRpm||0)/3200, 3.4) + .15 : 0;
+    const spin = simActive ? propSpinRate(sim.lastRpm) : 0;
     propGroups.forEach((p,i)=>{
       const dir = p.userData.spinDir != null ? p.userData.spinDir : (i%2?1:-1);
-      p.rotation.y += spin*dir;
+      p.rotation.y += spin*dir*dt;
     });
   }
   if(simActive){

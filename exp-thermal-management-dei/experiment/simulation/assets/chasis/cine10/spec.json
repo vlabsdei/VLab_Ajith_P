@@ -18,7 +18,7 @@
   "physics": {
     "wheelbase_mm": 523,
     "recommended_prop_in": [
-      9,
+      6,
       10
     ],
     "frontal_area_m2": 0.0092,

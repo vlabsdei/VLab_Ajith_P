@@ -5,19 +5,38 @@
       "key": "esc",
       "label": "ESC",
       "fallback": "esc",
-      "options": ["esc_20a", "esc_30a", "esc_40a", "esc_4in1_45a", "esc_4in1_60a"]
+      "options": [
+        "esc_20a",
+        "esc_30a",
+        "esc_40a",
+        "esc_4in1_45a",
+        "esc_4in1_60a"
+      ]
     },
     {
       "key": "motor",
       "label": "Motor Load",
       "fallback": "motor",
-      "options": ["1806", "2310", "2806", "3015"]
+      "options": [
+        "1806",
+        "2310",
+        "2806",
+        "3015"
+      ]
     },
     {
       "key": "propeller",
       "label": "Propeller",
       "fallback": "prop",
-      "options": ["5in_tri", "8in_bi", "9in_bi", "10in_bi"]
+      "options": [
+        "5in_tri",
+        "6in_bi",
+        "6in_tri",
+        "7in_bi",
+        "8in_bi",
+        "9in_bi",
+        "10in_bi"
+      ]
     }
   ],
   "defaults": {
@@ -36,18 +55,97 @@
     "timer_tick_us": 1.0
   },
   "faults": [
-    { "id": "none", "label": "None — clean channel", "desc": "Calibrated, jitter-free. Obtained collapses onto Expected above the dead-band." },
-    { "id": "inverted", "label": "Inverted endpoints", "desc": "min/max stored backwards — idle reads ~100%. The 'spins to full on power-up' hazard." },
-    { "id": "highmin", "label": "Minimum endpoint too high", "desc": "Stored min ≈ 1300 µs — low third of the stick is dead, live range compressed." },
-    { "id": "jitter", "label": "Noisy receiver jitter", "desc": "±few µs RC wobble quantised by capture — points scatter around the true curve." }
+    {
+      "id": "none",
+      "label": "None — clean channel",
+      "desc": "Calibrated, jitter-free. Obtained collapses onto Expected above the dead-band."
+    },
+    {
+      "id": "inverted",
+      "label": "Inverted endpoints",
+      "desc": "min/max stored backwards — idle reads ~100%. The 'spins to full on power-up' hazard."
+    },
+    {
+      "id": "highmin",
+      "label": "Minimum endpoint too high",
+      "desc": "Stored min ≈ 1300 µs — low third of the stick is dead, live range compressed."
+    },
+    {
+      "id": "jitter",
+      "label": "Noisy receiver jitter",
+      "desc": "±few µs RC wobble quantised by capture — points scatter around the true curve."
+    }
   ],
   "protocols": [
-    { "id": "pwm_50",   "label": "Standard PWM · 50 Hz",  "type": "analog",  "refresh_hz": 50,   "period_us": 20000, "pulse_min_us": 1000, "pulse_max_us": 2000, "timer_tick_us": 1.0,   "levels": 1000, "latency_ms": 20.0,  "legacy": true },
-    { "id": "pwm_400",  "label": "Fast PWM · 400 Hz",     "type": "analog",  "refresh_hz": 400,  "period_us": 2500,  "pulse_min_us": 1000, "pulse_max_us": 2000, "timer_tick_us": 1.0,   "levels": 1000, "latency_ms": 2.5 },
-    { "id": "pwm_500",  "label": "Fast PWM · 500 Hz",     "type": "analog",  "refresh_hz": 500,  "period_us": 2000,  "pulse_min_us": 1000, "pulse_max_us": 2000, "timer_tick_us": 1.0,   "levels": 1000, "latency_ms": 2.0 },
-    { "id": "oneshot125","label": "OneShot125",           "type": "analog",  "refresh_hz": 4000, "period_us": 250,   "pulse_min_us": 125,  "pulse_max_us": 250,  "timer_tick_us": 0.125, "levels": 1000, "latency_ms": 0.25 },
-    { "id": "dshot300", "label": "DShot300 (digital)",    "type": "digital", "refresh_hz": 18000,"bitrate_bps": 300000, "frame_bits": 16, "levels": 2000, "latency_ms": 0.053 },
-    { "id": "dshot600", "label": "DShot600 (digital)",    "type": "digital", "refresh_hz": 37000,"bitrate_bps": 600000, "frame_bits": 16, "levels": 2000, "latency_ms": 0.027 }
+    {
+      "id": "pwm_50",
+      "label": "Standard PWM · 50 Hz",
+      "type": "analog",
+      "refresh_hz": 50,
+      "period_us": 20000,
+      "pulse_min_us": 1000,
+      "pulse_max_us": 2000,
+      "timer_tick_us": 1.0,
+      "levels": 1000,
+      "latency_ms": 20.0,
+      "legacy": true
+    },
+    {
+      "id": "pwm_400",
+      "label": "Fast PWM · 400 Hz",
+      "type": "analog",
+      "refresh_hz": 400,
+      "period_us": 2500,
+      "pulse_min_us": 1000,
+      "pulse_max_us": 2000,
+      "timer_tick_us": 1.0,
+      "levels": 1000,
+      "latency_ms": 2.5
+    },
+    {
+      "id": "pwm_500",
+      "label": "Fast PWM · 500 Hz",
+      "type": "analog",
+      "refresh_hz": 500,
+      "period_us": 2000,
+      "pulse_min_us": 1000,
+      "pulse_max_us": 2000,
+      "timer_tick_us": 1.0,
+      "levels": 1000,
+      "latency_ms": 2.0
+    },
+    {
+      "id": "oneshot125",
+      "label": "OneShot125",
+      "type": "analog",
+      "refresh_hz": 4000,
+      "period_us": 250,
+      "pulse_min_us": 125,
+      "pulse_max_us": 250,
+      "timer_tick_us": 0.125,
+      "levels": 1000,
+      "latency_ms": 0.25
+    },
+    {
+      "id": "dshot300",
+      "label": "DShot300 (digital)",
+      "type": "digital",
+      "refresh_hz": 18000,
+      "bitrate_bps": 300000,
+      "frame_bits": 16,
+      "levels": 2000,
+      "latency_ms": 0.053
+    },
+    {
+      "id": "dshot600",
+      "label": "DShot600 (digital)",
+      "type": "digital",
+      "refresh_hz": 37000,
+      "bitrate_bps": 600000,
+      "frame_bits": 16,
+      "levels": 2000,
+      "latency_ms": 0.027
+    }
   ],
   "thermal": {
     "ambient_c": 25,
@@ -64,8 +162,20 @@
       "label": "Module 1",
       "sub": "The ESC Board",
       "experiments": [
-        { "id": "anatomy",    "name": "Anatomy",     "unit": "",   "metric": "explore", "type": "explore" },
-        { "id": "commission", "name": "Commission",  "unit": "%",  "metric": "map",     "type": "bench" }
+        {
+          "id": "anatomy",
+          "name": "Anatomy",
+          "unit": "",
+          "metric": "explore",
+          "type": "explore"
+        },
+        {
+          "id": "commission",
+          "name": "Commission",
+          "unit": "%",
+          "metric": "map",
+          "type": "bench"
+        }
       ]
     },
     {
@@ -73,23 +183,67 @@
       "label": "Module 2",
       "sub": "Characterisation",
       "experiments": [
-        { "id": "protocol", "name": "Protocol & Latency", "unit": "ms", "metric": "latency", "type": "bench" },
-        { "id": "thermal",  "name": "Thermal & Heatsink", "unit": "°C", "metric": "temp",    "type": "bench" }
+        {
+          "id": "protocol",
+          "name": "Protocol & Latency",
+          "unit": "ms",
+          "metric": "latency",
+          "type": "bench"
+        },
+        {
+          "id": "thermal",
+          "name": "Thermal & Heatsink",
+          "unit": "°C",
+          "metric": "temp",
+          "type": "bench"
+        }
       ]
     }
   ],
   "instructor": [
-    { "text": "Welcome to the ESC Power-Electronics Lab. We will commission a real speed controller on the bench, then characterise its command latency and its thermal limit.", "audio": null },
-    { "text": "Start in Module 1 · Commission. Pick an ESC, a motor load and a propeller on the left, then wire the bench: click the DC supply's red (+) post, then the ESC's red power pad — repeat for black (−). Cross the polarity and the ESC is destroyed, exactly like a real bench.", "audio": null },
-    { "text": "Wire the three phase pads to the motor, store the 1000–2000 µs endpoints, arm at idle, then sweep the pulse width. The scope draws the ideal Expected line against the real Obtained map — dead-band and all.", "audio": null },
-    { "text": "Module 2 · Protocol shows command latency as a visible delay. Step through PWM 50 Hz to DShot600 and watch the amber response chase the blue command. Resolution stays 1000 steps — only latency changes.", "audio": null },
-    { "text": "Module 2 · Thermal runs a sustained-current sweep. Read the I²R conduction loss, enable hot-resistance feedback, and decide whether the board needs a heatsink to stay under 80 °C.", "audio": null },
-    { "text": "Outstanding — every stage is signed off. Your reward component is unlocked in the Outputs panel.", "audio": null }
+    {
+      "text": "Welcome to the ESC Power-Electronics Lab. We will commission a real speed controller on the bench, then characterise its command latency and its thermal limit.",
+      "audio": null
+    },
+    {
+      "text": "Start in Module 1 · Commission. Pick an ESC, a motor load and a propeller on the left, then wire the bench: click the DC supply's red (+) post, then the ESC's red power pad — repeat for black (−). Cross the polarity and the ESC is destroyed, exactly like a real bench.",
+      "audio": null
+    },
+    {
+      "text": "Wire the three phase pads to the motor, store the 1000–2000 µs endpoints, arm at idle, then sweep the pulse width. The scope draws the ideal Expected line against the real Obtained map — dead-band and all.",
+      "audio": null
+    },
+    {
+      "text": "Module 2 · Protocol shows command latency as a visible delay. Step through PWM 50 Hz to DShot600 and watch the amber response chase the blue command. Resolution stays 1000 steps — only latency changes.",
+      "audio": null
+    },
+    {
+      "text": "Module 2 · Thermal runs a sustained-current sweep. Read the I²R conduction loss, enable hot-resistance feedback, and decide whether the board needs a heatsink to stay under 80 °C.",
+      "audio": null
+    },
+    {
+      "text": "Outstanding — every stage is signed off. Your reward component is unlocked in the Outputs panel.",
+      "audio": null
+    }
   ],
   "reward": {
-    "name": "Clamp-On Heatsink",
-    "desc": "Bench reward — a bonded aluminium heatsink that drops the ESC's thermal resistance. Unlocked once all stages are complete.",
-    "fallback": "heatsink",
-    "model": null
+    "category": "esc",
+    "name": "ESC",
+    "desc": "A commissioned speed controller, drawn at random from the catalogue.",
+    "options": [
+      "esc_20a",
+      "esc_30a",
+      "Cyclone_35A",
+      "esc_40a_4in1",
+      "esc_45a",
+      "esc_4in1_50a",
+      "Diatine_mamba_55A",
+      "esc_65a",
+      "esc_80a",
+      "esc_100a_4in1",
+      "Dakefpv_120A",
+      "UH300"
+    ],
+    "fallback": "esc"
   }
 }

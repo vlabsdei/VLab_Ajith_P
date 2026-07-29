@@ -1,16 +1,15 @@
 # Academic References
 
-1. **J. M. Gere and S. P. Timoshenko**, *Mechanics of Materials*, 9th ed. Boston, MA: Cengage Learning, 2017.  
-   *(Provides the fundamental derivations for cantilever beam bending moments, area moment of inertia, and flexural stress profiles.)*
+The bending-stress, CG and arm-deflection models in this experiment are based on the following laboratory manuals (primary) and prescribed Indian-university textbooks.
 
-2. **R. M. Jones**, *Mechanics of Composite Materials*, 2nd ed. Philadelphia, PA: Taylor & Francis, 1999.  
-   *(Analyzes the orthotropic yield criteria and strength parameters of carbon fibre reinforced polymers compared to isotropic structural metals.)*
+**Laboratory manuals (primary)**
 
-3. **R. C. Hibbeler**, *Engineering Mechanics: Statics*, 14th ed. Upper Saddle River, NJ: Pearson, 2016.  
-   *(Details the centroid and center-of-gravity equations for composite bodies, including the multi-axis mass-moment summation used to locate the drone's CG offset.)*
+1. **Indian Institute of Technology (IIT) Madras**, *Strength of Materials Laboratory Manual* (AM2540). Cantilever bending-stress and deflection experiment — flexure formula *M/I = −σ/y = E/ρ*, stress–strain *σ = Eε*, free-end deflection *δ = PL³/3EI*, p26.
+   https://home.iitm.ac.in/kramesh/Strength%20of%20Materials%20Laboratory%20Manual.pdf
+2. **Mangalore Institute of Technology & Engineering (VTU)**, *Engineering Mechanics — Module 4*. Centroid / centre-of-gravity of composite areas, p13–15.
+   https://mite.ac.in/wp-content/uploads/2025/09/23ESCC107_Fundamentals_of_Civil_Engg_Engg_Mechanics_Module4.pdf
 
-4. **Federal Aviation Administration (FAA)**, *UAS Weight and Balance Handbook*, FAA-H-8083-1B, U.S. Dept. of Transportation, 2016.  
-   *(Details the reference-datum method, weight-and-balance limits, and the flight-control trim penalties of an unbalanced aircraft.)*
+**Textbooks**
 
-5. **William D. Callister and David G. Rethwisch**, *Materials Science and Engineering: An Introduction*, 10th ed. New York, NY: John Wiley & Sons, 2018.  
-   *(Provides the standard tensile yield strengths and Young's modulus constants for structural Aluminium 6061-T6, carbon composites, and engineering plastics like Polyamide PA6.)*
+3. **R. K. Bansal**, *Strength of Materials*, Laxmi Publications. Bending stress, section modulus and factor of safety.
+4. **G. K. Grover**, *Mechanical Vibrations*, Nem Chand & Bros. Natural frequency of a fixed-free (cantilever) beam.

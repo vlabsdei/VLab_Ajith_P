@@ -1,95 +1,165 @@
 <h1>Lab Procedure: PID Tuning, Ziegler&ndash;Nichols, Sensor Fusion &amp; the Full System</h1>
 
-<p>This document outlines the step-by-step workflow for <strong>Experiment 5: Flight Control System</strong>, a single page with <strong>four tabs</strong>: PID Tuning, Ziegler&ndash;Nichols, Sensor Fusion, and Full System. Every value you see is computed live from the selected airframe and IMU, and your full session is saved automatically — reloading the page resumes exactly where you left off. The airframe, commanded roll angle and propeller blade count are shared across all four tabs; each tab's own controls appear in the left panel only while that tab is active.</p>
+<p>Four tabs on one page: PID Tuning, Ziegler&ndash;Nichols, Sensor Fusion, and Full System. Everything is computed live from the airframe and IMU you pick, and the session saves itself, so you can close the page mid-tune and come back to it. The airframe, the commanded roll angle and the propeller blade count are shared across all four tabs; each tab's own controls appear in the left panel only while that tab is active.</p>
+
+<p>One thing to know up front: this experiment is self-contained. It does not read saved values from any other experiment, and it does not write into one. The mass, arm length and moment of inertia all come from the components you select here.</p>
 
 <hr>
 
-<h2>Stage 1: Configure the Airframe</h2>
+<h2>Before anything else: the airframe</h2>
 
 <h3>Objective</h3>
-<p>Fix the roll-axis moment of inertia <i>J</i> from the physical build, since it sets the entire closed-loop response.</p>
+<p>Fix the roll-axis moment of inertia <i>J</i>, because it sets the entire closed-loop response.</p>
 
-<h3>Step-by-Step Procedure</h3>
 <ol>
-<li><strong>Launch the Simulator:</strong> Open the virtual lab page. It loads the <strong>1 &middot; PID Tuning</strong> tab by default.</li>
-<li><strong>Select an Airframe:</strong> In the left-hand panel use the <strong>Airframe</strong> selector (Micro 4&Prime;, X-Quad 5&Prime;, FPV 6&Prime;, Freestyle 7&Prime;, 10&Prime; Cine-Lifter). The <strong>Moment of Inertia</strong> readout updates immediately from the selected chassis and the rest of the current build (motor, battery, ESC, controller, receiver, attachments) using <i>J</i> = <i>m L</i><sup>2</sup>/2. This selection is shared by all four tabs. This experiment is self-contained — it does not read saved values from any other experiment, so the mass, arm length and moment of inertia always come from whatever components you have selected here.</li>
-<li><strong>Confirm the Reference Build:</strong> Select <strong>X-Quad 5&Prime;</strong> (the default) to reproduce the worked examples (<i>J</i> &asymp; 0.003 kg&middot;m<sup>2</sup>).</li>
+<li>The page opens on <strong>1 &middot; PID Tuning</strong>. Use the <strong>Airframe</strong> selector in the left panel &mdash; Micro 4&Prime;, X-Quad 5&Prime;, FPV 6&Prime;, Freestyle 7&Prime;, or the 10&Prime; Cine-Lifter.</li>
+<li>The <strong>Moment of Inertia</strong> readout updates immediately from the chassis and the rest of the build (motor, battery, ESC, controller, receiver, attachments), using <i>J</i> = <i>m L</i><sup>2</sup>/2.</li>
+<li>To reproduce the worked numbers below, stay on the default <strong>X-Quad 5&Prime;</strong>: <i>m</i> = 0.529 kg, geometric arm 145 mm, <i>J</i> = 0.00313 kg&middot;m<sup>2</sup>.</li>
 </ol>
 
 <hr>
 
-<h2>Stage 2: PID Step-Response Tuning (Tab 1 &middot; PID Tuning)</h2>
+<h2>How to watch a run</h2>
+
+<p>Two tools carry most of the explanation in this experiment, and they are worth understanding before you start turning knobs.</p>
+
+<h3>The narrated run</h3>
+
+<p>Every tab's <strong>&#9654; Run</strong> button plays the result as a narrated, shot-by-shot film rather than a three-second twitch. The playback is chaptered, and each chapter re-times a window of simulation time onto a window of wall time &mdash; so the 40 ms in which the mixer splits the motor thrusts stretches to about five seconds of slow motion, while the settle tail runs at speed. The camera moves per chapter (wide, front, close on the left motor pair, hero), and the caption strip states what is happening <em>and the number it is happening at</em>, recomputed from your build.</p>
+
+<ul>
+<li>The transport bar gives you play/pause, previous and next chapter, a scrubbable timeline with a tick per chapter, speeds of <strong>0.5&times; / 1&times; / 2&times; / 4&times;</strong>, and <strong>Skip &#9656;</strong> straight to the verdict. A full PID run is about 28 s at 1&times;.</li>
+<li>Drag inside the viewport at any time and the director hands the camera back to you for the rest of the run.</li>
+<li>If you only want the numbers, turn the <strong>Narrated slow-motion run</strong> switch off in the left panel.</li>
+</ul>
+
+<h3>In-scene annotations</h3>
+
+<p>With <strong>In-scene thrust / torque annotations</strong> on (the default), the 3-D view draws the controller's actual output onto the airframe:</p>
+
+<ul>
+<li>a column above each motor whose height is that motor's live thrust, with a grey tick at the hover trim &mdash; green above trim, blue below, and <strong>red</strong> when the motor hits 0 N or its ceiling;</li>
+<li>a grey blade at the commanded angle and a gold blade at the true angle, with the orange wedge between them being the live error;</li>
+<li>a torque arc around the roll axis, sized against <i>&tau;</i><sub>max</sub>, which turns red on saturation.</li>
+</ul>
+
+<p>This is the answer to "what does a PID gain physically <em>do</em>". It is a number that ends up as newtons of thrust on one side of the aircraft.</p>
+
+<h3>The derivation window</h3>
+
+<p>Each tab's left panel ends with <strong>How this works &mdash; full derivation &rsaquo;</strong>. It opens a live block diagram of that tab's actual loop, the equations with your build's numbers substituted in, a knob-by-knob table of physical consequence and failure mode, and the metric definitions. Read it once per tab before you start tuning.</p>
+
+<hr>
+
+<h2>Tab 1 &middot; PID Tuning</h2>
 
 <h3>Objective</h3>
-<p>Relate the PID gains to the closed-loop natural frequency and damping, and read the four step-response metrics directly.</p>
+<p>Connect the gains to the closed-loop natural frequency and damping, and read the four step-response metrics off the plot.</p>
 
 <p><img src="./images/step_response_metrics.png" alt="PID step response showing overshoot, rise and settling time"></p>
 
-<h3>Step-by-Step Procedure</h3>
 <ol>
-<li><strong>Stay on the 1 &middot; PID Tuning tab.</strong> The centre <strong>attitude view</strong> shows the drone rolling toward the commanded angle; the <strong>response plot</strong> below traces roll angle versus time with the setpoint, overshoot peak, and the &plusmn;2% settling band marked. The plot and drone are driven by a <strong>real closed-loop PID simulation</strong> on the 1/(<i>J s</i><sup>2</sup>) plant, so every gain — including K<sub>i</sub> — visibly reshapes the curve.</li>
-<li><strong>Set the gains, then run.</strong> Drag the <strong>K<sub>p</sub></strong>, <strong>K<sub>i</sub></strong> and <strong>K<sub>d</sub></strong> sliders (start at K<sub>p</sub> = 0.6, K<sub>i</sub> = 0, K<sub>d</sub> = 0.04) — the response plot redraws instantly as a preview each time a gain changes, since the whole step response is a closed-form curve computed from the current gains. Click <strong>&#9654; Run</strong> to play that precomputed curve back on the attitude view and telemetry over a few seconds (click <strong>&#9632; Stop</strong> to cut it short). This experiment has no live throttle or manual flight — gains are fixed <em>before</em> each run, never adjusted mid-flight. Below the metrics, the <strong>PID Term Contributions</strong> panel breaks the corrective torque into its live <strong>P / I / D</strong> shares (in N&middot;m) so you can see <em>which</em> gain is doing the work at each instant: P sets the speed of the attack, D damps the ring-down, and I climbs only to erase a standing offset.</li>
-<li><strong>Read the metrics.</strong> The right column reports <strong>&omega;<sub>n</sub></strong>, <strong>damping &zeta;</strong>, <strong>overshoot %</strong>, <strong>rise time</strong>, <strong>peak time</strong> and <strong>settling time</strong>. Confirm K<sub>p</sub> = 0.6 / K<sub>d</sub> = 0.04 gives &omega;<sub>n</sub> &asymp; 14.1 rad/s, &zeta; &asymp; 0.47, overshoot &asymp; 18.6%, settling &asymp; 0.60 s.</li>
-<li><strong>Explore the K<sub>p</sub>&ndash;overshoot trade-off.</strong> Sweep K<sub>p</sub> across 0.2 &rarr; 1.0 (keep K<sub>d</sub> = 0.04). Watch overshoot climb 1.2% &rarr; 29% and cross the <strong>25% comfort limit</strong> near K<sub>p</sub> = 0.8, while the <strong>settling time stays fixed at 0.60 s</strong> — proving it is set by K<sub>d</sub>/(2<i>J</i>), not K<sub>p</sub>.</li>
-<li><strong>Expose steady-state error.</strong> Enable the <strong>Disturbance torque</strong> switch (a fixed CG-offset couple <i>&tau;</i><sub>d</sub> = <i>m g d</i> modelling an off-centre payload or shifted battery). The drone now settles <em>short</em> of the target, and the response plot draws a red <strong>droop line</strong> at the held angle. Read <strong>e<sub>ss</sub></strong>: about 1.67&deg; at K<sub>p</sub> = 0.6, shrinking as K<sub>p</sub> rises. In the <strong>PID Term Contributions</strong> panel, the <strong>P term alone</strong> is now holding a standing torque against the disturbance — but proportional action needs a non-zero error to produce that torque, which is exactly why the droop remains.</li>
-<li><strong>Null it with integral action.</strong> Raise <strong>K<sub>i</sub></strong> above zero and re-apply the step. Watch the steady-state error walk to <strong>0&deg;</strong> and the droop line vanish. In the term panel the <strong>load hands off from P to I</strong>: as the integrator winds in, the I share climbs to carry the full counter-torque the disturbance demands while the P share falls toward zero — proportional action no longer needs a standing error, so the drone holds the commanded attitude exactly.</li>
+<li>The centre attitude view shows the drone rolling toward the commanded angle, and the response plot traces roll angle against time with the setpoint, the overshoot peak and the &plusmn;2% settling band marked. Both come from a full closed-loop integration, so every gain &mdash; K<sub>i</sub> included &mdash; visibly reshapes the curve.</li>
+
+<li>Pick what the gains are flying, using the <strong>Plant fidelity</strong> buttons:
+  <ul>
+  <li><strong>Ideal 1/(<i>J s</i><sup>2</sup>)</strong> is the textbook prototype: perfect rigid body, continuous controller, unlimited torque, no sensor. The analytic &omega;<sub>n</sub> / &zeta; / M<sub>p</sub> formulas hold here to three decimals.</li>
+  <li><strong>Real drone</strong> (the default) runs the same gains on a modelled aircraft: the loop is discrete at the IMU's 400 Hz with zero-order hold, the controller sees the complementary-filtered noisy estimate rather than the truth, each motor spools with a 20 ms lag, and the mixer clips at the real thrust envelope with anti-windup on the integrator.</li>
+  </ul>
+  Run the same gains on both. The gap between them is the whole point of the tab.</li>
+
+<li>Set <strong>K<sub>p</sub></strong>, <strong>K<sub>i</sub></strong> and <strong>K<sub>d</sub></strong> (defaults: 0.6, 0, 0.04). The plot redraws as a preview the moment a gain changes; <strong>&#9654; Run</strong> plays the narrated film of that response. There is no live throttle and no mid-flight adjustment here &mdash; you fix the gains, then you fly them.</li>
+
+<li>Read the chips under the viewport: <strong>&omega;<sub>n</sub></strong>, <strong>damping &zeta;</strong>, <strong>overshoot %</strong>, <strong>settling time</strong>. On the reference build, K<sub>p</sub> = 0.6 with K<sub>d</sub> = 0.04 gives &omega;<sub>n</sub> = 13.85 rad/s and &zeta; = 0.462, which the ideal plant turns into 19.5% overshoot and t<sub>s</sub> = 0.60 s, and the real drone turns into 31.3% overshoot and t<sub>s</sub> = 0.90 s. So the default fails the 30% comfort limit, deliberately. Raise K<sub>d</sub> to 0.05 (16.6%) or 0.06 (5.0%) and re-run to pass.</li>
+
+<li>Use the <strong>Active terms</strong> buttons to fly <strong>P only</strong>, <strong>PI</strong>, <strong>PD</strong> and full <strong>PID</strong> on the same slider values. P alone rings, and with the disturbance armed it droops. PD stops the ringing but keeps the droop. PI kills the droop but rings harder. Only the full PID does both. The <strong>PID Term Contributions</strong> chart splits the corrective torque into its live P / I / D shares in N&middot;m, so you can see which gain is doing the work at each instant.</li>
+
+<li>Open <strong>Charts &rarr; Motor mixing</strong> to watch torque become thrust. It plots the left-pair and right-pair thrusts against the hover trim, the motor ceiling and zero. On the reference build the trim sits at 1.30 N and the ceiling is 8.92 N &mdash; but the roll authority works out at only <i>&tau;</i><sub>max</sub> = 0.532 N&middot;m, and that is the interesting part. The limit is not the top of the envelope. To roll, one pair pushes up and the other pulls down, and the pair coming down runs out first when it reaches <strong>0 N</strong>. So <i>&tau;</i><sub>max</sub> = 4&middot;<i>a</i>&middot;<i>T</i><sub>hover</sub>, set by the hover trim and the arm, with the 8.92 N ceiling never coming into it. Now push K<sub>p</sub> to 1.5 with a 45&deg; command: the demand reaches 1.18 N&middot;m, the footnote's <em>"mixer clipped &hellip;% of the run"</em> stops reading zero (about 15% here), the in-scene columns go red, and the response degrades in a way no gain change can rescue. That is a propulsion limit, not a software one.</li>
+
+<li>Sweep K<sub>p</sub> from 0.2 to 1.0 with K<sub>d</sub> held at 0.04. On the ideal plant, overshoot climbs from 1.5% to 30.0% and crosses the 25% comfort line near K<sub>p</sub> = 0.8 &mdash; while the settling time sits unchanged at 0.626 s, because it is set by K<sub>d</sub>/(2<i>J</i>), not by K<sub>p</sub>. The <strong>Gain sweep</strong> chart draws all five responses at once, and the <strong>s-plane pole map</strong> shows the same fact geometrically: the pole pair slides up and down at a fixed real part.</li>
+
+<li>Turn on the <strong>Disturbance torque</strong> switch. This is a fixed CG-offset couple, <i>&tau;</i><sub>d</sub> = <i>m g d</i> with <i>d</i> = 3.57 mm &mdash; an off-centre payload or a shifted battery. The drone now settles short of the target and the plot draws a red droop line at the held angle. Read <strong>e<sub>ss</sub></strong>: 1.83&deg; at K<sub>p</sub> = 0.6 on the real plant, 1.77&deg; on the ideal one, which is exactly <i>&tau;</i><sub>d</sub>/K<sub>p</sub>. In the term chart, the P term alone is now holding a standing torque against the disturbance, and proportional action needs a non-zero error to produce that torque. That is why the droop stays.</li>
+
+<li>Raise <strong>K<sub>i</sub></strong> above zero and re-run. The steady-state error walks to 0&deg; and the droop line vanishes. In the term chart the load hands off from P to I: as the integrator winds in, the I share climbs to carry the full counter-torque, and the P share falls toward zero. Proportional action no longer needs a standing error, so the aircraft holds the commanded attitude.</li>
 </ol>
 
 <hr>
 
-<h2>Stage 3: Ziegler&ndash;Nichols Auto-Tuning (Tab 2 &middot; Ziegler&ndash;Nichols)</h2>
+<h2>Tab 2 &middot; Ziegler&ndash;Nichols</h2>
 
 <h3>Objective</h3>
-<p>Find the gains automatically from the ultimate gain and period, refine the aggressive classic result into a robust tune, then see how real air resistance and wind change both.</p>
+<p>Get gains automatically from the ultimate gain and period, refine the aggressive result into something you would actually fly, then see what real air resistance does to both.</p>
 
-<p><img src="./images/ziegler_nichols_tuning.png" alt="Ziegler&ndash;Nichols sustained oscillation and the classic vs Tyreus&ndash;Luyben step responses"></p>
+<p><img src="./images/ziegler_nichols_tuning.png" alt="Ziegler-Nichols sustained oscillation and the classic vs Tyreus-Luyben step responses"></p>
 
-<h3>Step-by-Step Procedure</h3>
 <ol>
-<li><strong>Switch to the 2 &middot; Ziegler&ndash;Nichols tab.</strong> The plot now shows the inner <strong>rate-loop</strong> response under pure proportional control.</li>
-<li><strong>Find the stability limit.</strong> Drag the <strong>Proportional sweep gain</strong> slider upward. The response goes from damped, to a <strong>sustained constant-amplitude oscillation</strong>, to divergence. Stop at the sustained-oscillation point — the readout latches the <strong>ultimate gain K<sub>u</sub></strong> and <strong>period P<sub>u</sub></strong>. For the 5&Prime; airframe, expect K<sub>u</sub> &asymp; 19.25 and P<sub>u</sub> &asymp; 0.051 s.</li>
-<li><strong>Apply the classic table.</strong> With <strong>Classic Z-N</strong> selected (the default of the two method buttons), click <strong>Auto-tune &rarr; apply table</strong>. The computed gains appear (K<sub>p</sub> &asymp; 11.55, K<sub>i</sub> &asymp; 450, K<sub>d</sub> &asymp; 0.074) and the step response is drawn. Note the <strong>large ~68% overshoot</strong> — fast but aggressive — with <strong>zero steady-state error</strong> from the integral term.</li>
-<li><strong>Refine for robustness.</strong> Click the <strong>Tyreus&ndash;Luyben</strong> method button. The gains change (K<sub>p</sub> &asymp; 8.66, K<sub>i</sub> &asymp; 77, K<sub>d</sub> &asymp; 0.071) and the overshoot drops to about <strong>15%</strong>, under the 25% target, still with zero steady-state error. Compare the two step curves overlaid on the plot.</li>
-<li><strong>Dial in air resistance.</strong> With the classic Z-N gains still applied, drag the <strong>Air resistance</strong> slider from 0% up through 30% to 70%. Watch overshoot fall from <strong>68% &rarr; 57% &rarr; 45%</strong> as real aerodynamic drag adds damping the electronics never had to supply — drag is <em>free</em> damping. The settling time shortens too (0.184 s &rarr; 0.122 s &rarr; 0.109 s).</li>
-<li><strong>Add a wind gust.</strong> Raise the <strong>Wind-gust torque</strong> slider. A slowly oscillating disturbance now pushes the rate loop off its target; watch the response wobble around the setpoint instead of holding it flat — only integral action (already present in both Z-N tables) can null the offset in steady state.</li>
-<li><strong>Draw the conclusion.</strong> Read the commentary: Ziegler&ndash;Nichols delivers a <em>starting point</em> in one experiment; a robustness retune and real air resistance both fight overshoot, one on paper and one in physics.</li>
+<li>The plot now shows the inner rate-loop response under pure proportional control.</li>
+
+<li>Drag the <strong>Proportional sweep gain</strong> up. The response goes damped, then into a sustained constant-amplitude oscillation, then diverges. Stop at the sustained oscillation: the readout latches the ultimate gain <strong>K<sub>u</sub></strong> and period <strong>P<sub>u</sub></strong>. On the 5&Prime; airframe, expect K<sub>u</sub> &asymp; 19.25 and P<sub>u</sub> &asymp; 0.051 s.</li>
+
+<li>With <strong>Classic Z-N</strong> selected, click <strong>Auto-tune (apply table)</strong>. You get K<sub>p</sub> &asymp; 11.55, K<sub>i</sub> &asymp; 450, K<sub>d</sub> &asymp; 0.074, and a step response with about 68% overshoot &mdash; fast, aggressive, and zero steady-state error thanks to the integral term.</li>
+
+<li>Click <strong>Tyreus&ndash;Luyben</strong>. The gains drop to K<sub>p</sub> &asymp; 8.66, K<sub>i</sub> &asymp; 77, K<sub>d</sub> &asymp; 0.071 and the overshoot falls to about 16%, under the 25% target, still with zero steady-state error. The two step curves overlay on the plot for comparison.</li>
+
+<li>Now drag the <strong>Air resistance</strong> slider from 0% through 30% to 70%. Aerodynamic damping acts on the body, so it speeds the mechanical pole up and lowers the plant's DC gain &mdash; and K<sub>u</sub> itself moves, climbing 19.25 &rarr; 21.24 &rarr; 24.02 while P<sub>u</sub> falls 51.3 &rarr; 49.1 &rarr; 46.6 ms. Because the Z-N table is always a fixed fraction of K<sub>u</sub>, the retuned gains rise with it (Classic K<sub>p</sub> 11.55 &rarr; 12.75 &rarr; 14.41) and the overshoot barely moves (68% &rarr; 67% &rarr; 66%). Z-N holds you at a constant distance from instability by construction, so a draggier airframe is allowed hotter gains, not a calmer response.</li>
+
+<li>To see drag as damping instead, hold the gains fixed. The clearest place is the <strong>PID Tuning</strong> tab, which has its own air-resistance slider and no auto-retune: at K<sub>p</sub> = 0.6 and K<sub>d</sub> = 0.04, the damping ratio climbs &zeta; = 0.462 &rarr; 0.685 &rarr; 0.982 and overshoot collapses 19.5% &rarr; 5.2% &rarr; 0% across the same three settings. Drag is free damping the controller never had to supply &mdash; and it is why the same tune feels livelier at 3000 m, where &rho; has dropped.</li>
+
+<li>Raise the <strong>Wind-gust torque</strong> slider. A slowly oscillating disturbance pushes the rate loop off target, and the response wobbles around the setpoint instead of holding flat. Only integral action can null the offset in steady state, and both Z-N tables already have it.</li>
+
+<li>Open <strong>Charts &rarr; Stability margin</strong>. It sweeps K<sub>p</sub> from 0.1&thinsp;K<sub>u</sub> to 1.25&thinsp;K<sub>u</sub>, plots the resulting P-only overshoot and settling time, and marks K<sub>u</sub> along with wherever the selected method parks you (Classic at 0.60&thinsp;K<sub>u</sub>, Tyreus&ndash;Luyben at 0.45&thinsp;K<sub>u</sub>). Everything right of 1.0 is an aircraft you cannot fly. The horizontal distance to that line is your gain margin.</li>
 </ol>
+
+<p>Read the commentary at the end. Ziegler&ndash;Nichols gives you a starting point from a single experiment, and nothing more. A robustness retune and real air resistance both fight overshoot &mdash; one on paper, one in physics.</p>
 
 <hr>
 
-<h2>Stage 4: Sensor Fusion — Complementary Filter (Tab 3 &middot; Sensor Fusion)</h2>
+<h2>Tab 3 &middot; Sensor Fusion</h2>
 
 <h3>Objective</h3>
-<p>Fuse a drifting gyro and a noisy accelerometer into a clean attitude estimate, and find the blend coefficient that minimises the combined error.</p>
+<p>Fuse a drifting gyro and a noisy accelerometer into a usable attitude estimate, and find the blend that minimises the combined error.</p>
 
 <p><img src="./images/complementary_filter.png" alt="Complementary filter fusing drifting gyro and noisy accelerometer into a clean estimate"></p>
 
-<h3>Step-by-Step Procedure</h3>
 <ol>
-<li><strong>Switch to the 3 &middot; Sensor Fusion tab.</strong> Your airframe selection carries over automatically.</li>
-<li><strong>Select an IMU.</strong> Use the <strong>IMU</strong> selector (MPU-6000, ICM-20602, BMI270, MPU-9250). Its gyro bias, accelerometer noise and sample rate populate the model. Start with the reference <strong>MPU-6000</strong>.</li>
-<li><strong>Watch the twin drones.</strong> The solid drone in the 3-D view holds the <strong>true</strong> commanded attitude; a translucent <strong>ghost drone</strong> shows the fused <strong>estimate</strong> &theta;&#770; banking alongside it. The scope plot overlays the same <strong>true angle</strong>, the <strong>gyro-only estimate</strong> (smooth but slowly drifting away), the <strong>accelerometer angle</strong> (correct on average but noisy), and the <strong>fused estimate</strong>.</li>
-<li><strong>Sweep the blend coefficient.</strong> Drag the <strong>Blend coefficient &alpha;</strong> slider through 0.90, 0.95, 0.98, 0.99. Read the live <strong>time constant &tau;<sub>f</sub></strong>, <strong>drift</strong>, <strong>noise RMS</strong> and <strong>total error</strong>. Confirm the total error is <strong>minimised at &alpha; = 0.98</strong> (&asymp; 0.25&deg;) for the reference IMU.</li>
-<li><strong>See unbounded drift.</strong> Set &alpha; = 1.0 (pure gyro). The ghost drone visibly <strong>peels away</strong> from the solid true-attitude drone and keeps peeling — a drift of ~18&deg; over 30 s — the failure the accelerometer reference prevents.</li>
-<li><strong>Verify completion.</strong> The right panel confirms the chosen IMU, the optimal &alpha;, and the final attitude-estimate error. This is the estimate the next tab actually flies on.</li>
+<li>Your airframe selection carries over on its own.</li>
+
+<li>Choose an <strong>IMU</strong>: MPU-6000, ICM-20602, BMI270 or MPU-9250. Its gyro bias, accelerometer noise and sample rate populate the model. Start with the reference MPU-6000.</li>
+
+<li>Watch the twin drones. The solid one holds the true commanded attitude; the translucent ghost shows the fused estimate &theta;&#770; banking alongside it. The scope overlays the true angle, the gyro-only estimate (smooth, slowly drifting away), the accelerometer angle (right on average, noisy in every sample), and the fused result.</li>
+
+<li>Sweep the <strong>Blend coefficient &alpha;</strong> through 0.90, 0.95, 0.98, 0.99 and read the time constant &tau;<sub>f</sub>, drift, noise RMS and total error. For the reference IMU the total error bottoms out at &alpha; = 0.98, around 0.25&deg;.</li>
+
+<li>Open <strong>Charts &rarr; Frequency view</strong>. The gyro path is a high-pass and the accelerometer path a low-pass, and they sum to exactly one at every frequency, crossing at 1/(2&pi;&tau;<sub>f</sub>) &mdash; about 1.3 Hz at &alpha; = 0.98. Above the crossover the estimate <em>is</em> the gyro; below it, gravity quietly drags the estimate back onto truth. That is what stops the drift.</li>
+
+<li>Push &alpha; to its maximum of 0.999, which is effectively pure gyro. The ghost drone peels away from the solid one and keeps peeling &mdash; roughly 18&deg; over 30 s for the MPU-6000's 0.6&deg;/s bias. The <strong>Estimate error over time</strong> chart shows it against three other &alpha; values: every bounded curve stays flat, and the pure-gyro one just walks off.</li>
+
+<li>The right panel confirms the chosen IMU, the best &alpha;, and the final attitude-estimate error. That estimate is what the next tab actually flies on.</li>
 </ol>
 
 <hr>
 
-<h2>Stage 5: The Full System — Hunting the Best Flight Controller (Tab 4 &middot; Full System)</h2>
+<h2>Tab 4 &middot; Full System</h2>
 
 <h3>Objective</h3>
-<p>Close the loop for real: the controller acts on the <strong>estimate</strong>, not the truth. Fly every controller &times; estimator combination and use the live leaderboard to find the best flight-control system for the current build and conditions.</p>
+<p>Close the loop for real, with the controller acting on the estimate rather than the truth, and hunt for the best combination.</p>
 
 <p><img src="./images/closed_loop_full_system.png" alt="Full-system closed loop showing the controller acting on the attitude estimate, not the true angle"></p>
 
-<h3>Step-by-Step Procedure</h3>
 <ol>
-<li><strong>Switch to the 4 &middot; Full System tab.</strong> The config panel now shows a <strong>Controller</strong> picker (Manual PID / ZN-Classic / ZN-Tyreus) and an <strong>Estimator</strong> picker (Complementary &alpha; / Gyro-only / Accel-only), plus the shared IMU, air-resistance and wind controls.</li>
-<li><strong>Fly the default combination.</strong> With Manual PID + Complementary &alpha; selected, read the <strong>Score</strong>, <strong>Tracking RMS</strong> (true angle vs command) and <strong>Estimator RMS</strong> (true angle vs estimate) in the results panel. On the reference build this scores in the high 90s.</li>
-<li><strong>Force a bad estimator.</strong> Click the <strong>Gyro-only</strong> button. The same gains now chase a drifting attitude: tracking RMS jumps from ~0.2&deg; to ~1.8&deg;, the response never settles within the 2&deg; band, and the score collapses into the 50s — the <strong>gains never changed</strong>, only what they could see.</li>
-<li><strong>Read the leaderboard.</strong> The secondary chart lists all <strong>nine controller &times; estimator combinations</strong> as a horizontal bar graph, ranked live by score, with the current selection picked out in gold and weak systems (score &lt; 65) in red. It is a read-only ranking — use the <strong>Controller</strong> and <strong>Estimator</strong> pickers above it to change which combination is flying.</li>
-<li><strong>Confirm the pattern.</strong> Every complementary-filter row scores in the high 90s regardless of controller; every gyro-only row collapses to the 50s regardless of controller. The estimator choice dominates the controller choice — the leaderboard makes this a visible, sortable fact rather than an assertion.</li>
-<li><strong>Stress it.</strong> Raise <strong>air resistance</strong> and <strong>wind-gust torque</strong>, switch to a different <strong>IMU</strong> preset, or enable the <strong>Uncalibrated ESC</strong> switch, and watch the leaderboard re-rank live. The ESC switch programs a fixed actuation offset into the loop — modelling the same dead-band mismatch Experiment 4 studies directly — and the integral term visibly works harder to trim it out.</li>
-<li><strong>Lock in the best system.</strong> Pick the controller and estimator that top the leaderboard and confirm the verdict reads <strong>"Best flight control system."</strong> That run — with its score, tracking RMS and estimator RMS — marks <strong>Experiment 5</strong> complete and unlocks the Flight Controller Board and IMU in the Outputs panel. As with the other three tabs, this experiment's progress is tracked locally and does not write back into any other experiment's saved state.</li>
+<li>The config panel gains a <strong>Controller</strong> picker (Manual PID / ZN-Classic / ZN-Tyreus) and an <strong>Estimator</strong> picker (Complementary &alpha; / Gyro-only / Accel-only), alongside the shared IMU, air-resistance and wind controls.</li>
+
+<li>Fly the default pair &mdash; Manual PID with the complementary filter &mdash; and read the <strong>Score</strong>, <strong>Tracking RMS</strong> (true angle against command) and <strong>Estimator RMS</strong> (true angle against estimate). On the reference build this scores in the high 90s.</li>
+
+<li>Now click <strong>Gyro-only</strong>. The same gains are chasing a drifting attitude: tracking RMS jumps from about 0.22&deg; to about 1.45&deg;, the response never settles inside the 2&deg; band for the full 4 s window, and the score falls from 97 to 63. Nothing about the gains changed. Only what they could see.</li>
+
+<li>Open <strong>Charts &rarr; Estimator error vs tracking error</strong>. The controller drives tracking error to zero by definition, because that is the only quantity it can perceive through its estimate. The estimator error &mdash; belief against truth &mdash; is invisible to it, and lands on the airframe regardless. With a gyro-only estimator the second curve walks off while the first stays flat: a perfectly behaved control loop flying a lie.</li>
+
+<li>Read the leaderboard. All nine controller-and-estimator combinations are ranked live as a horizontal bar chart, with your current selection in gold and anything under 65 in red. It is read-only &mdash; change the combination with the pickers above it.</li>
+
+<li>Look at the pattern rather than the winner. All three complementary-filter rows score 97 whatever the controller; all three gyro-only rows sit at 63 whatever the controller; the accelerometer-only rows land at 91&ndash;92. The estimator choice dominates the controller choice, and the leaderboard makes that a sortable fact instead of an assertion.</li>
+
+<li>Stress it. Raise air resistance and wind-gust torque, switch IMU, or turn on <strong>Uncalibrated ESC</strong>, and watch the ranking move. The ESC switch programs a fixed actuation offset into the loop &mdash; the same dead-band mismatch the power-electronics experiment studies directly &mdash; and you can see the integral term working harder to trim it out.</li>
+
+<li>Pick the pair that tops the leaderboard and confirm the verdict reads <strong>"Best flight control system."</strong> That run, with its score, tracking RMS and estimator RMS, completes the experiment and unlocks the flight controller and IMU in the Outputs panel.</li>
 </ol>

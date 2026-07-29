@@ -1,5 +1,5 @@
 {
-  "name": "3015 \u2014 900 KV",
+  "name": "3015 — 1400 KV",
   "mass_g": 95,
   "qty": 4,
   "size_mm": [
@@ -12,16 +12,16 @@
     "rotar.glb"
   ],
   "specs": {
-    "KV": "900 rpm/V",
-    "Max current": "50 A",
-    "Stator": "30 \u00d7 15"
+    "KV": "1400 rpm/V",
+    "Max current": "74 A",
+    "Stator": "30 × 15"
   },
   "physics": {
-    "kv": 900,
-    "rm_ohm": 0.05,
-    "i0_a": 0.8,
-    "max_current_a": 50,
-    "max_power_w": 1350,
+    "kv": 1400,
+    "rm_ohm": 0.027,
+    "i0_a": 1.07,
+    "max_current_a": 74,
+    "max_power_w": 2150,
     "k_fe": 0.0006,
     "max_cells": 6
   }

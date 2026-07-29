@@ -1,0 +1,25 @@
+{
+  "name": "4S LiPo — 2200 mAh",
+  "mass_g": 245,
+  "qty": 1,
+  "size_mm": [
+    110,
+    35,
+    30
+  ],
+  "model": "assets/battery/_model/Battery_Drone.fbx",
+  "specs": {
+    "Voltage": "14.8 V (4S)",
+    "Capacity": "2200 mAh",
+    "Discharge": "80C burst / 50C cont.",
+    "Note": "Balanced 4S pack — good all-round"
+  },
+  "physics": {
+    "cells": 4,
+    "voltage_nominal_v": 14.8,
+    "capacity_mah": 2200,
+    "c_rating": 80,
+    "c_rating_cont": 50,
+    "cell_ir_mohm": 5.0
+  }
+}

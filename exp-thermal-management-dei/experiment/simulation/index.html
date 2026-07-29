@@ -6,7 +6,7 @@
 <title>Thermal Management · Drone Technology Lab</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="./css/main.css?v=4">
+<link rel="stylesheet" href="./css/main.css?v=th22">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/GLTFLoader.js"></script>
@@ -51,39 +51,6 @@
       </div>
     </div>
 
-    <div class="card" id="envCoolCard">
-      <div class="row-between">
-        <span class="card-title">Environment &amp; Cooling</span>
-        <span class="link-hint">manual · live</span>
-      </div>
-      <div class="row-between">
-        <span class="mono" style="font-size:9.5px;color:var(--ink-3)">Ambient T</span>
-        <span class="mono accent" id="ambVal">25 °C</span>
-      </div>
-      <input type="range" id="ambSlider" min="0" max="45" step="1" value="25" aria-label="Ambient temperature">
-      <div class="row-between">
-        <span class="mono" style="font-size:9.5px;color:var(--ink-3)">Cooling airflow</span>
-        <span class="mono accent" id="coolVal">0 %</span>
-      </div>
-      <input type="range" id="coolSlider" min="0" max="100" step="1" value="0" aria-label="Cooling airflow">
-      <div class="row-between">
-        <span class="mono" style="font-size:9.5px;color:var(--ink-3)">Airflow mode</span>
-        <div class="mode-group" id="airModeGroup">
-          <button class="mode-btn active" id="btnAirStatic" type="button">Static</button>
-          <button class="mode-btn" id="btnAirForward" type="button">Forward</button>
-        </div>
-      </div>
-      <div class="cool-tray">
-        <span class="cool-tray-lbl">Cooling parts · drag onto motor / ESC</span>
-        <div class="cool-chips">
-          <button class="cool-chip" type="button" data-part="heatsink">❄ Heatsink</button>
-          <button class="cool-chip" type="button" data-part="pad">▭ Thermal Pad</button>
-          <button class="cool-chip" type="button" data-part="fan">◐ Ducted Fan</button>
-        </div>
-        <div class="cool-mounted mono" id="coolMounted"></div>
-      </div>
-    </div>
-
     <button class="card mass-card" id="massCard" type="button" data-comment-anchor="mass-budget-card">
       <div class="row-between">
         <span class="card-title">Mass Budget</span>
@@ -110,11 +77,11 @@
           <div><span>Thrust</span><b id="telThrust">0.00 N</b></div>
           <div><span>RPM</span><b id="telRpm">0</b></div>
           <div><span>Current</span><b id="telCur">0.0 A</b></div>
-          <div><span>Power</span><b id="telPwr">0 W</b></div>
-          <div><span>Motor T</span><b id="telTemp">25 °C</b></div>
+          <div><span>Heat P</span><b id="telPwr">0 W</b></div>
+          <div><span>Case T</span><b id="telTemp">25 °C</b></div>
+          <div><span>Winding T</span><b id="telWind">25 °C</b></div>
           <div><span>ESC T</span><b id="telEsc">25 °C</b></div>
-          <div><span>Battery</span><b id="telBat">100 %</b></div>
-          <div><span>Z-Pos</span><b id="telAlt">0.00 m</b></div>
+          <div><span>R_th eff</span><b id="telRth">— °C/W</b></div>
         </div>
         <div class="tel-phase mono" id="telPhase">STANDBY</div>
       </div>
@@ -122,6 +89,17 @@
       <div class="ff-badge mono" id="ffBadge" hidden>60× FAST-FORWARD</div>
       <div class="esc-badge mono" id="escBadge" hidden>THERMAL 80°C+</div>
       <div class="probe-readout mono" id="probeReadout" hidden></div>
+
+      <!-- thermal-camera HUD: calibration bar + per-part spot readings. Shown only
+           while the false-colour render mode is active. -->
+      <div class="cam-hud" id="camHud" hidden>
+        <div class="cam-title mono">IR &middot; FALSE COLOUR</div>
+        <div class="cam-bar-wrap">
+          <div class="cam-bar" id="camBar"></div>
+          <div class="cam-ticks mono" id="camTicks"></div>
+        </div>
+        <div class="cam-spots mono" id="camSpots"></div>
+      </div>
 
       <div class="vp-thermal-chips" id="vpThermalChips">
         <button class="vp-chip" id="camToggle" type="button" title="False-colour thermal camera">◍ Thermal-cam</button>
@@ -152,6 +130,50 @@
       </div>
     </div>
 
+    <!-- Environment & Cooling — centre column, directly above Calculations, so the
+         rig controls sit next to the bench they drive (was in the left column). -->
+    <div class="card envcool-card" id="envCoolCard" data-screen-label="Environment &amp; Cooling">
+      <div class="row-between">
+        <span class="card-title">Environment &amp; Cooling <em>· live rig controls</em></span>
+        <span class="link-hint">manual · live</span>
+      </div>
+      <div class="envcool-grid">
+        <div class="ec-col">
+          <div class="row-between">
+            <span class="ec-lbl">Ambient T</span>
+            <span class="mono accent" id="ambVal">25 °C</span>
+          </div>
+          <input type="range" id="ambSlider" min="0" max="45" step="1" value="25" aria-label="Ambient temperature">
+          <div class="scale mono"><span>0 °C</span><span>45 °C</span></div>
+        </div>
+        <div class="ec-col">
+          <div class="row-between">
+            <span class="ec-lbl">Cooling airflow</span>
+            <span class="mono accent" id="coolVal">0 %</span>
+          </div>
+          <input type="range" id="coolSlider" min="0" max="100" step="1" value="0" aria-label="Cooling airflow">
+          <div class="scale mono"><span>still air</span><span>full wash</span></div>
+        </div>
+        <div class="ec-col">
+          <span class="ec-lbl">Airflow mode</span>
+          <div class="mode-group" id="airModeGroup">
+            <button class="mode-btn active" id="btnAirStatic" type="button">Static</button>
+            <button class="mode-btn" id="btnAirForward" type="button">Forward</button>
+          </div>
+          <span class="ec-note mono" id="airModeNote">hover — exhaust recirculates</span>
+        </div>
+        <div class="ec-col ec-tray">
+          <span class="ec-lbl">Cooling parts <em>· drag or click, then pick a target</em></span>
+          <div class="cool-chips">
+            <button class="cool-chip" type="button" data-part="heatsink">❄ Heatsink <b>−30% R</b></button>
+            <button class="cool-chip" type="button" data-part="pad">▭ Thermal Pad <b>−15% R</b></button>
+            <button class="cool-chip" type="button" data-part="fan">◐ Ducted Fan <b>−20% R</b></button>
+          </div>
+          <div class="cool-mounted" id="coolMounted"></div>
+        </div>
+      </div>
+    </div>
+
     <button class="card calc-card" id="calcCard" type="button" data-screen-label="Calculations">
       <div class="row-between">
         <span class="card-title">Calculations</span>
@@ -179,8 +201,8 @@
     <div class="out-pair">
     <button class="card out-card" id="graphCard" type="button">
       <div class="row-between">
-        <span class="card-title">Graphs <em>· live</em></span>
-        <span class="link-hint slate">expand ⤢</span>
+        <span class="card-title">Graphs <em>· live + sweeps</em></span>
+        <span class="link-hint slate">all graphs ⤢</span>
       </div>
       <div class="chart-box"><canvas id="liveGraph"></canvas></div>
       <div class="mono caption" id="graphCaption">waiting for first run…</div>
@@ -217,7 +239,7 @@
     <p class="instr-text" id="instrText"></p>
     <div class="instr-nav">
       <button type="button" id="instrPrev">‹ Back</button>
-      <button type="button" id="instrReplay" class="primary">↻ Replay audio</button>
+      <button type="button" id="instrReplay" class="primary">Replay audio</button>
       <button type="button" id="instrNext" class="solid">Next ›</button>
     </div>
     <div class="instr-audio">
@@ -258,6 +280,6 @@
   </div>
 </div>
 
-<script src="./js/main.js?v=34"></script>
+<script src="./js/main.js?v=th22"></script>
 </body>
 </html>

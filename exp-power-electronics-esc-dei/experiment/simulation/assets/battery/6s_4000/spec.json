@@ -11,13 +11,14 @@
   "specs": {
     "Voltage": "22.2 V (6S)",
     "Capacity": "4000 mAh",
-    "Discharge": "30 C"
+    "Discharge": "70C burst / 40C cont."
   },
   "physics": {
     "cells": 6,
     "voltage_nominal_v": 22.2,
     "capacity_mah": 4000,
-    "c_rating": 30,
+    "c_rating": 70,
+    "c_rating_cont": 40,
     "cell_ir_mohm": 7
   }
 }

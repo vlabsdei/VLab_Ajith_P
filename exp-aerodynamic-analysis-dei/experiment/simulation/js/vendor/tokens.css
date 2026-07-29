@@ -1,0 +1,144 @@
+/* ============================================================================
+ * Drone Technology Virtual Lab — Shared Light-Theme Design Tokens & UI Kit
+ * ONE coherent palette + fluid responsive system, adopted by every experiment.
+ * Replaces the per-experiment :root blocks (which mixed amber accents with stray
+ * blue tints). Vendored into each experiment's simulation/js/vendor/.
+ *
+ * Theme: Light Academic. Primary accent: amber (lab identity). Data-viz accent:
+ * slate-teal. Everything is token-driven so the six experiments look identical.
+ * ==========================================================================*/
+
+:root {
+  /* ---- surfaces (light) ---- */
+  --vl-bg:            #ffffff;
+  --vl-surface:       #f8fafc;   /* slate-50  */
+  --vl-surface-2:     #f1f5f9;   /* slate-100 */
+  --vl-border:        #e2e8f0;   /* slate-200 */
+  --vl-border-light:  #f1f5f9;
+
+  /* ---- text ---- */
+  --vl-text:          #0f172a;   /* slate-900 */
+  --vl-text-2:        #334155;   /* slate-700 */
+  --vl-text-3:        #64748b;   /* slate-500 */
+
+  /* ---- primary accent: amber (single coherent identity) ---- */
+  --vl-accent:        #f5a300;
+  --vl-accent-strong: #d98a00;
+  --vl-accent-soft:   #fff7e6;
+  --vl-accent-ring:   rgba(245, 163, 0, 0.28);
+  --vl-on-accent:     #1a1407;
+
+  /* ---- data-viz secondary (charts/sliders) — coherent with amber ---- */
+  --vl-data:          #0e7490;   /* cyan-700, calm complement */
+  --vl-data-2:        #7c3aed;   /* violet for a 2nd series   */
+
+  /* ---- semantic ---- */
+  --vl-success:       #15803d;  --vl-success-soft: #ecfdf5;
+  --vl-warning:       #b45309;  --vl-warning-soft: #fffbeb;
+  --vl-danger:        #b91c1c;  --vl-danger-soft:  #fef2f2;
+
+  /* ---- shadows ---- */
+  --vl-shadow-sm: 0 1px 2px rgba(15,23,42,.06), 0 1px 3px rgba(15,23,42,.08);
+  --vl-shadow-md: 0 4px 12px rgba(15,23,42,.08), 0 2px 4px rgba(15,23,42,.05);
+  --vl-shadow-lg: 0 12px 32px rgba(15,23,42,.12);
+
+  /* ---- radii ---- */
+  --vl-radius:    8px;
+  --vl-radius-lg: 14px;
+  --vl-radius-pill: 999px;
+
+  /* ---- fluid type scale (clamp = responsive without media queries) ---- */
+  --vl-fs-xs:  clamp(0.66rem, 0.62rem + 0.18vw, 0.74rem);
+  --vl-fs-sm:  clamp(0.78rem, 0.74rem + 0.20vw, 0.88rem);
+  --vl-fs-md:  clamp(0.90rem, 0.85rem + 0.28vw, 1.02rem);
+  --vl-fs-lg:  clamp(1.05rem, 0.98rem + 0.45vw, 1.30rem);
+  --vl-fs-xl:  clamp(1.30rem, 1.15rem + 0.90vw, 1.85rem);
+
+  /* ---- fluid spacing ---- */
+  --vl-sp-1: clamp(4px, 0.5vw, 6px);
+  --vl-sp-2: clamp(8px, 1vw, 12px);
+  --vl-sp-3: clamp(12px, 1.5vw, 18px);
+  --vl-sp-4: clamp(16px, 2.2vw, 26px);
+
+  /* ---- fluid layout columns ---- */
+  --vl-col-left:  clamp(260px, 24vw, 340px);
+  --vl-col-right: clamp(280px, 26vw, 380px);
+  --vl-header-h:  clamp(46px, 5vh, 58px);
+
+  --vl-font: 'Inter', system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+  --vl-font-mono: 'JetBrains Mono', 'Fira Code', ui-monospace, monospace;
+  --vl-transition: 140ms cubic-bezier(.4,0,.2,1);
+}
+
+/* fluid root font that still honours the user's browser zoom/settings */
+html.vl-root { font-size: clamp(14px, 0.55vw + 12.4px, 17px); -webkit-font-smoothing: antialiased; text-rendering: optimizeLegibility; }
+
+/* ---- header (was hidden via --header-h:0 in every experiment) ---- */
+.vl-header {
+  height: var(--vl-header-h); display: flex; align-items: center; gap: var(--vl-sp-3);
+  padding: 0 var(--vl-sp-4); background: var(--vl-bg);
+  border-bottom: 1px solid var(--vl-border); flex-shrink: 0;
+}
+.vl-header__badge {
+  font-size: var(--vl-fs-xs); font-weight: 800; letter-spacing: .03em;
+  color: var(--vl-accent-strong); background: var(--vl-accent-soft);
+  border: 1px solid #f3e2a8; padding: 3px 9px; border-radius: var(--vl-radius); white-space: nowrap;
+}
+.vl-header__title { font-size: var(--vl-fs-lg); font-weight: 700; color: var(--vl-text); }
+.vl-header__sub   { font-size: var(--vl-fs-sm); color: var(--vl-text-3); }
+.vl-header__spacer { flex: 1; }
+
+/* ---- build chip (shows the inherited drone + status) ---- */
+.vl-buildchip {
+  display: inline-flex; align-items: center; gap: 6px; font-size: var(--vl-fs-xs);
+  font-family: var(--vl-font-mono); color: var(--vl-text-2);
+  background: var(--vl-surface-2); border: 1px solid var(--vl-border);
+  padding: 4px 10px; border-radius: var(--vl-radius-pill);
+}
+.vl-buildchip__dot { width: 8px; height: 8px; border-radius: 50%; background: var(--vl-success); }
+.vl-buildchip--stale .vl-buildchip__dot { background: var(--vl-warning); }
+.vl-buildchip--error .vl-buildchip__dot { background: var(--vl-danger); }
+
+/* ---- cross-experiment validation / redo banner ---- */
+.vl-banner { display: flex; flex-direction: column; gap: var(--vl-sp-2); margin: var(--vl-sp-2) var(--vl-sp-3) 0; }
+.vl-banner:empty { display: none; }
+.vl-alert {
+  display: flex; gap: var(--vl-sp-2); align-items: flex-start;
+  border-radius: var(--vl-radius); padding: var(--vl-sp-2) var(--vl-sp-3);
+  border: 1px solid var(--vl-border); background: var(--vl-surface);
+  font-size: var(--vl-fs-sm); line-height: 1.45;
+}
+.vl-alert--error { background: var(--vl-danger-soft);  border-color: #fecaca; }
+.vl-alert--warn  { background: var(--vl-warning-soft); border-color: #fde68a; }
+.vl-alert--stale { background: var(--vl-accent-soft);  border-color: #f3e2a8; }
+.vl-alert__icon { flex-shrink: 0; width: 18px; height: 18px; margin-top: 1px; }
+.vl-alert--error .vl-alert__icon { color: var(--vl-danger); }
+.vl-alert--warn  .vl-alert__icon { color: var(--vl-warning); }
+.vl-alert--stale .vl-alert__icon { color: var(--vl-accent-strong); }
+.vl-alert__body { flex: 1; min-width: 0; }
+.vl-alert__title { font-weight: 700; color: var(--vl-text); }
+.vl-alert__detail { color: var(--vl-text-2); margin-top: 2px; }
+.vl-alert__actions { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+.vl-btn {
+  font: inherit; font-size: var(--vl-fs-xs); font-weight: 600; cursor: pointer;
+  border-radius: var(--vl-radius); padding: 5px 11px; border: 1px solid var(--vl-border);
+  background: var(--vl-bg); color: var(--vl-text-2); transition: var(--vl-transition);
+}
+.vl-btn:hover { background: var(--vl-surface-2); color: var(--vl-text); }
+.vl-btn--redo { border-color: var(--vl-accent); color: var(--vl-accent-strong); background: var(--vl-accent-soft); }
+.vl-btn--redo:hover { background: #ffefcc; }
+.vl-btn--primary { background: var(--vl-accent); border-color: var(--vl-accent); color: var(--vl-on-accent); }
+.vl-btn--primary:hover { background: var(--vl-accent-strong); }
+
+/* ---- any 3D / interactive canvas: kill touch-scroll fights (drag works on phones) ---- */
+.vl-canvas, canvas.vl-canvas { touch-action: none; }
+
+/* ---- responsive container: 3-column -> stacked on small screens ---- */
+.vl-workspace { display: flex; min-height: 0; }
+@media (max-width: 900px) {
+  .vl-workspace { flex-direction: column; }
+  .vl-workspace > * { width: 100% !important; }
+}
+@media (prefers-reduced-motion: reduce) {
+  * { animation-duration: .001ms !important; transition-duration: .001ms !important; }
+}

@@ -1,0 +1,25 @@
+{
+  "name": "4S LiPo — 5200 mAh",
+  "mass_g": 480,
+  "qty": 1,
+  "size_mm": [
+    150,
+    48,
+    44
+  ],
+  "model": "assets/battery/_model/Battery_Drone.fbx",
+  "specs": {
+    "Voltage": "14.8 V (4S)",
+    "Capacity": "5200 mAh",
+    "Discharge": "50C burst / 30C cont.",
+    "Note": "Big 4S lifter pack — max capacity"
+  },
+  "physics": {
+    "cells": 4,
+    "voltage_nominal_v": 14.8,
+    "capacity_mah": 5200,
+    "c_rating": 50,
+    "c_rating_cont": 30,
+    "cell_ir_mohm": 7.0
+  }
+}

@@ -1,5 +1,5 @@
 {
-  "name": "5010 \u2014 360 KV",
+  "name": "5010 — 1400 KV",
   "mass_g": 120,
   "qty": 4,
   "size_mm": [
@@ -12,16 +12,16 @@
     "rotar.glb"
   ],
   "specs": {
-    "KV": "360 rpm/V",
-    "Max current": "40 A",
-    "Stator": "50 \u00d7 10"
+    "KV": "1400 rpm/V",
+    "Max current": "62 A",
+    "Stator": "50 × 10"
   },
   "physics": {
-    "kv": 360,
-    "rm_ohm": 0.1,
-    "i0_a": 0.5,
-    "max_current_a": 40,
-    "max_power_w": 1300,
+    "kv": 1400,
+    "rm_ohm": 0.0233,
+    "i0_a": 1.26,
+    "max_current_a": 62,
+    "max_power_w": 2500,
     "k_fe": 0.0007,
     "max_cells": 12
   }

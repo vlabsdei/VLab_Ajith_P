@@ -1,0 +1,22 @@
+{
+  "name": "Analog FPV Camera",
+  "mass_g": 8,
+  "qty": 1,
+  "size_mm": [
+    19,
+    19,
+    20
+  ],
+  "model": "assets/attachments/camera/camera.glb",
+  "specs": {
+    "Type": "Analog CMOS",
+    "FOV": "160°",
+    "Resolution": "1200 TVL",
+    "Latency": "6 ms"
+  },
+  "physics": {
+    "payload": true,
+    "mount_type": "camera",
+    "sensor_mp": 1.2
+  }
+}

@@ -1,0 +1,22 @@
+{
+  "name": "DakeFPV 120 A",
+  "mass_g": 33,
+  "qty": 1,
+  "size_mm": [
+    46,
+    46,
+    7
+  ],
+  "model": "Dakefpv_120A.glb",
+  "specs": {
+    "Current": "120 A × 4",
+    "Firmware": "BLHeli_32 128k",
+    "Config": "4-in-1 stack"
+  },
+  "physics": {
+    "current_a": 120,
+    "burst_current_a": 160,
+    "rds_on_ohm": 0.0012,
+    "r_th_c_per_w": 9
+  }
+}

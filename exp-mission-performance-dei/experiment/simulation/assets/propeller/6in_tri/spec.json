@@ -1,0 +1,21 @@
+{
+  "name": "6\" Tri-blade  (4.2 pitch)",
+  "mass_g": 6.5,
+  "qty": 4,
+  "size_mm": [
+    152.4,
+    9.1,
+    152.4
+  ],
+  "model": "6inch_tri.glb",
+  "specs": {
+    "Diameter": "6 in",
+    "Pitch": "4.2 in",
+    "Blades": "3"
+  },
+  "physics": {
+    "diameter_in": 6.0,
+    "pitch_in": 4.2,
+    "blades": 3
+  }
+}

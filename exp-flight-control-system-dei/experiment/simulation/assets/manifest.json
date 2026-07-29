@@ -21,6 +21,9 @@
         "2.7in_tri",
         "3in_tri",
         "5in_tri",
+        "6in_bi",
+        "6in_tri",
+        "7in_bi",
         "8in_bi",
         "9in_bi",
         "10in_bi",
@@ -57,7 +60,12 @@
         "esc_65a",
         "Dakefpv_120A",
         "UH300",
-        "esc_4in1_50a"
+        "esc_4in1_50a",
+        "esc_20a",
+        "esc_30a",
+        "esc_80a",
+        "esc_40a_4in1",
+        "esc_100a_4in1"
       ]
     },
     {
@@ -69,7 +77,14 @@
         "4s_1500",
         "4s_3300",
         "6s_4000",
-        "6s_5000"
+        "6s_5000",
+        "3s_1300",
+        "4s_2200",
+        "6s_1300",
+        "6s_3000",
+        "4s_5200",
+        "4s_1300_lowc",
+        "4s_1500_highc"
       ]
     },
     {
@@ -100,10 +115,18 @@
       "fallback": "gimbal",
       "multi": true,
       "options": [
-        "gimbal",
-        "camera",
-        "gps",
-        "thermal_cam"
+        "gps_m8n",
+        "gps_m10",
+        "gps_rtk",
+        "gimbal_nano",
+        "gimbal_2axis",
+        "gimbal_3axis",
+        "cam_fpv",
+        "cam_hd",
+        "cam_4k",
+        "cam_cinema",
+        "thermal_256",
+        "thermal_640"
       ]
     }
   ],
@@ -185,9 +208,9 @@
     }
   ],
   "reward": {
-    "name": "Flight Controller + IMU",
-    "desc": "Tuned PID gains, Ziegler-Nichols Ku/Pu, complementary-filter alpha and the chosen estimator — the stabilised flight-control configuration this experiment produces.",
-    "fallback": "fc",
-    "model": "assets/controller/PiHawk/Pi_hawk_v2.glb"
+    "category": "controller",
+    "name": "Flight Controller",
+    "desc": "A tuned flight controller, drawn at random from the catalogue.",
+    "fallback": "fc"
   }
 }

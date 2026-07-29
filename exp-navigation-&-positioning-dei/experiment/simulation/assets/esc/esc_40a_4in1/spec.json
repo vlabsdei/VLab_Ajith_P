@@ -1,0 +1,25 @@
+{
+  "name": "40 A 4-in-1",
+  "mass_g": 8,
+  "qty": 1,
+  "size_mm": [
+    30,
+    30,
+    6
+  ],
+  "model": "assets/esc/_model/esc_single.glb",
+  "specs": {
+    "Current": "40 A",
+    "Firmware": "BLHeli_32",
+    "Config": "4-in-1 stack",
+    "Note": "Compact 4-in-1 — 6S"
+  },
+  "physics": {
+    "current_a": 40,
+    "burst_current_a": 55,
+    "rds_on_ohm": 0.0022,
+    "r_th_c_per_w": 13,
+    "max_cells": 6,
+    "form_factor": "4in1"
+  }
+}

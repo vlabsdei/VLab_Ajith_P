@@ -1,2 +1,2 @@
-# Power Electronics: ESC Calibration Experiment
-This repository contains the experiment files for the Power Electronics: ESC Calibration, PWM Mapping & Dead-Band Verification experiment.
+# Power Electronics: ESC Experiment
+This repository contains the experiment files for the Power Electronics: ESC Anatomy, Commissioning, Protocol Latency & Thermal Sizing experiment.

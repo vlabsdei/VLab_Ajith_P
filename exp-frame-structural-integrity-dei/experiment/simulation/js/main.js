@@ -605,10 +605,12 @@
   var INK = '#1e2a29';
   var DANGER = '#a83232';
   var SUCCESS = '#1f8a5b';
-  var FIELD_BG = '#0f172a';
-  var PAPER = '#f4f6f5';
-  var MUTED = 'rgba(244, 246, 245, 0.55)';
-  var GRID_LINE = 'rgba(148, 163, 184, 0.10)';
+  // LIGHT theme — matches the live Graphs card (was a dark navy field)
+  var FIELD_BG = '#fbfcfc';
+  var PAPER = '#1e2a29';                    // primary text on the light field
+  var MUTED = 'rgba(60, 74, 70, 0.55)';     // muted text / labels
+  var GRID_LINE = '#e7edeb';                // faint grid, same as the live graph
+  var AXIS_LINE = 'rgba(60, 74, 70, 0.28)'; // zero / axis rules
 
   var G = 9.80665; // standard gravity, m/s^2 — canonical across the lab
 
@@ -890,31 +892,36 @@
         length_m: L_m, height_m: h_m, baseColorHex: matHex
       };
 
-      // -------------------------------------------------------------- tip (motor+prop dummy)
+      // -------------------------------------------------------------- tip (motor+prop)
       var tipGroup = new THREE.Group();
       tipGroup.position.set(L_m - cW / 2, 0, 0);
       root.add(tipGroup);
 
+      // Procedural motor+prop dummy — grouped so main.js can swap in the real motor
+      // GLB via attachTipModel(); the dummy shows until (or unless) that arrives.
+      var tipDummy = new THREE.Group();
+      tipGroup.add(tipDummy);
+
       var bellMat = new THREE.MeshStandardMaterial({ color: 0x1e293b, roughness: 0.35, metalness: 0.7 });
       var bell = new THREE.Mesh(new THREE.CylinderGeometry(0.014, 0.014, 0.012, 16), bellMat);
       bell.position.y = 0.006 + h_m / 2;
-      tipGroup.add(bell);
+      tipDummy.add(bell);
 
       var baseMat = new THREE.MeshStandardMaterial({ color: 0x0f172a, roughness: 0.5, metalness: 0.2 });
       var motorBase = new THREE.Mesh(new THREE.CylinderGeometry(0.012, 0.012, 0.004, 12), baseMat);
       motorBase.position.y = 0.002 + h_m / 2;
-      tipGroup.add(motorBase);
+      tipDummy.add(motorBase);
 
       // two simple crossed prop blades
       var bladeMat = new THREE.MeshStandardMaterial({ color: 0x1f3a93, roughness: 0.5, metalness: 0.1, side: THREE.DoubleSide });
       var bladeGeo = new THREE.BoxGeometry(0.05, 0.001, 0.008);
       var blade1 = new THREE.Mesh(bladeGeo, bladeMat);
       blade1.position.y = 0.014 + h_m / 2;
-      tipGroup.add(blade1);
+      tipDummy.add(blade1);
       var blade2 = new THREE.Mesh(bladeGeo, bladeMat);
       blade2.position.y = 0.014 + h_m / 2;
       blade2.rotation.y = Math.PI / 2;
-      tipGroup.add(blade2);
+      tipDummy.add(blade2);
 
       // -------------------------------------------------------------- load arrow (downward)
       var arrowGroup = new THREE.Group();
@@ -934,12 +941,26 @@
       STATE = {
         THREE: THREE, group: group, root: root, model: model,
         r: r, solved: solved,
-        beamMesh: beamMesh, tipGroup: tipGroup, arrowGroup: arrowGroup,
+        beamMesh: beamMesh, tipGroup: tipGroup, tipDummy: tipDummy, arrowGroup: arrowGroup,
         arrowMat: arrowMat, L_m: L_m, h_m: h_m
       };
     } catch (e) {
       console.warn('[CANTILEVER] build() failed:', e);
     }
+  }
+
+  // Info main.js needs to seat a real motor GLB on the beam tip (metre space).
+  function getTipInfo() {
+    if (!STATE) return null;
+    return { THREE: STATE.THREE, beamTopY: STATE.h_m / 2 };
+  }
+  // Swap the procedural motor/prop dummy for a real model group (parented to the
+  // deflecting tip, so it rides the bending arm). Keeps the load arrow.
+  function attachTipModel(obj) {
+    if (!STATE || !STATE.tipGroup || !obj) return;
+    if (STATE.tipDummy) { STATE.tipGroup.remove(STATE.tipDummy); disposeObject3D(STATE.tipDummy); STATE.tipDummy = null; }
+    STATE.tipGroup.add(obj);
+    STATE.tipModel = obj;
   }
 
   // Animate the loaded bending during a run: t 0..1 ramps thrust 0->100%.
@@ -957,6 +978,16 @@
     var sf = safetyFactor(s.yield_mpa, stress_mpa);
     var deflection_mm = deflectionAtX_m(F, s.armLen_mm, s.armLen_mm, r.youngs_gpa, s.inertia_m4) * 1000;
 
+    // Visual exaggeration is CAPPED so the beam never bends past ~24% of its
+    // length on screen (small-deflection theory only). Stiff materials get the
+    // full exaggeration; soft ones (nylon) that really deflect a lot are clamped,
+    // so the arm bends believably instead of curling into a banana.
+    var L_arm_m = s.armLen_mm / 1000;
+    var tipDef_m = Math.abs(deflectionAtX_m(F, s.armLen_mm, s.armLen_mm, r.youngs_gpa, s.inertia_m4));
+    var visCap = 0.24 * L_arm_m;
+    var exag = DEFLECT_EXAGGERATION;
+    if (tipDef_m * exag > visCap && tipDef_m > 1e-9) exag = visCap / tipDef_m;
+
     try {
       var THREE = STATE.THREE;
       var beamMesh = STATE.beamMesh;
@@ -972,7 +1003,7 @@
           var ox = origPos.getX(i);
           var globalX_mm = (ox + L_m / 2) * 1000;
           var dy_m = -deflectionAtX_m(F, globalX_mm, s.armLen_mm, r.youngs_gpa, s.inertia_m4);
-          posAttr.setY(i, origPos.getY(i) + dy_m * DEFLECT_EXAGGERATION);
+          posAttr.setY(i, origPos.getY(i) + dy_m * exag);
 
           var M_atX = bendingMomentAtX_Nm(F, globalX_mm, s.armLen_mm);
           var stress_atX = bendingStress_MPa(M_atX, r.h_mm, s.inertia_m4);
@@ -986,11 +1017,11 @@
 
       if (STATE.tipGroup) {
         var maxDef_m = -deflectionAtX_m(F, s.armLen_mm, s.armLen_mm, r.youngs_gpa, s.inertia_m4);
-        STATE.tipGroup.position.y = maxDef_m * DEFLECT_EXAGGERATION;
+        STATE.tipGroup.position.y = maxDef_m * exag;
         var L = s.armLen_mm / 1000;
         var E = r.youngs_gpa * 1e9;
         var slope = (E * s.inertia_m4 > 0) ? -(F * L * L) / (2 * E * s.inertia_m4) : 0;
-        STATE.tipGroup.rotation.z = slope * DEFLECT_EXAGGERATION;
+        STATE.tipGroup.rotation.z = clamp(slope * exag, -0.5, 0.5);   // tip never over-rotates
       }
 
       if (STATE.arrowGroup) {
@@ -1083,7 +1114,7 @@
 
     // zero line
     ctx.save();
-    ctx.strokeStyle = 'rgba(244,246,245,0.25)';
+    ctx.strokeStyle = AXIS_LINE;
     ctx.beginPath(); ctx.moveTo(padL, py(0)); ctx.lineTo(padL + plotW, py(0)); ctx.stroke();
     ctx.restore();
 
@@ -1177,7 +1208,7 @@
 
     // axis line
     ctx.save();
-    ctx.strokeStyle = 'rgba(244,246,245,0.25)';
+    ctx.strokeStyle = AXIS_LINE;
     ctx.beginPath(); ctx.moveTo(padL, padT); ctx.lineTo(padL, padT + plotH); ctx.lineTo(padL + plotW, padT + plotH); ctx.stroke();
     ctx.restore();
 
@@ -1276,7 +1307,9 @@
     build: build,
     solve: solve,
     step: step,
-    drawCharts: drawCharts
+    drawCharts: drawCharts,
+    getTipInfo: getTipInfo,
+    attachTipModel: attachTipModel
   };
 })();
 
@@ -1370,17 +1403,53 @@ async function loadCatalog(){
     const opts = (byCat[c.key] || []).sort((a,b)=>order.indexOf(a.id)-order.indexOf(b.id));
     return { key:c.key, label:c.label, multi:!!c.multi, options:opts };
   });
+  /* Reward pool. The reward names a CATEGORY and the unlock draws a random real
+     component from it. That category is not always a selectable one in this
+     experiment (exp-03 awards a propeller but never lets you pick one), so any
+     option that wasn't already loaded is fetched straight from its spec.json. */
+  const rwCfg = manifest.reward || {};
+  let rewardPool = [];
+  if(rwCfg.category){
+    const inCat = byCat[rwCfg.category] || [];
+    const wantIds = rwCfg.options || inCat.map(o=>o.id);
+    const missing = wantIds.filter(id => !inCat.some(o=>o.id===id));
+    let extra = [];
+    if(missing.length){
+      extra = (await Promise.all(missing.map(async id=>{
+        const base = "assets/" + rwCfg.category + "/" + id;
+        try{
+          const spec = await (await fetch(base + "/spec.json", {cache:"no-store"})).json();
+          let files = [];
+          if(spec.model){
+            const arr = Array.isArray(spec.model) ? spec.model : [spec.model];
+            files = arr.map(f => f.includes("/") ? f : base + "/" + f);
+          }
+          return { id, name: spec.name || id, catKey: rwCfg.category,
+                   mass: spec.mass_g || 0, qty: spec.qty || 1,
+                   size: spec.size_mm || null, view: spec.view || null,
+                   specs: Object.entries(spec.specs || {}), phys: spec.physics || {},
+                   files, mounts: null,
+                   fallback: { kind: rwCfg.fallback || "none", color: 0x5a6672, s: 1 } };
+        }catch(e){ console.warn("reward spec missing for", base); return null; }
+      }))).filter(Boolean);
+    }
+    const all = inCat.concat(extra);
+    rewardPool = wantIds.map(id => all.find(o=>o.id===id)).filter(Boolean);
+  }
   DRONE_DB = {
     categories,
     defaults: manifest.defaults || {},
     modules: manifest.modules,
     instructor: manifest.instructor,
     placement: manifest.placement || { movable: [], fixed: [], ranges: {} },
-    reward: {
-      name: manifest.reward.name, desc: manifest.reward.desc,
-      files: manifest.reward.model ? [manifest.reward.model] : [],
-      fallback: { kind: manifest.reward.fallback || "lidar", color: 0x845b23, s: 1 }
-    }
+    /* The reward is no longer one hardcoded mesh: it names a CATEGORY, and the
+       unlock draws a random real component from it (a random motor, a random
+       airframe, …). Because the drawn option is a genuine catalogue entry it
+       carries its own catKey, so fitUnit applies the same orientation rule the
+       component uses everywhere else — the old reward object had no catKey at
+       all, which is why it rendered at an arbitrary angle. */
+        reward: { category: rwCfg.category || null, name: rwCfg.name || "", desc: rwCfg.desc || "",
+              fallback: { kind: rwCfg.fallback || "lidar", color: 0x845b23, s: 1 }, pool: rewardPool }
   };
 }
 
@@ -1390,6 +1459,7 @@ const state = {
   sel:{}, module:"m1", exp:{},
   place:{},              // { key: {x_mm,y_mm} } — placement slider offsets (BUILD_SPEC §2/§D)
   material:"carbon_t700", // selected frame material id (BUILD_SPEC §5)
+  testArmLen:null,       // Module-2 matrix: arm-length override (mm) for the active cantilever combo
   done:{}, history:[], voiceVol:80, sfxVol:60, instrStep:0,
   simRunning:false, instrOpen:true
 };
@@ -1411,7 +1481,11 @@ function loadState(){
     state.exp[m.id] = m.experiments.some(e=>e.id===saved) ? saved : m.experiments[0].id;
   });
   state.place = (s.place && typeof s.place === "object") ? s.place : {};
+  // First visit (or after a placement reset) — seed RANDOM mount offsets so the
+  // drone starts genuinely off-balance and must be trimmed, like a real bench.
+  if(!s.place || !Object.keys(state.place).length) seedRandomPlacement();
   state.material = MATERIALS.some(m=>m.id===s.material) ? s.material : MATERIALS[0].id;
+  state.testArmLen = (typeof s.testArmLen === "number" && isFinite(s.testArmLen)) ? s.testArmLen : null;
   state.done = s.done || {};
   state.history = Array.isArray(s.history) ? s.history : [];
   state.voiceVol = s.voiceVol != null ? s.voiceVol : 80;
@@ -1423,7 +1497,7 @@ function saveState(){
   try{
     localStorage.setItem(LS_KEY, JSON.stringify({
       sel:state.sel, module:state.module, exp:state.exp,
-      place:state.place, material:state.material,
+      place:state.place, material:state.material, testArmLen:state.testArmLen,
       done:state.done, history:state.history.slice(-24),
       voiceVol:state.voiceVol, sfxVol:state.sfxVol,
       instrStep:state.instrStep, instrOpen:state.instrOpen
@@ -1596,20 +1670,93 @@ function applyArmLoads(arms, cogXmm, cogYmm, auwKg){
 /* Slim per-motor static-thrust estimate — used only as the cantilever tip load
    (BUILD_SPEC §2 tipForce_N). Not a full propulsion solver: static Ct·ρ·n²·D⁴ at
    a derated (loaded) RPM from Kv × nominal pack voltage. */
-function estimateTipForce_N(mo, pr, ba){
-  const mp = (mo && mo.phys) || {}, pp = (pr && pr.phys) || {}, bp = (ba && ba.phys) || {};
-  const kv = mp.kv || 900;
-  const V = (bp.cells || 4) * 3.7;                 // nominal pack voltage
-  const diaIn = pp.diameter_in || 5;
-  const D = diaIn * 0.0254;
-  const pitchIn = pp.pitch_in || diaIn*0.5;
-  const pd = Math.max(0.2, Math.min(1.2, pitchIn/Math.max(diaIn,1)));
-  const ct = pp.ct != null ? pp.ct : 0.115*pd;
-  const n = (kv * V * 0.78) / 60;                  // derated loaded rev/s
+
+/* ══════════ SHARED PROPULSION SOLVE (ported verbatim from Exp-01) ══════════
+   The arm's tip load is the thrust one motor actually makes, so it has to come
+   from the SAME solver the propulsion experiment uses, not an independent guess.
+   This experiment previously estimated it open-loop as `kv·V·0.78` with the old
+   0.115·p/d thrust coefficient — no torque balance, no pack sag — which put the
+   tip force 42% above Exp-01 for an identical build and therefore over-reported
+   every bending stress and safety factor on this page. Formulas below are
+   character-for-character the Exp-01 ones so the two can never drift again. */
+const FRAME_MU_AIR = 1.81e-5;
+function fp_propAero(p, omega){
+  const pd = Math.max(0.2, Math.min(1.2, p.pitchIn / Math.max(p.diaIn,1)));
+  const R = p.D/2, chord = 0.1*p.D;
+  const Vtip = Math.max(omega*R, 0.5);
   const rho = 1.225;
-  return Math.max(ct * rho * n*n * Math.pow(D,4), 0.05);
+  const Re = Math.max(rho * Vtip * chord / FRAME_MU_AIR, 1000);
+  const reFactor = Math.pow(150000/Re, 0.25);
+  const ctStatic = p.ctRaw!=null ? p.ctRaw : 0.067 + 0.073*pd;
+  const fom = Math.max(0.40, Math.min(0.78, 0.42 + 0.022*p.diaIn)) / Math.sqrt(Math.max(reFactor,1));
+  const cqEff = p.cqRaw!=null ? p.cqRaw : Math.pow(ctStatic,1.5)*0.12699/Math.max(fom,0.25);
+  return { ctEff: ctStatic, cqEff, rho };
+}
+const fp_cellOCV = soc => { soc = Math.max(0,Math.min(1,soc)); return 3.50 + 0.70*soc + 0.10*soc*soc*soc; };
+function fp_cellIR(p, soc){
+  soc = Math.max(0.02, Math.min(1, soc==null?1:soc));
+  return 0.012 * (1500/Math.max(p.cap,200)) * (1 + 0.25*Math.exp(5*(0.3 - soc)));
+}
+function fp_motorPoint(p, duty, V, Rm, Resc){
+  if(duty <= 0 || V <= 0) return { rpm:0, omega:0, T:0, I:0, stalled:false };
+  const Reff = Rm + (Resc||0);
+  const ke = 60/(2*Math.PI*p.kv), kt = ke;
+  let omega = Math.max(p.kv * V * duty * Math.PI/30 * 0.7, 15);
+  let aero = fp_propAero(p, omega), stalled = false;
+  for(let it=0; it<12; it++){
+    aero = fp_propAero(p, omega);
+    const k = aero.cqEff * aero.rho * Math.pow(p.D,5) / (4*Math.PI*Math.PI);
+    const a = k, b = kt*ke/Reff, cc = -(kt*V*duty/Reff - kt*p.i0);
+    const disc = b*b - 4*a*cc;
+    if(disc < 0 || a <= 0){ stalled = true; omega = 0; break; }
+    const next = (-b + Math.sqrt(disc)) / (2*a);
+    if(!isFinite(next) || next < 0){ stalled = true; omega = 0; break; }
+    omega += (next - omega) * 0.6;
+  }
+  if(stalled) return { rpm:0, omega:0, T:0, I:0, stalled:true };
+  const n = omega/(2*Math.PI);
+  const T = aero.ctEff * aero.rho * n*n * Math.pow(p.D,4);
+  const Q = aero.cqEff * aero.rho * n*n * Math.pow(p.D,5);
+  const I = Math.min(Q/kt + p.i0, p.imax*1.6);
+  return { rpm:n*60, omega, T:Math.max(T,0), I, stalled:false };
+}
+/* per-motor thrust at full throttle, with the pack sagging under all four */
+function fp_perMotorThrust(mo, pr, ba, esc){
+  const mp=(mo&&mo.phys)||{}, pp=(pr&&pr.phys)||{}, bp=(ba&&ba.phys)||{}, ep=(esc&&esc.phys)||{};
+  const dia = pp.diameter_in || 5;
+  const p = { kv:mp.kv||900, rm20:mp.rm_ohm||0.1, i0:mp.i0_a||0.4, imax:mp.max_current_a||30,
+              D:dia*0.0254, diaIn:dia, pitchIn:pp.pitch_in || dia*0.5,
+              ctRaw:pp.ct!=null?pp.ct:null, cqRaw:pp.cq!=null?pp.cq:null,
+              cells:bp.cells||4, cap:bp.capacity_mah||1500, rdsOn:ep.rds_on_ohm||0.0025 };
+  const Rpack = p.cells*fp_cellIR(p,1);
+  let V = fp_cellOCV(1)*p.cells;
+  let r = fp_motorPoint(p, 1, V, p.rm20, p.rdsOn);
+  for(let k=0;k<6;k++){
+    V = Math.max(fp_cellOCV(1)*p.cells - 4*r.I*Rpack, p.cells*2.8);
+    r = fp_motorPoint(p, 1, V, p.rm20, p.rdsOn);
+  }
+  return Math.max(r.T, 0.05);
+}
+function estimateTipForce_N(mo, pr, ba){
+  // Real load solve (torque balance + pack sag), identical to Exp-01.
+  return fp_perMotorThrust(mo, pr, ba, (typeof opt === "function" ? opt("esc") : null));
 }
 
+/* Seed random mount offsets for every movable component so the drone loads
+   OFF-BALANCE (real benches never sit perfectly trimmed). Offsets stay inside
+   each component's slider range, so the user can always trim it back to level.
+   The battery (heaviest movable) gets the widest random spread. */
+function seedRandomPlacement(){
+  try{
+    const rnd = (lo,hi)=> lo + Math.random()*(hi-lo);
+    movableUnits().forEach(u=>{
+      const r = u.ranges || { x:[-50,50], y:[-50,50] };
+      const spread = u.key === "battery" ? 0.7 : 0.5;   // how much of the range to use
+      const rx = [r.x[0]*spread, r.x[1]*spread], ry = [r.y[0]*spread, r.y[1]*spread];
+      state.place[u.key] = { x: Math.round(rnd(rx[0], rx[1])), y: Math.round(rnd(ry[0], ry[1])) };
+    });
+  }catch(e){ /* DB not ready — skip, defaults to centred */ }
+}
 function clamp01mm(v, range){ return range ? Math.max(range[0], Math.min(range[1], v)) : v; }
 function placementRanges(key){ return (DRONE_DB.placement && DRONE_DB.placement.ranges && DRONE_DB.placement.ranges[key]) || null; }
 function placementOffset(key){
@@ -1645,10 +1792,13 @@ function computeModel(){
   const mounts = (ch && ch.mounts && ch.mounts.mounts) || [];
   const q = upQuat(deriveUpAxis(ch));
   const wheelbase_mm = (ch && ch.phys && ch.phys.wheelbase_mm) || 220;
-  const armLenMm = (ch && ch.phys && ch.phys.arm_length_mm) || wheelbase_mm/2;
+  const baseArmLenMm = (ch && ch.phys && ch.phys.arm_length_mm) || wheelbase_mm/2;
+  // Module-2 test matrix overrides the cantilever arm length per combo so each
+  // material × length cell is a real, distinct bending test.
+  const armLenMm = (state.module === "m2" && state.testArmLen) ? state.testArmLen : baseArmLenMm;
 
   const motorMounts = mounts.filter(m=>m.type==="motor").map(m=>mountTopMm(m,q));
-  const arms = buildArms(motorMounts, armLenMm);
+  const arms = buildArms(motorMounts, baseArmLenMm);
 
   const parts = [];
   parts.push({ key:"chasis", id:ch?ch.id:"", name:ch?ch.name:"—", mass_g:ch?ch.mass:0, qty:1,
@@ -1757,7 +1907,7 @@ function diagnostics(){
 
   // 1 . propeller-vs-frame collision (blocking)
   if(geom.collide){
-    items.push({ sev:"err", block:true, tag:"prop-collision",
+    items.push({ sev:"err", block: state.module !== "m2", tag:"prop-collision",
       msg:"Propellers collide -- "+geom.propDiaMm.toFixed(0)+" mm props overlap on a "+geom.wbMm+" mm wheelbase (arm spacing "+geom.adjacentMm.toFixed(0)+" mm).",
       fix:"Fit a smaller propeller or a larger chassis before running." });
   } else if(geom.clearanceMm < 12){
@@ -1797,7 +1947,9 @@ function diagnostics(){
     try{
       const solved = window.CANTILEVER.solve(model);
       if(solved.safetyFactor < 1){
-        items.push({ sev:"err", block:true, tag:"arm-sf",
+        // In Module 2 the whole point is to TEST failing combinations, so a weak
+        // arm is reported but does NOT block the run; in Module 1 it blocks flight.
+        items.push({ sev:"err", block: state.module !== "m2", tag:"arm-sf",
           msg:"Arm safety factor "+solved.safetyFactor.toFixed(2)+" -- the "+(model.frame.material.label||"frame")+" arm fails under the motor's tip load ("+solved.stress_mpa.toFixed(0)+" MPa vs "+solved.yield_mpa+" MPa yield).",
           fix:"Choose a stronger material or a shorter/thicker arm before running Module 2." });
       } else if(solved.safetyFactor < 2){
@@ -2042,7 +2194,20 @@ function seatModel(g, mode){
   else                g.position.y += (c.y - b.min.y) / s;
 }
 /* immediate placeholder group; swaps in the real oriented+fitted model on arrival */
-function modelFor(o, span, onReady){
+/* Orientation used for the small PREVIEW renders only (tiles, picker, reward
+   card). The assembled drone seats attachments with its own mount logic
+   (orientThinUp / orientCameraForward / seatModel "hang"), so this deliberately
+   does NOT touch the spec files — changing those would double-rotate the parts
+   on the rig. ORIENT has attachments:"none", which left a GPS board standing on
+   edge and a gimbal lying on its side in every preview. */
+function previewOrient(o){
+  if(!o || o.catKey !== "attachments") return undefined;
+  const mt = (o.phys && o.phys.mount_type) || "";
+  if(mt === "gps") return "flat";        // thin PCB face → horizontal
+  if(mt === "payload") return "axis";    // gimbal yoke → long axis vertical
+  return undefined;
+}
+function modelFor(o, span, onReady, orientRule){
   span = span || 1.6;
   const g = new THREE.Group();
   const fb = buildFallback((o && o.fallback) || {kind:"none",color:0xcccccc,s:1});
@@ -2053,7 +2218,7 @@ function modelFor(o, span, onReady){
       const parts = masters.map(m=>m.clone(true));
       parts.forEach(p=>merged.add(p));
       const oriented = o.catKey === "motor" && orientMotorCombo(merged, parts);
-      const fitted = fitUnit(merged, span, o, oriented ? "none" : undefined);
+      const fitted = fitUnit(merged, span, o, oriented ? "none" : orientRule);
       while(g.children.length) g.remove(g.children[0]);
       g.add(fitted);
       if(onReady) onReady(g);
@@ -2116,23 +2281,76 @@ function detectArmTips(root, fallbackR){
 /* ════════════ 7 · PREVIEW ENGINE ════════════ */
 let previewRenderer = null;
 const previews = new Map();
+/* Supersample factor for every preview render. The canvas backing store is sized
+   to its ON-SCREEN size x this, so on a retina panel the component is rendered at
+   the display's real pixel density instead of half of it. Capped at 3 so a 4K
+   display doesn't quietly cost 16x the fill rate. */
+const PREVIEW_DPR = Math.max(2, Math.min(window.devicePixelRatio || 1, 3));
+/* A tiny sky/ground gradient, prefiltered through PMREM. Without an environment
+   map three.js MeshStandardMaterial metals have nothing to reflect and read as
+   flat grey plastic — this is what makes the motor bell and prop hub look
+   machined rather than painted. */
+let ENV_TEX = null;
+function ensureEnv(rnd){
+  if(ENV_TEX || !rnd || !THREE.PMREMGenerator) return ENV_TEX;
+  try{
+    const c = document.createElement("canvas"); c.width = 64; c.height = 32;
+    const x = c.getContext("2d"), grd = x.createLinearGradient(0,0,0,32);
+    grd.addColorStop(0,"#eef2f6"); grd.addColorStop(.45,"#b9c2cc");
+    grd.addColorStop(.58,"#6e7681"); grd.addColorStop(1,"#2b3036");
+    x.fillStyle = grd; x.fillRect(0,0,64,32);
+    const tex = new THREE.CanvasTexture(c);
+    tex.mapping = THREE.EquirectangularReflectionMapping;
+    const pm = new THREE.PMREMGenerator(rnd); pm.compileEquirectangularShader();
+    ENV_TEX = pm.fromEquirectangular(tex).texture; tex.dispose();
+  }catch(e){ ENV_TEX = null; }
+  return ENV_TEX;
+}
 function initPreviewEngine(){
-  previewRenderer = new THREE.WebGLRenderer({antialias:true, alpha:true});
-  previewRenderer.setSize(220,150);
-  previewRenderer.setPixelRatio(1);
+  previewRenderer = new THREE.WebGLRenderer({ antialias:true, alpha:true,
+                                              powerPreference:"high-performance" });
+  previewRenderer.setPixelRatio(1);          // sizes below are already device pixels
+  if(THREE.sRGBEncoding !== undefined) previewRenderer.outputEncoding = THREE.sRGBEncoding;
+  if(THREE.ACESFilmicToneMapping !== undefined){
+    previewRenderer.toneMapping = THREE.ACESFilmicToneMapping;
+    previewRenderer.toneMappingExposure = 0.82;   // calibrated against the env map below
+  }
+  previewRenderer.setSize(320,220,false);
+}
+/* The environment map is a full-strength reflection by default, which blows the
+   pale plastics out. Dial it back per material and keep a floor on roughness so
+   nothing turns into a mirror. */
+function tunePreviewMaterials(root){
+  if(!root || !root.traverse) return;
+  root.traverse(function(m){
+    if(!m.isMesh || !m.material) return;
+    (Array.isArray(m.material) ? m.material : [m.material]).forEach(function(mat){
+      if(mat.envMapIntensity !== undefined) mat.envMapIntensity = 0.38;
+      if(mat.roughness !== undefined) mat.roughness = Math.max(mat.roughness, 0.32);
+      mat.needsUpdate = true;
+    });
+  });
 }
 function registerPreview(canvas, o){
   if(!canvas || !o || !previewRenderer) return;
   const scene = new THREE.Scene();
-  scene.add(new THREE.AmbientLight(0xffffff,.85));
-  const d = new THREE.DirectionalLight(0xffffff,.9); d.position.set(2,3,2); scene.add(d);
-  const d2 = new THREE.DirectionalLight(0xdce3f2,.35); d2.position.set(-2,-1,-2); scene.add(d2);
-  const group = modelFor(o); scene.add(group);
-  const camera = new THREE.PerspectiveCamera(34, 220/150, .1, 50);
+  scene.environment = ensureEnv(previewRenderer);   // reflections for metal parts
+  // Studio 3-point rig. Ambient is dialled back from .85 because the environment
+  // map now supplies the fill — leaving it high washed every material out flat.
+  scene.add(new THREE.AmbientLight(0xffffff,.20));
+  const d = new THREE.DirectionalLight(0xffffff,.62); d.position.set(2.4,3.2,2.2); scene.add(d);
+  const d2 = new THREE.DirectionalLight(0xdce3f2,.26); d2.position.set(-2.6,-.6,-1.8); scene.add(d2);
+  const d3 = new THREE.DirectionalLight(0xffffff,.18); d3.position.set(-1.4,2.0,-2.6); scene.add(d3);
+  const group = modelFor(o, undefined, function(g){ tunePreviewMaterials(g); }, previewOrient(o));
+  tunePreviewMaterials(group);
+  scene.add(group);
+  const aspect = (canvas.width && canvas.height) ? canvas.width/canvas.height : 220/150;
+  const camera = new THREE.PerspectiveCamera(34, aspect, .1, 50);
   camera.position.set(1.9,1.35,1.9); camera.lookAt(0,0,0);
   previews.set(canvas, {scene, camera, group});
 }
 let frameNo = 0;
+let previewW = 0, previewH = 0;
 function blitPreviews(){
   if(!previewRenderer) return;
   let i = 0;
@@ -2140,16 +2358,38 @@ function blitPreviews(){
     if(!cv.isConnected){ previews.delete(cv); continue; }
     if((i++ + frameNo) % 2 !== 0) continue;
     p.group.rotation.y += .022;
+    // Size the backing store to the canvas's ON-SCREEN box x PREVIEW_DPR. The
+    // markup ships a fixed width/height (280x190 for the reward card) while CSS
+    // stretches the element to fill its panel, so the old fixed buffer was both
+    // upscaled and rendered at half density on a retina display — that is what
+    // made the parts look jagged and soft.
+    const r = cv.getBoundingClientRect();
+    if(!r.width || !r.height) continue;
+    const w = Math.max(2, Math.round(r.width  * PREVIEW_DPR));
+    const h = Math.max(2, Math.round(r.height * PREVIEW_DPR));
+    if(cv.width !== w || cv.height !== h){ cv.width = w; cv.height = h; }
+    if(previewW !== w || previewH !== h){
+      previewW = w; previewH = h;
+      previewRenderer.setSize(w, h, false);
+    }
+    if(p.camera.aspect !== w/h){ p.camera.aspect = w/h; p.camera.updateProjectionMatrix(); }
     previewRenderer.render(p.scene, p.camera);
     const ctx = cv.getContext("2d");
-    ctx.clearRect(0,0,cv.width,cv.height);
-    ctx.drawImage(previewRenderer.domElement, 0,0, cv.width, cv.height);
+    ctx.clearRect(0,0,w,h);
+    ctx.drawImage(previewRenderer.domElement, 0,0, w, h);
   }
 }
 
 /* ════════════ 8 · MAIN VIEWPORT / SCENES ════════════ */
 let renderer, scene, camera, controls, rig, cantileverGroup, propGroups = [];
+let standGroup = null;          // M1 pin-point balance stand (the drone pivots on its tip)
+let standSeated = false;        // one-time: seat the stand tip under the assembled drone
 let hoverPhase = 0;
+let tiltCur = { x:0, z:0 };     // smoothed live tilt of the drone toward its CoG (radians)
+let toppleCur = 0;              // 0..1 — how far the drone has tipped OFF the pin stand
+const PIVOT_Y = 1.2;            // rig-origin rest height while balanced on the stand
+const MAX_TILT_RAD = 18 * Math.PI/180;   // fully-offset lean angle
+const TOPPLE_MULT = 3;         // CoG offset > tolerance×this → tips off the stand
 // component emitter anchors, so failure smoke/sparks vent from the real part
 let rigParts = { motors: [], escs: [], battery: null };
 // movable-component 3D anchors (battery/controller/reciever/attachments), keyed
@@ -2283,13 +2523,66 @@ function resizeViewport(){
   renderer.setSize(w,h);
   camera.aspect = w/h; camera.updateProjectionMatrix();
 }
+function disposeGroup(obj){
+  if(!obj) return;
+  obj.traverse(o=>{
+    if(o.geometry) o.geometry.dispose();
+    if(o.material){ (Array.isArray(o.material)?o.material:[o.material]).forEach(m=>m && m.dispose()); }
+  });
+}
 function clearRig(){
   if(rig){ scene.remove(rig); rig = null; }
   if(cantileverGroup){ scene.remove(cantileverGroup); cantileverGroup = null; }
+  if(standGroup){ scene.remove(standGroup); disposeGroup(standGroup); standGroup = null; }
+  standSeated = false;
+  tiltCur = { x:0, z:0 };
+  toppleCur = 0;
   propGroups = [];
   FX.clear();
   rigParts = { motors: [], escs: [], battery: null };
   movableAnchors = {};
+}
+/* A single-point balance stand: wide base → tapered column → a sharp UP-pointing
+   pin the drone's underside pivots on (apex at local y=0). Seated under the
+   assembled drone in the loop, so the tip meets whatever chassis is fitted. */
+function buildPinStand(){
+  const T = THREE, g = new T.Group();
+  const steel = mat(0x9aa5b1, { metalness:.6, roughness:.35 });
+  const dark  = mat(0x39424b, { metalness:.4, roughness:.5 });
+  const standH = 1.05;
+  // base plate + rubber foot ring
+  const base = new T.Mesh(new T.CylinderGeometry(0.52, 0.6, 0.06, 32), dark);
+  base.position.y = -standH + 0.03; g.add(base);
+  const ring = new T.Mesh(new T.CylinderGeometry(0.34, 0.34, 0.04, 32), steel);
+  ring.position.y = -standH + 0.075; g.add(ring);
+  // tapered column
+  const col = new T.Mesh(new T.CylinderGeometry(0.05, 0.11, standH - 0.28, 24), steel);
+  col.position.y = -0.28 - (standH - 0.28)/2 + 0.02; g.add(col);
+  // gimbal cup just under the pin
+  const cup = new T.Mesh(new T.CylinderGeometry(0.11, 0.06, 0.08, 20), dark);
+  cup.position.y = -0.24; g.add(cup);
+  // sharp pin — apex points up, apex at local y = 0
+  const pin = new T.Mesh(new T.ConeGeometry(0.05, 0.24, 20), steel);
+  pin.position.y = -0.12; g.add(pin);
+  const tipDot = new T.Mesh(new T.SphereGeometry(0.018, 12, 10), mat(0xc65d3b, { metalness:.3, roughness:.4 }));
+  tipDot.position.y = 0.006; g.add(tipDot);
+  return g;
+}
+/* Target lean (radians) of a point-balanced drone toward its CoG offset — leans
+   toward whichever side carries more weight, capped at MAX_TILT_RAD. `scale`
+   lets callers exaggerate (fly-lean) or damp it. */
+function coGTiltTarget(model, scale){
+  const cog = model.cog || { x_mm:0, y_mm:0, r_mm:0 };
+  const tol = model.tolerance_mm || TOLERANCE_MM;
+  const r = cog.r_mm || 0;
+  // dead below ~tolerance, grows past it, saturates ~2.2× tolerance
+  const mag = MAX_TILT_RAD * Math.min(Math.max(r - tol*0.25, 0) / (tol*1.95), 1) * (scale||1);
+  if(r < 1e-4) return { z:0, x:0 };
+  // lean TOWARD the heavy side (CoG offset direction). Model axes: +x_mm = world
+  // right, +y_mm (nose/forward) = world −z.
+  //   heavy right (+x_mm) → roll the right side DOWN → rotation.z < 0
+  //   heavy front (+y_mm) → pitch the nose  DOWN → rotation.x < 0
+  return { z: -(cog.x_mm / r) * mag, x: -(cog.y_mm / r) * mag };
 }
 /* M1 assembles the full drone; M2 clears the drone and hands the shared group
    to window.CANTILEVER.build() (BUILD_SPEC §4/§F) — guarded so a missing
@@ -2304,11 +2597,50 @@ function buildScene(){
       try{ window.CANTILEVER.build({ THREE, group:cantileverGroup, model:getModel() }); }
       catch(e){ console.warn("[CANTILEVER] build failed:", e); }
     }
+    attachRealMotorTip();  // swap the procedural tip dummy for the real motor + prop GLB
     frameCantilever();     // normalise the metre-scale rig to a readable on-screen size + frame camera
   }else{
     buildDrone();
+    standGroup = buildPinStand();          // the drone balances on this single point
+    standGroup.position.y = PIVOT_Y;       // seated precisely under the belly in the loop
+    scene.add(standGroup);
   }
   syncCamera();
+}
+/* Seat the REAL motor (+ propeller) GLB on the cantilever beam tip, replacing the
+   procedural dummy, so Module 2 loads the arm with the actual chosen component.
+   Parented to the deflecting tip group so it rides the bending arm. */
+function attachRealMotorTip(){
+  if(!(window.CANTILEVER && window.CANTILEVER.attachTipModel && window.CANTILEVER.getTipInfo)) return;
+  const info = window.CANTILEVER.getTipInfo();
+  if(!info) return;
+  const mo = opt("motor"), pr = opt("propeller");
+  if(!(mo && mo.files && mo.files.length)) return;        // no real GLB → keep the dummy
+  const beamTopY = info.beamTopY || 0.004;
+  const motorMaxMm = mo.size ? Math.max.apply(null, mo.size) : 28;
+  const span = Math.max(motorMaxMm/1000, 0.012);          // rig is in metres
+  const asm = new THREE.Group();
+  asm.position.y = beamTopY;                              // sit on the beam's top face
+  // Seat the motor base on the beam; ONCE it is loaded + seated, seat the prop on
+  // its measured bell top — so the prop never floats or sinks regardless of the
+  // order the two GLBs finish loading.
+  const motorM = modelFor(mo, span, g => {
+    seatModel(g, "base");
+    if(pr && pr.files && pr.files.length){
+      const propDiaMm = ((pr.phys && pr.phys.diameter_in) || 5) * 25.4;
+      const propSpan = Math.max(propDiaMm/1000, span*1.3);
+      const propM = modelFor(pr, propSpan, pg => {
+        if(pg.parent) pg.parent.updateWorldMatrix(true, true);
+        const bt = rotorBellTopY(g);                       // top of the loaded motor bell
+        const pb = new THREE.Box3().setFromObject(pg);
+        const sc = (pg.parent ? pg.parent.getWorldScale(new THREE.Vector3()).y : 1) || 1;
+        pg.position.y += (bt - pb.min.y) / sc - propSpan*0.015;   // hub grips the bell
+      });
+      asm.add(propM);
+    }
+  });
+  asm.add(motorM);
+  try{ window.CANTILEVER.attachTipModel(asm); }catch(e){ console.warn("[CANTILEVER] tip attach failed:", e); }
 }
 /* The cantilever is authored in metres (arm ≈ 0.1–0.38 units) — tiny next to the
    14-unit grid. Uniformly scale the whole rig so its longest span reads at ~3.4
@@ -2790,12 +3122,22 @@ function renderProgress(){
   $("progressFill").style.width = (total ? n/total*100 : 0)+"%";
   $("progressTxt").textContent = n+" / "+total;
 }
-/* Module-2-only chrome: frame-material picker + structural charts card
-   (BUILD_SPEC §6 layout contract). */
+/* Module switch: M1 shows the blueprint + placement sliders; M2 replaces them
+   with the material picker + interactive test matrix (center) and reveals the
+   structural charts in the Outputs column. */
 function syncModuleUI(){
   const isM2 = state.module === "m2";
-  const matEl = $("matPicker"); if(matEl) matEl.hidden = !isM2;
-  const m2 = $("m2Charts"); if(m2) m2.hidden = !isM2;
+  document.querySelectorAll(".m1-only").forEach(e=>{ e.hidden = isM2; });
+  const bench = $("m2Bench"); if(bench) bench.hidden = !isM2;
+  const sc = $("structCharts"); if(sc) sc.hidden = !isM2;
+  if(isM2 && state.testArmLen == null){
+    const model = getModel();
+    const base = (model && model.frame && model.frame.arm_length_mm) || 250;
+    state.testArmLen = SF_LENGTHS_MM.reduce((a,b)=> Math.abs(b-base)<Math.abs(a-base)?b:a, SF_LENGTHS_MM[1]);
+  }
+  updateGraphsSub();
+  // the Outputs charts are 0-wide until the reveal reflows — redraw next frame
+  if(isM2) requestAnimationFrame(()=>{ if(state.module==="m2") glueModelViews(); });
 }
 function renderCalcChips(){
   const model = getModel();
@@ -2838,7 +3180,7 @@ function renderLog(){
     const d = el("div","log-item "+it.sev);
     d.innerHTML = '<span class="ic">'+icon(it.sev)+'</span>'+
       '<div class="body"><span class="msg">'+txt(it.msg)+'</span>'+
-      (it.fix ? '<span class="fix">→ '+txt(it.fix)+'</span>' : '')+'</div>';
+      (it.fix ? '<span class="fix">Fix: '+txt(it.fix)+'</span>' : '')+'</div>';
     list.appendChild(d);
   });
   const badge = $("logBadge"), sum = $("logSummary");
@@ -2853,22 +3195,71 @@ function renderLog(){
   else { rb.classList.remove("blocked"); }
   return dg;
 }
+/* local mass formatter — exp-04 has no fmtMass() of its own */
+function rwMass(g){
+  if(typeof fmtMass === "function") return fmtMass(g);
+  return g >= 1000 ? (g/1000).toFixed(2)+" kg" : (g<10 && g>0 ? g.toFixed(1) : Math.round(g))+" g";
+}
+/* Draw a random component from the reward category and REMEMBER the draw, so the
+   card doesn't reshuffle on every re-render. Kept in localStorage under its own
+   key (not the experiment's state schema, which differs per experiment) so a
+   fresh play-through can award a different part. */
+let _rewardPick = null;
+function rewardPick(r){
+  if(!r || !r.pool || !r.pool.length) return null;
+  if(_rewardPick && r.pool.indexOf(_rewardPick) !== -1) return _rewardPick;
+  const KEY = "dtl-reward-" + (r.category || "x");
+  let id = null; try{ id = localStorage.getItem(KEY); }catch(e){}
+  let p = id ? r.pool.filter(function(o){ return o.id === id; })[0] : null;
+  if(!p){
+    p = r.pool[Math.floor(Math.random()*r.pool.length)];
+    try{ localStorage.setItem(KEY, p.id); }catch(e){}
+  }
+  _rewardPick = p;
+  return p;
+}
 function renderReward(){
-  const body = $("rewardBody");
+  const body = $("rewardBody"); if(!body) return;
+  const DB = (typeof DRONE_DB !== "undefined" && DRONE_DB) ? DRONE_DB
+           : (typeof ESC_DB   !== "undefined" && ESC_DB)   ? ESC_DB : null;
+  const r = (DB && DB.reward) || { pool: [] };
   const unlocked = allDone();
-  $("rewardBadge").textContent = (unlocked?1:0)+" / 1";
+  const badge = $("rewardBadge");
   body.innerHTML = "";
-  if(unlocked){
-    const r = DRONE_DB.reward;
-    const d = el("div","reward-open");
-    d.innerHTML = '<div class="view"><canvas width="280" height="190"></canvas></div>'+
-      '<div class="meta"><b>★ '+txt(r.name)+'</b><p>'+txt(r.desc)+'</p></div>';
+  // capstone: the experiment IS the showdown, so there is nothing to unlock
+  if(!r.category){
+    if(badge) badge.textContent = unlocked ? "PASS" : "—";
+    const d = el("div","reward-locked"+(unlocked?" reward-final":""));
+    d.innerHTML = '<div class="lock">'+(unlocked?"🏆":"🔒")+'</div><p>'+
+      (unlocked ? "Full system verified — the build flies."
+                : txt(r.desc || "Complete every check to clear the flight test."))+'</p>';
     body.appendChild(d);
-    registerPreview(d.querySelector("canvas"), r);
+    return;
+  }
+  if(badge) badge.textContent = (unlocked?1:0)+" / 1";
+  if(unlocked){
+    const pick = rewardPick(r);
+    const d = el("div","reward-open");
+    const specs = (pick && pick.specs && pick.specs.length)
+      ? pick.specs.slice(0,3).map(function(s){ return '<span><i>'+txt(s[0])+'</i>'+txt(s[1])+'</span>'; }).join("")
+      : "";
+    d.innerHTML =
+      '<div class="view"><canvas width="280" height="190"></canvas></div>'+
+      '<div class="meta"><span class="rw-kind">'+txt(r.name)+' unlocked</span>'+
+      '<b>'+txt(pick ? pick.name : r.name)+'</b>'+
+      (specs ? '<div class="rw-specs mono">'+specs+'</div>' : '')+
+      (pick && pick.mass ? '<div class="rw-specs mono"><span><i>Mass</i>'+rwMass(pick.mass)+
+        (pick.qty>1?" × "+pick.qty:"")+'</span></div>' : '')+
+      '</div>';
+    body.appendChild(d);
+    // pick is a REAL catalogue option, so it carries catKey → fitUnit applies the
+    // same orientation rule this component uses everywhere else in the lab.
+    registerPreview(d.querySelector("canvas"), pick || { fallback:r.fallback });
   }else{
     const total = allExperiments().length;
     const d = el("div","reward-locked");
-    d.innerHTML = '<div class="lock">🔒</div><p>Complete all '+total+' experiments<br>to unlock a reward component</p>';
+    d.innerHTML = '<div class="lock">🔒</div><p>Complete all '+total+' experiments<br>to unlock a '+
+      txt((r.name||"reward component").toLowerCase())+'</p>';
     body.appendChild(d);
   }
 }
@@ -2921,15 +3312,27 @@ function movableUnits(){
 function renderSliders(){
   const list = $("sliderList"); if(!list) return;
   list.innerHTML = "";
-  const resetBtn = el("button","btn btn-ghost","↺ Reset placement");
+  const resetBtn = el("button","btn btn-ghost","🎲 Randomise mounts");
   resetBtn.type = "button";
   resetBtn.style.cssText = "align-self:flex-start;padding:6px 14px;font-size:10px";
+  resetBtn.title = "Scatter the movable components to new random mount positions for a fresh balancing challenge";
   resetBtn.addEventListener("click", ()=>{
+    state.place = {}; seedRandomPlacement(); saveState();
+    buildScene();
+    renderSliders();
+  });
+  const zeroBtn = el("button","btn btn-ghost","↺ Centre all");
+  zeroBtn.type = "button";
+  zeroBtn.style.cssText = "align-self:flex-start;padding:6px 14px;font-size:10px";
+  zeroBtn.title = "Return every movable component to its authored mount (zero offset)";
+  zeroBtn.addEventListener("click", ()=>{
     state.place = {}; saveState();
     buildScene();
     renderSliders();
   });
-  list.appendChild(resetBtn);
+  const btnRow = el("div"); btnRow.style.cssText = "display:flex;gap:8px;flex-wrap:wrap";
+  btnRow.appendChild(resetBtn); btnRow.appendChild(zeroBtn);
+  list.appendChild(btnRow);
   const units = movableUnits();
   if(!units.length){
     list.appendChild(el("div","log-empty","No movable components selected — add a battery, flight controller, receiver or attachment to tune the CoG."));
@@ -2962,55 +3365,109 @@ function renderSliders(){
 /* ── glue (BUILD_SPEC item G) — called after every model rebuild ── */
 function glueModelViews(){
   const model = getModel();
-  try{ if(window.BLUEPRINT) window.BLUEPRINT.drawHeatmap($("heatCanvas"), model); }
-  catch(e){ console.warn("[BLUEPRINT] drawHeatmap failed:", e); }
-  try{ if(window.BLUEPRINT) window.BLUEPRINT.drawTopView($("planCanvas"), model); }
-  catch(e){ console.warn("[BLUEPRINT] drawTopView failed:", e); }
+  // Load-distribution heatmap + top-view blueprint are Module-1 visuals (hidden in M2)
+  if(state.module !== "m2"){
+    try{ if(window.BLUEPRINT) window.BLUEPRINT.drawHeatmap($("heatCanvas"), model); }
+    catch(e){ console.warn("[BLUEPRINT] drawHeatmap failed:", e); }
+    try{ if(window.BLUEPRINT) window.BLUEPRINT.drawTopView($("planCanvas"), model); }
+    catch(e){ console.warn("[BLUEPRINT] drawTopView failed:", e); }
+  }
   const armLabels = ["FR","FL","RL","RR"];
   const maxArm = model.arms.reduce((a,b)=> (b.loadShare>a.loadShare?b:a), model.arms[0]||{loadShare:0.25,index:0});
   if(!simActive){
+    const r = model.cog.r_mm, tol = model.tolerance_mm || TOLERANCE_MM;
+    const m1Verdict = r > tol*TOPPLE_MULT ? "OFF STAND · "+r.toFixed(0)+" mm"
+                    : model.balanced ? "BALANCED" : "OFFSET "+r.toFixed(1)+" mm";
     updateTelemetry({
       mass: model.totalMass_g, cogX: model.cog.x_mm, cogY: model.cog.y_mm, cogR: model.cog.r_mm,
       armLoad: armLabels[maxArm.index||0]+" "+(maxArm.loadShare*100).toFixed(1)+"%",
-      verdict: state.module==="m2" ? "—" : (model.balanced ? "BALANCED" : "OFFSET "+model.cog.r_mm.toFixed(1)+" mm"),
-      phase: "STANDBY", phaseCls:""
+      verdict: state.module==="m2" ? "—" : m1Verdict,
+      phase: state.module==="m2" ? "STANDBY" : (r > tol*TOPPLE_MULT ? "TOPPLED OFF STAND" : "STANDBY"),
+      phaseCls: state.module!=="m2" && r > tol*TOPPLE_MULT ? "danger" : ""
     });
   }
-  if(state.module === "m2" && window.CANTILEVER && typeof window.CANTILEVER.drawCharts === "function"){
-    try{
-      window.CANTILEVER.drawCharts({ sfdCanvas:$("sfdCanvas"), bmdCanvas:$("bmdCanvas"), stressBarCanvas:$("stressBarCanvas"), model });
-    }catch(e){ console.warn("[CANTILEVER] drawCharts failed:", e); }
+  if(state.module === "m2" && window.CANTILEVER){
+    // straighten the beam to its rest shape whenever a run isn't driving it
+    if(!simActive && typeof window.CANTILEVER.step === "function"){ try{ window.CANTILEVER.step(0); }catch(e){} }
+    if(typeof window.CANTILEVER.drawCharts === "function"){
+      try{ window.CANTILEVER.drawCharts({ sfdCanvas:$("sfdCanvas"), bmdCanvas:$("bmdCanvas"), stressBarCanvas:$("stressBarCanvas"), model }); }
+      catch(e){ console.warn("[CANTILEVER] drawCharts failed:", e); }
+    }
+    try{ drawSfCurve($("sfCurveCanvas")); drawDeflCurve($("deflCurveCanvas")); }catch(e){}
     renderSfMatrix();
   }
 }
 
-/* ── Safety-factor matrix — 3 materials × 3 arm lengths (BUILD_SPEC §F) ── */
+/* ── Interactive test matrix — 3 materials × 3 arm lengths ──
+   Each cell is a real cantilever test combination. Untested cells show the
+   PREDICTED safety factor (faint); tapping a cell loads that material + arm
+   length, runs the bending simulation, and stamps the MEASURED result. The user
+   compares safety factors across the matrix and keeps the best material. */
 const SF_LENGTHS_MM = [150, 250, 350];
+let matrixRuns = {};                 // "matId:L" -> { sf, verdict } (measured this session)
+const matrixCellKey = (matId, L) => matId+":"+L;
+const sevClass = sf => sf>=2 ? "pass" : sf>=1 ? "marginal" : "fail";
+const sfLabel  = sf => sf>=90 ? "∞" : sf.toFixed(2);
+function predictSF(matId, L){
+  const model = getModel();
+  const test = Object.assign({}, model, { frame: Object.assign({}, model.frame, { arm_length_mm:L, material: materialById(matId) }) });
+  try{ return window.CANTILEVER.solve(test).safetyFactor; }catch(e){ return 0; }
+}
+function selectMaterial(matId){
+  if(state.material === matId) return;
+  state.material = matId; saveState();
+  renderMaterialPicker(); buildScene(); renderCalcChips(); renderLog();
+}
+function runMatrixCell(matId, L){
+  if(simActive) stopSim(false);
+  state.material = matId; state.testArmLen = L; saveState();
+  renderMaterialPicker(); buildScene(); renderCalcChips(); renderLog();
+  sim.matrixKey = matrixCellKey(matId, L);
+  runSim();     // animates the cantilever load ramp; result recorded in stopSim
+}
+function updateMatrixRec(){
+  const rec = $("matrixRec"); if(!rec) return;
+  let best = null;
+  MATERIALS.forEach(mat=>{
+    const vals = SF_LENGTHS_MM.map(L=>matrixRuns[matrixCellKey(mat.id,L)]).filter(Boolean).map(r=>r.sf);
+    if(!vals.length) return;
+    const minSF = Math.min.apply(null, vals);
+    if(!best || minSF > best.minSF) best = { mat, minSF };
+  });
+  if(best && best.minSF >= 2){ rec.textContent = "✓ Recommended: "+best.mat.label; rec.className = "matrix-rec mono good"; }
+  else if(best){ rec.textContent = "Best so far: "+best.mat.label+" · SF "+sfLabel(best.minSF); rec.className = "matrix-rec mono"; }
+  else { rec.textContent = "tap a cell to test"; rec.className = "matrix-rec mono"; }
+}
 function renderSfMatrix(){
   const grid = $("sfMatrix"); if(!grid) return;
   if(!(window.CANTILEVER && typeof window.CANTILEVER.solve === "function")){ grid.innerHTML = ""; return; }
-  const model = getModel();
   grid.innerHTML = "";
   grid.appendChild(el("div","cell hd",""));
   SF_LENGTHS_MM.forEach(L=> grid.appendChild(el("div","cell hd", L+" mm")));
   MATERIALS.forEach(mat=>{
-    grid.appendChild(el("div","cell rowhd", mat.label));
+    const rh = el("div","cell rowhd"+(state.material===mat.id?" sel":""), txt(mat.label));
+    rh.addEventListener("click", ()=> selectMaterial(mat.id));
+    grid.appendChild(rh);
     SF_LENGTHS_MM.forEach(L=>{
-      const testModel = Object.assign({}, model, {
-        frame: Object.assign({}, model.frame, { arm_length_mm:L, material:mat })
-      });
-      let solved; try{ solved = window.CANTILEVER.solve(testModel); }catch(e){ solved = null; }
-      const sf = solved ? solved.safetyFactor : 0;
-      const sevCls = sf>=2 ? "pass" : sf>=1 ? "marginal" : "fail";
-      const cell = el("div","cell "+sevCls, "<b>"+(sf>=90?"∞":sf.toFixed(2))+"</b>SF");
+      const key = matrixCellKey(mat.id, L);
+      const run = matrixRuns[key];
+      const active = state.material===mat.id && Math.round(state.testArmLen||0)===L;
+      const sf = run ? run.sf : predictSF(mat.id, L);
+      const cls = "cell run "+sevClass(sf)+(run?" tested":" untested")+(active?" active":"");
+      const cell = el("div", cls,
+        (run?'<span class="tick">✓</span>':"")+"<b>"+sfLabel(sf)+"</b>"+
+        '<span class="cap">'+(run?"tested SF":"▶ run")+'</span>');
+      cell.title = mat.label+" · "+L+" mm arm — "+(run?"tested SF "+sfLabel(sf):"tap to run this combination");
+      cell.addEventListener("click", ()=> runMatrixCell(mat.id, L));
       grid.appendChild(cell);
     });
   });
+  updateMatrixRec();
 }
 
 function refreshAfterSelection(key){
   refreshTile(key);
-  renderMassMini(); renderCalcChips(); renderLog(); drawMassChart();
+  renderMassMini(); renderCalcChips(); renderLog();
   renderSliders();
   buildScene(); saveState();
 }
@@ -3042,6 +3499,7 @@ function drawSeries(ctx, w, h, pts, color, fill, maxOverride){
 function drawLiveGraph(){
   const cv = $("liveGraph"), ctx = cv.getContext("2d");
   const w = cv.width, h = cv.height;
+  const lbl = $("graphItemLabel"); if(lbl){ const ce = currentExp(); lbl.textContent = ce.exp.name; }
   chartFrame(ctx,w,h);
   const { mod, exp } = currentExp();
   const key = mod.id+":"+exp.id;
@@ -3136,6 +3594,60 @@ function plotXY(cv, series, opts){
     ctx.lineWidth=2; ctx.strokeStyle="#fff"; ctx.stroke();
   }
 }
+/* Light-theme multi-series line chart with dashed threshold rules + a legend,
+   used for the Module-2 "vs arm length" analysis graphs. */
+function lightLineChart(cv, opts){
+  if(!cv) return;
+  const ctx = cv.getContext("2d"), w = cv.width, h = cv.height;
+  ctx.clearRect(0,0,w,h); ctx.fillStyle = "#fbfcfc"; ctx.fillRect(0,0,w,h);
+  const padL=32, padR=10, padT=10, padB=24;
+  const xmin=opts.xmin, xmax=opts.xmax, ymin=opts.ymin, ymax=opts.ymax;
+  const X = v => padL + (v-xmin)/((xmax-xmin)||1)*(w-padL-padR);
+  const Y = v => h-padB - (v-ymin)/((ymax-ymin)||1)*(h-padT-padB);
+  ctx.strokeStyle="#e7edeb"; ctx.lineWidth=1; ctx.fillStyle="#8b9a95"; ctx.font="9px 'IBM Plex Mono'";
+  for(let i=0;i<=4;i++){ const yy=ymin+(ymax-ymin)*i/4, py=Y(yy);
+    ctx.beginPath(); ctx.moveTo(padL,py); ctx.lineTo(w-padR,py); ctx.stroke();
+    ctx.textAlign="right"; ctx.fillText(yy.toFixed(ymax<10?1:0), padL-4, py+3); }
+  ctx.textAlign="center";
+  for(let i=0;i<=4;i++){ const xx=xmin+(xmax-xmin)*i/4; ctx.fillText(Math.round(xx), X(xx), h-padB+13); }
+  if(opts.xlabel){ ctx.fillStyle="#5c6d68"; ctx.font="600 9px 'IBM Plex Sans'"; ctx.textAlign="center"; ctx.fillText(opts.xlabel, (padL+w-padR)/2, h-3); }
+  (opts.hlines||[]).forEach(hl=>{
+    ctx.save(); ctx.strokeStyle=hl.color; ctx.setLineDash([4,3]); ctx.lineWidth=1.2;
+    ctx.beginPath(); ctx.moveTo(padL,Y(hl.y)); ctx.lineTo(w-padR,Y(hl.y)); ctx.stroke(); ctx.restore();
+    ctx.fillStyle=hl.color; ctx.font="600 8px 'IBM Plex Mono'"; ctx.textAlign="left"; ctx.fillText(hl.label, padL+3, Y(hl.y)-3);
+  });
+  opts.series.forEach(s=>{ ctx.beginPath();
+    s.x.forEach((xv,i)=> i?ctx.lineTo(X(xv),Y(s.y[i])):ctx.moveTo(X(xv),Y(s.y[i])));
+    ctx.strokeStyle=s.color; ctx.lineWidth=2; ctx.lineJoin="round"; ctx.stroke(); });
+  if(opts.marker){ ctx.beginPath(); ctx.arc(X(opts.marker.x),Y(opts.marker.y),4,0,Math.PI*2);
+    ctx.fillStyle=opts.marker.color||"#1e2a29"; ctx.fill(); ctx.lineWidth=2; ctx.strokeStyle="#fff"; ctx.stroke(); }
+  let ly=padT+5; ctx.font="700 8px 'IBM Plex Sans'"; ctx.textAlign="right";
+  opts.series.forEach(s=>{ if(!s.label) return; ctx.fillStyle=s.color; ctx.fillText(s.label, w-padR-2, ly); ly+=10; });
+}
+const MAT_COLORS = { carbon_t700:"#1f3a93", aluminium_6061:"#4f6d9e", nylon_pa66:"#c65d3b" };
+function _matSolveOverL(metric, clampMax){
+  const model = getModel(); const Ls=[]; for(let L=120; L<=380; L+=13) Ls.push(L);
+  const series = MATERIALS.map(m=>({
+    x:Ls, color:MAT_COLORS[m.id]||"#888", label:m.label.split(" ")[0],
+    y:Ls.map(L=>{ try{ const s=window.CANTILEVER.solve(Object.assign({},model,{frame:Object.assign({},model.frame,{arm_length_mm:L,material:m})})); return Math.min(metric(s), clampMax); }catch(e){ return 0; } })
+  }));
+  const cur = MATERIALS.find(m=>m.id===state.material)||MATERIALS[0];
+  let curVal=0; try{ curVal=Math.min(metric(window.CANTILEVER.solve(Object.assign({},model,{frame:Object.assign({},model.frame,{arm_length_mm:state.testArmLen||250,material:cur})}))), clampMax); }catch(e){}
+  return { Ls, series, curVal };
+}
+function drawSfCurve(cv){
+  if(!cv || !(window.CANTILEVER && window.CANTILEVER.solve)) return;
+  const d = _matSolveOverL(s=>s.safetyFactor, 16);
+  lightLineChart(cv, { xlabel:"arm length (mm)", xmin:120, xmax:380, ymin:0, ymax:16, series:d.series,
+    hlines:[{y:2,color:"#1f8a5b",label:"SF 2 safe"},{y:1,color:"#a83232",label:"SF 1 yield"}],
+    marker:{ x:state.testArmLen||250, y:d.curVal } });
+}
+function drawDeflCurve(cv){
+  if(!cv || !(window.CANTILEVER && window.CANTILEVER.solve)) return;
+  const d = _matSolveOverL(s=>s.deflection_mm, 120);
+  lightLineChart(cv, { xlabel:"arm length (mm)", xmin:120, xmax:380, ymin:0, ymax:120, series:d.series,
+    marker:{ x:state.testArmLen||250, y:d.curVal } });
+}
 /* ════════════ 10 · FLOATING WINDOWS ════════════ */
 function openModal(title, dotColor, footHTML){
   $("modalTitle").innerHTML = title;
@@ -3148,6 +3660,7 @@ function openModal(title, dotColor, footHTML){
   return $("modalBody");
 }
 function closeModal(){
+  stopModalTimer();
   $("modalOverlay").hidden = true;
   $("modalBody").innerHTML = "";
   document.body.style.overflow = "";
@@ -3224,8 +3737,88 @@ function openGraphsAll(){
     drawRunThumb(card.querySelector("canvas"), run);
   });
 }
-/* rich charts modal — mass distribution + (Module 2) cantilever stress breakdown,
-   computed live from the current LAB model. */
+/* A modal can keep redrawing itself while a run streams — cleared on close so
+   nothing paints into a torn-down canvas. */
+let modalTimer = null;
+function startModalTimer(fn){ stopModalTimer(); modalTimer = setInterval(()=>{ try{ fn(); }catch(e){ stopModalTimer(); } }, 120); }
+function stopModalTimer(){ if(modalTimer){ clearInterval(modalTimer); modalTimer = null; } }
+
+/* Graphs section is collapsed by default — expand to reveal every graph, then
+   click one to open it full-size. */
+function toggleGraphs(){
+  const card = $("graphsCard"); if(!card) return;
+  const collapsed = card.classList.toggle("collapsed");
+  updateGraphsSub();
+  if(!collapsed) requestAnimationFrame(()=>{ drawLiveGraph(); if(state.module==="m2") glueModelViews(); });
+}
+function updateGraphsSub(){
+  const card = $("graphsCard"), sub = $("graphsSub"); if(!card || !sub) return;
+  sub.innerHTML = card.classList.contains("collapsed") ? "&middot; tap to expand"
+                : (state.module==="m2" ? "&middot; live &amp; structural" : "&middot; live");
+}
+
+/* Live telemetry graph, expanded — reached by clicking the Graphs card. Streams
+   live while a run is recording, otherwise shows the last run. */
+function openLiveGraphDetail(){
+  const { mod, exp } = currentExp();
+  const key = mod.id+":"+exp.id;
+  const body = openModal('Live Graph <em>&middot; '+txt(exp.name)+'</em>', "#4f6d9e",
+    '<button type="button" class="modal-back" id="glAllBtn">&lsaquo; all recorded runs</button>');
+  const wrap = el("div");
+  wrap.innerHTML = '<canvas id="glBig" width="900" height="430" style="width:100%;border-radius:9px;background:#fbfcfc"></canvas>';
+  body.appendChild(wrap);
+  const cv = wrap.querySelector("canvas"), ctx = cv.getContext("2d");
+  const note = el("p","calc-footnote",""); body.appendChild(note);
+  const draw = ()=>{
+    let pts=null, pts2=null, live=false;
+    if(simActive && sim.data.length>1){ pts=sim.data; pts2=sim.data2; live=true; }
+    else { const last = state.history.filter(r=>r.key===key).slice(-1)[0]; if(last){ pts=last.points; pts2=last.points2; } }
+    const w=cv.width, h=cv.height; chartFrame(ctx,w,h);
+    if(!pts || pts.length<2){
+      ctx.fillStyle="#a3b2ad"; ctx.font="500 16px 'IBM Plex Mono', monospace"; ctx.textAlign="center";
+      ctx.fillText("no data — run "+exp.name, w/2, h/2);
+      note.textContent = exp.name+" · waiting for first run"; return;
+    }
+    if(pts2 && pts2.length>1){ const smax=Math.max.apply(null,pts2)*1.15||1; drawSeries(ctx,w,h,pts2,"#c65d3b",null,smax); }
+    drawSeries(ctx,w,h,pts,"#1f3a93","rgba(31,58,147,.09)");
+    note.textContent = exp.name+" · "+(exp.unit||"value")+" vs time"+(live?" · recording live":" · last run");
+  };
+  draw();
+  if(simActive) startModalTimer(draw);
+  const b = $("glAllBtn"); if(b) b.addEventListener("click", openGraphsAll);
+}
+
+/* Single structural chart, expanded — reached by clicking any chart in Outputs.
+   Redraws live during a Module-2 load ramp. */
+function openStructChart(kind){
+  const meta = {
+    sfd:       { t:"Shear Force Diagram",         dot:"#4f6d9e" },
+    bmd:       { t:"Bending Moment Diagram",      dot:"#1f3a93" },
+    stress:    { t:"Root Stress vs. Yield",       dot:"#c65d3b" },
+    sfcurve:   { t:"Safety Factor vs. Arm Length",dot:"#1f8a5b" },
+    deflcurve: { t:"Tip Deflection vs. Arm Length",dot:"#4f6d9e" }
+  }[kind] || { t:"Structural Chart", dot:"#c65d3b" };
+  const body = openModal(txt(meta.t)+' <em>&middot; detail</em>', meta.dot);
+  const wrap = el("div");
+  wrap.innerHTML = '<canvas id="scBig" width="900" height="420" style="width:100%;border-radius:9px;background:#fbfcfc"></canvas>';
+  body.appendChild(wrap);
+  const cv = wrap.querySelector("canvas");
+  const draw = ()=>{
+    if(kind==="sfcurve"){ drawSfCurve(cv); return; }
+    if(kind==="deflcurve"){ drawDeflCurve(cv); return; }
+    if(!(window.CANTILEVER && window.CANTILEVER.drawCharts)) return;
+    const o = { model: getModel() };
+    if(kind==="sfd") o.sfdCanvas = cv; else if(kind==="bmd") o.bmdCanvas = cv; else o.stressBarCanvas = cv;
+    window.CANTILEVER.drawCharts(o);
+  };
+  draw();
+  body.appendChild(el("p","calc-footnote",
+    "Euler–Bernoulli cantilever — hollow-rect I = (b·h³ − (b−2t)(h−2t)³)/12, σ = M·c/I, SF = σ_yield/σ. Updates live during a load run."));
+  if(simActive) startModalTimer(draw);
+}
+
+/* rich charts modal — (Module 2) cantilever stress breakdown, computed live
+   from the current LAB model. */
 function openChartsDetail(){
   const body = openModal('Charts <em>· mass distribution &amp; structural margins</em>', "#c65d3b");
   const model = getModel();
@@ -3239,10 +3832,6 @@ function openChartsDetail(){
     mt("Frame material", model.frame.material.label) +
     mt("Arm length", model.frame.arm_length_mm.toFixed(0)+" mm");
   wrap.appendChild(tiles);
-
-  const b1 = el("div","calc-block");
-  b1.innerHTML = '<h3>Mass distribution</h3><canvas width="640" height="230" style="width:100%;border-radius:7px;background:#fbfcfc"></canvas>';
-  wrap.appendChild(b1); drawMassChartOn(b1.querySelector("canvas"));
 
   if(window.CANTILEVER && typeof window.CANTILEVER.solve === "function"){
     let solved; try{ solved = window.CANTILEVER.solve(model); }catch(e){ solved = null; }
@@ -3259,7 +3848,7 @@ function openChartsDetail(){
   }
 
   wrap.appendChild(el("p","calc-footnote",
-    "Mass distribution recomputes live from the selected components. Arm stress uses the Euler–Bernoulli cantilever model in js/cantilever.js: hollow-rectangular I = (b·h³ − (b−2t)(h−2t)³)/12, σ = M·c/I, SF = σ_yield/σ."));
+    "Arm stress uses the Euler–Bernoulli cantilever model in js/cantilever.js: hollow-rectangular I = (b·h³ − (b−2t)(h−2t)³)/12, σ = M·c/I, SF = σ_yield/σ. All values recompute live from the current selections and frame material."));
   body.appendChild(wrap);
 }
 function openCalcDetail(){
@@ -3297,16 +3886,20 @@ function openCalcDetail(){
    M2 "load ramp": ramps the arm's tip load 0→100% over ~4 s via
    window.CANTILEVER.step(t), updating the HUD/telemetry/charts every frame,
    then verdicts from CANTILEVER.solve().pass and fills the SF matrix. */
-const SIM_DURATION_M1 = 2.5;   // seconds — CoG settling animation
+const SIM_DURATION_M1 = 8.0;   // seconds — the flight itself (take-off → outcome)
+const M1_HOLD_MIN = 2.2;       // min seconds to hold on the outcome pose after the flight
+const M1_HOLD_MAX = 8.0;       // hard cap on the hold (in case the voice-over never ends)
 const SIM_DURATION_M2 = 4.0;   // seconds — 0→100% load ramp
+const HOVER_LIFT = 1.15;       // world units the drone climbs off the stand in flight
 let simActive = false;
-const sim = { t:0, data:[], data2:[], key:null, exp:null, mod:null, verdict:null, verdictOk:false, audioLoad:0 };
+const sim = { t:0, data:[], data2:[], key:null, exp:null, mod:null, verdict:null, verdictOk:false, audioLoad:0, matrixKey:null, flyY:null, settled:false, holdStart:0, spoken:false };
 
 function runSim(){
   if(simActive){ stopSim(false); return; }
   const dg = renderLog();
   if(dg.blocked){
     sfx("error");
+    sim.matrixKey = null;   // a blocked matrix run records nothing
     // flash the log to draw attention
     const lc = $("logCard"); lc.animate([{transform:"translateX(0)"},{transform:"translateX(-4px)"},{transform:"translateX(4px)"},{transform:"translateX(0)"}], {duration:280});
     return;
@@ -3315,6 +3908,7 @@ function runSim(){
   simActive = true; state.simRunning = true;
   sim.t = 0; sim.data = []; sim.data2 = []; sim.exp = exp; sim.mod = mod;
   sim.key = mod.id+":"+exp.id; sim.verdict = null; sim.verdictOk = false; sim.audioLoad = 0;
+  sim.settled = false; sim.holdStart = 0; sim.spoken = false;
   syncRunControls();
   audioStart();
   $("runBtn").textContent = "■ Stop";
@@ -3328,7 +3922,16 @@ function stopSim(completed){
   $("runBtn").classList.remove("running");
   $("telDot").classList.remove("on");
   audioStop();
-  if(rig){ rig.rotation.x = 0; rig.rotation.z = 0; }
+  sim.flyY = null;   // idle loop returns the drone to its stand + live CoG lean
+  // record a Module-2 matrix cell if this run was launched from one
+  if(completed && sim.matrixKey && window.CANTILEVER && typeof window.CANTILEVER.solve === "function"){
+    try{
+      const solved = window.CANTILEVER.solve(getModel());
+      matrixRuns[sim.matrixKey] = { sf: solved.safetyFactor, verdict: solved.verdict };
+      renderSfMatrix();
+    }catch(e){ /* leave cell untested */ }
+  }
+  sim.matrixKey = null;
   if(completed && sim.data.length){
     const stride = Math.max(1, Math.ceil(sim.data.length/80));
     const pts = sim.data.filter((_,i)=> i % stride === 0);
@@ -3343,7 +3946,8 @@ function stopSim(completed){
     saveState();
     renderModuleTabs(); renderExpTabs(); renderProgress();
     sfx("done");
-    if(sim.verdict){ showVerdictToast(sim.verdict, sim.verdictOk); playFaultVoice(sim.verdict, sim.verdictOk); }
+    // M1 already announced the verdict at the outcome (sim.spoken); M2 announces here
+    if(sim.verdict && !sim.spoken){ showVerdictToast(sim.verdict, sim.verdictOk); playFaultVoice(sim.verdict, sim.verdictOk); }
     if(allDone()){ renderReward(); instrGo(DRONE_DB.instructor.length-1); sfx("unlock"); }
     else instrEvent("runDone");
   }
@@ -3369,40 +3973,106 @@ function showVerdictToast(text, ok){
   setTimeout(()=>{ t.style.transition="opacity .5s"; t.style.opacity="0"; setTimeout(()=>t.remove(),500); }, 3600);
 }
 
-/* M1 — gentle tilt toward the CoG offset direction, settling over SIM_DURATION_M1 */
+/* M1 — a real hover flight test. The drone spools up, lifts off the balance
+   stand, then hovers. A balanced build holds level; an off-centre CoG makes it
+   LEAN and drift toward the heavy arm, exactly like an untrimmed multirotor. */
 function simStepM1(dt){
   sim.t += dt;
   const model = getModel();
   const armLabels = ["FR","FL","RL","RR"];
   const maxArm = model.arms.reduce((a,b)=> (b.loadShare>a.loadShare?b:a), model.arms[0]||{loadShare:0.25,index:0});
-  const k = Math.min(sim.t/SIM_DURATION_M1, 1);
-  const settle = Math.sin(k*Math.PI/2) * (1 - k*0.15);          // eases in, relaxes a touch at the end
-  const maxTiltRad = (6*Math.PI/180) * Math.min(model.cog.r_mm/model.tolerance_mm, 3)/3;
-  if(rig){
-    const dirRad = Math.atan2(model.cog.y_mm, model.cog.x_mm);
-    rig.rotation.z = -Math.cos(dirRad) * maxTiltRad * settle;
-    rig.rotation.x =  Math.sin(dirRad) * maxTiltRad * settle;
-  }
-  sim.data.push(model.cog.r_mm);
-  sim.audioLoad = k;
-  updateTelemetry({
-    mass: model.totalMass_g, cogX: model.cog.x_mm, cogY: model.cog.y_mm, cogR: model.cog.r_mm,
-    armLoad: armLabels[maxArm.index||0]+" "+(maxArm.loadShare*100).toFixed(1)+"%",
-    verdict: "SETTLING…", phase:"BALANCE SETTLING · "+Math.round(k*100)+"%", phaseCls:""
-  });
-  if(sim.t >= SIM_DURATION_M1){
-    if(rig){ rig.rotation.x = 0; rig.rotation.z = 0; }
-    sim.verdictOk = model.balanced;
-    sim.verdict = model.balanced
-      ? "CoG balanced — r_cg "+model.cog.r_mm.toFixed(1)+" mm within "+model.tolerance_mm+" mm tolerance"
-      : "r_cg = "+model.cog.r_mm.toFixed(1)+" mm — exceeds the "+model.tolerance_mm+" mm tolerance";
+  const DUR = SIM_DURATION_M1;
+  const ss = v => { v = v<0?0:v>1?1:v; return v*v*(3-2*v); };
+  const cog = model.cog, tol = model.tolerance_mm || TOLERANCE_MM, r = cog.r_mm || 0;
+  const ux = r>1e-4 ? cog.x_mm/r : 0, uy = r>1e-4 ? cog.y_mm/r : 0;
+  const balanced = model.balanced;
+  const severe   = r > tol*2.2;
+  const idleTilt = coGTiltTarget(model, 1);
+  const armTag   = armLabels[maxArm.index||0];
+
+  if(!sim.settled){
+    // ── FLIGHT — plays the full physical outcome, never cut on a timer ──
+    const k = Math.min(sim.t/DUR, 1);
+    // spool 0–13% · climb 13–33% · reaction 33–80% · outcome 80–100%
+    const climb = ss((k - 0.13) / 0.20);            // lifts off the stand
+    const land  = ss((k - 0.82) / 0.18);            // balanced: settles back down
+    const crash = severe ? ss((k - 0.45) / 0.42) : 0;   // severe: sinks out of the sky
+    const hoverY = PIVOT_Y + climb*HOVER_LIFT;
+    let base;
+    if(balanced)    base = PIVOT_Y + (climb - land)*HOVER_LIFT;        // up · hold · land back
+    else if(severe) base = hoverY*(1 - crash) + 0.34*crash;           // climbs, then crashes down
+    else            base = PIVOT_Y + climb*HOVER_LIFT*(1 - 0.4*land); // hovers, sags at the end
+    sim.flyY = base + climb*Math.sin(sim.t*3.0)*0.045*(balanced ? 1 : 1.8);
+    sim.audioLoad = Math.max(climb*(1 - crash*0.75), 0);
+
+    if(rig){
+      if(balanced){
+        // lean at lift-off → trims to DEAD LEVEL in the hover → holds → lands level
+        const wob = Math.sin(sim.t*4.6) * (0.5*Math.PI/180) * (1 - k);
+        rig.rotation.z = idleTilt.z*(1 - climb) + wob;
+        rig.rotation.x = idleTilt.x*(1 - climb) + wob*0.5;
+        rig.rotation.y += (0 - rig.rotation.y)*0.05;
+        rig.position.x += (0 - rig.position.x)*0.06;
+        rig.position.z += (0 - rig.position.z)*0.06;
+      }else{
+        // lean carries over from the stand, GROWS airborne, and the drone slides —
+        // accelerating — toward its heavy/low side. Severe = tips hard + spirals down.
+        const leanScale = 1 + (severe ? 1.5 : 0.7)*climb + crash*1.3;
+        const wob = Math.sin(sim.t*2.4) * ((severe ? 2.2 : 1.1)*Math.PI/180) * climb;
+        rig.rotation.z = idleTilt.z*leanScale + wob;
+        rig.rotation.x = idleTilt.x*leanScale + wob*0.5;
+        const air = Math.max(k - 0.33, 0) / 0.67;      // 0 at hover start → 1 at outcome
+        const drift = climb * air*air * (severe ? 0.95 : 0.72) * (0.5 + 0.5*Math.min(r/tol, 3)/3);
+        rig.position.x = ux * drift;
+        rig.position.z = -uy * drift;
+        if(severe) rig.rotation.y += Math.min(r/tol, 4) * 0.6 * dt * climb;   // spin out
+      }
+      tiltCur = { x: rig.rotation.x, z: rig.rotation.z };
+    }
+
+    // lean angle over time — a curve that evidently shows the reaction
+    sim.data.push(rig ? +(Math.hypot(rig.rotation.x, rig.rotation.z)*180/Math.PI).toFixed(2) : 0);
+
+    let phaseTxt;
+    if(k < 0.13)       phaseTxt = "SPOOLING UP";
+    else if(k < 0.33)  phaseTxt = "LIFTING OFF";
+    else if(k >= 0.82) phaseTxt = balanced ? "LANDING" : severe ? "CRASHING" : "DRIFTING DOWN";
+    else               phaseTxt = balanced ? "HOVER · HOLDING LEVEL" : severe ? "LOSING CONTROL" : "HOVER · LEANING";
     updateTelemetry({
-      mass: model.totalMass_g, cogX: model.cog.x_mm, cogY: model.cog.y_mm, cogR: model.cog.r_mm,
-      armLoad: armLabels[maxArm.index||0]+" "+(maxArm.loadShare*100).toFixed(1)+"%",
-      verdict: sim.verdictOk ? "PASS · CoG balanced" : "FAIL · r_cg "+model.cog.r_mm.toFixed(1)+"mm",
-      phase: sim.verdictOk?"DONE · BALANCED":"DONE · OFFSET", phaseCls: sim.verdictOk?"good":"warn"
+      mass: model.totalMass_g, cogX: cog.x_mm, cogY: cog.y_mm, cogR: r,
+      armLoad: armTag+" "+(maxArm.loadShare*100).toFixed(1)+"%",
+      verdict: balanced ? "LEVEL" : severe ? "OUT OF CONTROL" : "LEANING "+armTag,
+      phase: phaseTxt+" · "+Math.round(k*100)+"%", phaseCls: balanced ? "good" : "warn"
     });
-    stopSim(true);
+
+    if(sim.t >= DUR){
+      // Flight finished — the drone is at its final pose. Announce the verdict NOW
+      // (voice plays over the settled/crashed drone), then HOLD before ending.
+      sim.settled = true; sim.holdStart = sim.t;
+      sim.verdictOk = balanced;
+      sim.verdict = balanced
+        ? "CoG balanced — the drone hovers level, r_cg "+r.toFixed(1)+" mm within "+tol+" mm"
+        : severe
+          ? "CoG far off-centre — the drone tips toward "+armTag+" and crashes, r_cg "+r.toFixed(1)+" mm"
+          : "CoG off-centre — the drone leans toward "+armTag+", r_cg "+r.toFixed(1)+" mm over the "+tol+" mm limit";
+      updateTelemetry({
+        mass: model.totalMass_g, cogX: cog.x_mm, cogY: cog.y_mm, cogR: r,
+        armLoad: armTag+" "+(maxArm.loadShare*100).toFixed(1)+"%",
+        verdict: balanced ? "PASS · hovers level" : severe ? "FAIL · crashed" : "FAIL · leans "+armTag,
+        phase: balanced ? "BALANCED · LANDED" : severe ? "CRASHED" : "OFF-CENTRE", phaseCls: balanced ? "good" : "danger"
+      });
+      showVerdictToast(sim.verdict, sim.verdictOk);
+      playFaultVoice(sim.verdict, sim.verdictOk);
+      sim.spoken = true;
+    }
+  }else{
+    // ── HOLD — the drone stays in its outcome pose (crashed / drifted / landed)
+    //    while the verdict voice-over plays; the run ends only after it finishes.
+    sim.audioLoad = Math.max(sim.audioLoad - dt*0.7, 0);   // motors wind down
+    if(rig && severe){ rig.rotation.z += (0 - rig.rotation.z)*0.008; rig.rotation.x += (0 - rig.rotation.x)*0.008; } // wreck settles
+    const held = sim.t - sim.holdStart;
+    const voiceBusy = !!(currentVoice && !currentVoice.paused && !currentVoice.ended);
+    if((held >= M1_HOLD_MIN && !voiceBusy) || held >= M1_HOLD_MAX) stopSim(true);
   }
 }
 /* M2 — ramp the tip load 0→100% via CANTILEVER.step(t), fill charts + SF matrix */
@@ -3518,22 +4188,16 @@ function toneFallback(kind){
     else if(kind==="unlock"){ [523,659,784,1047].forEach((f,i)=>tone(f,i*.13,.22,v)); }
   }catch(e){}
 }
-/* fault / result voice-over — plays the matching real clip against the verdict text */
+/* result voice-over — real Emma clips matched to this experiment's verdicts */
 const VOICE_FILES = {
-  overcurrent:"assets/audio/voice/fault_overcurrent.mp3",
-  esc_burnt:"assets/audio/voice/fault_esc_burnt.mp3",
-  winding_overheat:"assets/audio/voice/fault_winding_overheat.mp3",
-  motor_stall:"assets/audio/voice/fault_motor_stall.mp3",
-  thrust_deficit:"assets/audio/voice/fault_thrust_deficit.mp3",
-  critical:"assets/audio/voice/fault_critical.mp3",
-  actuator_stall:"assets/audio/voice/fault_actuator_stall.mp3",
-  hover_reached:"assets/audio/voice/done_hover_reached.mp3",
-  landed_safely:"assets/audio/voice/done_landed_safely.mp3",
-  profiling_complete:"assets/audio/voice/done_profiling_complete.mp3"
+  balanced:     "assets/audio/voice/done_balanced.mp3",
+  offset:       "assets/audio/voice/fault_offset.mp3",
+  arm_survives: "assets/audio/voice/done_arm_survives.mp3",
+  arm_fails:    "assets/audio/voice/fault_arm_fails.mp3"
 };
 const INTRO_FILES = {
-  "m1:balance":"assets/audio/voice/intro_assembly.mp3",
-  "m2:stress":"assets/audio/voice/intro_kv_profiling.mp3"
+  "m1:balance":"assets/audio/voice/intro_balance.mp3",
+  "m2:stress": "assets/audio/voice/intro_stress.mp3"
 };
 // Single voice channel: only one clip plays at a time, so swiftly switching
 // tabs never overlaps. `lastVoiceUrl` lets the instructor's Replay button
@@ -3558,13 +4222,10 @@ function playVoiceFile(url){
 function playIntroVoice(key){ if(INTRO_FILES[key]) playVoiceFile(INTRO_FILES[key]); }
 function currentIntroKey(){ return state.module + ":" + state.exp[state.module]; }
 function playFaultVoice(text, ok){
-  const t = (text||"").toLowerCase();
-  let tag = null;
-  if(ok){ if(t.includes("balanced")) tag="hover_reached";
-    else if(t.includes("survives")) tag="profiling_complete"; }
-  else{ if(t.includes("fails")) tag="critical";
-    else if(t.includes("offset")||t.includes("exceeds")) tag="thrust_deficit"; }
-  if(tag && VOICE_FILES[tag]) playVoiceFile(VOICE_FILES[tag]);
+  // module-scoped: M1 = CoG balance verdict, M2 = arm-stress verdict
+  const tag = state.module === "m2" ? (ok ? "arm_survives" : "arm_fails")
+                                    : (ok ? "balanced" : "offset");
+  if(VOICE_FILES[tag]) playVoiceFile(VOICE_FILES[tag]);
 }
 /* realistic motor / propeller engine — frequency tracks RPM, level tracks thrust */
 function audioStart(){
@@ -3659,6 +4320,15 @@ $("modalOverlay").addEventListener("click", e=>{ if(e.target === $("modalOverlay
 document.addEventListener("keydown", e=>{ if(e.key==="Escape" && !$("modalOverlay").hidden) closeModal(); });
 
 let lastT = 0, graphEvery = 0;
+/* ── propeller spin ─────────────────────────────────────────────────────────
+   True shaft speed is ω = rpm/60·2π rad/s. Drawing that literally only strobes
+   (a 2-blade prop at 9 000 rpm passes a blade every 3 ms — far under a frame),
+   so the view runs at a fixed fraction of real ω: PROP_VIS. Every rpm RATIO
+   stays exact — double the rpm, double the on-screen rate — and the result is
+   integrated against dt, so it no longer runs faster on a 120 Hz display than
+   on a 60 Hz one the way the old per-frame constant did. */
+const PROP_VIS = 1/12;
+function propSpinRate(rpm){ return Math.max(0, (rpm||0)/60*2*Math.PI*PROP_VIS); }
 function loop(t){
   requestAnimationFrame(loop);
   frameNo++;
@@ -3666,26 +4336,44 @@ function loop(t){
   lastT = t;
   if(rig){
     hoverPhase += .02;
-    // Module 1 assembly view — gentle hover bob (settling tilt is driven
-    // separately by simStepM1 on rig.rotation while a run is active) so the
-    // user can inspect/orbit the assembled drone freely otherwise. The
-    // assembled drone RESTS ON THE GROUND whenever the simulation is idle,
-    // and only lifts to hover height while a run is active.
+    // Module 1 — the drone is balanced on a single-point stand, so at rest it
+    // LEANS toward whichever side carries more weight (its CoG offset). While a
+    // run is active simStepM1 drives the take-off + in-flight lean directly.
+    const model = getModel();
+    // one-time: drop the stand tip to just under the assembled drone's belly
+    if(standGroup && !standSeated){
+      const box = new THREE.Box3().setFromObject(rig);
+      if(isFinite(box.min.y)){ standGroup.position.y = box.min.y - 0.01; standSeated = true; }
+    }
     let targetY;
     if(!simActive){
-      // seat the drone's lowest point on the grid (world y = 0)
-      const box = new THREE.Box3().setFromObject(rig);
-      targetY = rig.position.y - box.min.y;
+      const cog = model.cog, tol = model.tolerance_mm || TOLERANCE_MM, r = cog.r_mm || 0;
+      const ux = r>1e-4 ? cog.x_mm/r : 0, uy = r>1e-4 ? cog.y_mm/r : 0;
+      // Past the stand cup's hold the CoG is too far off-centre — the drone TIPS
+      // OFF the pin and drops onto the grid (a heavy one-sided payload topples).
+      const toppling = r > tol*TOPPLE_MULT;
+      toppleCur += ((toppling ? 1 : 0) - toppleCur) * 0.045;
+      const base = coGTiltTarget(model, 1);            // proportional lean while held
+      const extra = toppleCur * (30*Math.PI/180);      // it keeps rolling over once it lets go
+      tiltCur.x += ((base.x - uy*extra) - tiltCur.x)*0.08;
+      tiltCur.z += ((base.z - ux*extra) - tiltCur.z)*0.08;
+      rig.rotation.x = tiltCur.x; rig.rotation.z = tiltCur.z;
+      rig.rotation.y += (0 - rig.rotation.y)*0.06;     // unwind any spiral heading
+      // slides off the pin toward the heavy side + settles onto the grid
+      const sx = ux*toppleCur*0.75, sz = -uy*toppleCur*0.75;
+      rig.position.x += (sx - rig.position.x)*0.08;
+      rig.position.z += (sz - rig.position.z)*0.08;
+      targetY = PIVOT_Y - toppleCur*0.52;              // drops as it falls off the stand
     }else{
-      targetY = 1.15 + Math.sin(hoverPhase)*.03;
+      targetY = (sim.flyY != null ? sim.flyY : PIVOT_Y);   // simStepM1 owns rotation + drift
     }
-    // smooth take-off / landing lerp
-    rig.position.y += (targetY - rig.position.y) * (simActive?0.12:0.18);
-    // props are stationary when the drone is landed / powered down
-    const spin = (simActive && state.module==="m1") ? Math.min((sim.audioLoad||0)*3 + .15, 3.4) : 0;
+    rig.position.y += (targetY - rig.position.y) * (simActive?0.12:0.16);
+    // audioLoad is the normalised rotor load the flight script drives; a 5-inch
+    // quad hovers near 6 500 rpm, so scale that to get a real shaft speed
+    const spin = simActive ? propSpinRate((sim.audioLoad||0)*6500) : 0;
     propGroups.forEach((p,i)=>{
       const dir = p.userData.spinDir != null ? p.userData.spinDir : (i%2?1:-1);
-      p.rotation.y += spin*dir;
+      p.rotation.y += spin*dir*dt;
     });
   }
   if(simActive){
@@ -3724,7 +4412,6 @@ async function boot(){
   renderInstr();
   syncRunControls();
   drawLiveGraph();
-  drawMassChart();
   window.LAB.onModelChange(glueModelViews);   // BUILD_SPEC item G — glue after every rebuild
   glueModelViews();
   $("voiceVol").value = state.voiceVol; $("voiceVolTxt").textContent = state.voiceVol;
@@ -3732,8 +4419,11 @@ async function boot(){
   $("massCard").addEventListener("click", openMassDetail);
   $("calcCard").addEventListener("click", openCalcDetail);
   $("logHead").addEventListener("click", openChartsDetail);
-  $("graphCard").addEventListener("click", openGraphsAll);
-  $("chartCard").addEventListener("click", openChartsDetail);
+  $("graphsHead").addEventListener("click", toggleGraphs);
+  $("graphCard").addEventListener("click", openLiveGraphDetail);
+  document.querySelectorAll("#structCharts .struct-card").forEach(c=>{
+    c.addEventListener("click", ()=> openStructChart(c.dataset.chart));
+  });
   $("runBtn").addEventListener("click", runSim);
   $("resetBtn").addEventListener("click", resetSim);
   $("instrOrb").addEventListener("click", ()=>{

@@ -11,15 +11,15 @@
   "specs": {
     "Voltage": "14.8 V (4S)",
     "Capacity": "3300 mAh",
-    "Discharge": "25C / 15C cont.",
+    "Discharge": "45C burst / 25C cont.",
     "Note": "Big-capacity storage pack — modest continuous C-rating"
   },
   "physics": {
     "cells": 4,
     "voltage_nominal_v": 14.8,
     "capacity_mah": 3300,
-    "c_rating": 25,
-    "c_rating_cont": 15,
+    "c_rating": 45,
+    "c_rating_cont": 25,
     "cell_ir_mohm": 6.5
   }
 }

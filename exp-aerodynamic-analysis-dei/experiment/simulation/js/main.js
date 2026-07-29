@@ -77,17 +77,47 @@ async function loadCatalog(){
     const al0 = alpha0Deg(a.m, a.p);           // thin-airfoil camber-line integral
     return Object.assign({}, a, { alpha0_deg: al0 });
   });
+  /* Reward pool. The reward names a CATEGORY and the unlock draws a random real
+     component from it. That category is not always a selectable one in this
+     experiment (exp-03 awards a propeller but never lets you pick one), so any
+     option that wasn't already loaded is fetched straight from its spec.json. */
+  const rwCfg = manifest.reward || {};
+  let rewardPool = [];
+  if(rwCfg.category){
+    const inCat = byCat[rwCfg.category] || [];
+    const wantIds = rwCfg.options || inCat.map(o=>o.id);
+    const missing = wantIds.filter(id => !inCat.some(o=>o.id===id));
+    let extra = [];
+    if(missing.length){
+      extra = (await Promise.all(missing.map(async id=>{
+        const base = "assets/" + rwCfg.category + "/" + id;
+        try{
+          const spec = await (await fetch(base + "/spec.json", {cache:"no-store"})).json();
+          let files = [];
+          if(spec.model){
+            const arr = Array.isArray(spec.model) ? spec.model : [spec.model];
+            files = arr.map(f => f.includes("/") ? f : base + "/" + f);
+          }
+          return { id, name: spec.name || id, catKey: rwCfg.category,
+                   mass: spec.mass_g || 0, qty: spec.qty || 1,
+                   size: spec.size_mm || null, view: spec.view || null,
+                   specs: Object.entries(spec.specs || {}), phys: spec.physics || {},
+                   files, mounts: null,
+                   fallback: { kind: rwCfg.fallback || "none", color: 0x5a6672, s: 1 } };
+        }catch(e){ console.warn("reward spec missing for", base); return null; }
+      }))).filter(Boolean);
+    }
+    const all = inCat.concat(extra);
+    rewardPool = wantIds.map(id => all.find(o=>o.id===id)).filter(Boolean);
+  }
   DRONE_DB = {
     categories,
     airfoils,
     defaults: manifest.defaults || {},
     modules: manifest.modules,
     instructor: manifest.instructor,
-    reward: {
-      name: manifest.reward.name, desc: manifest.reward.desc,
-      files: manifest.reward.model ? [manifest.reward.model] : [],
-      fallback: { kind: manifest.reward.fallback || "prop", color: 0x845b23, s: 1 }
-    }
+        reward: { category: rwCfg.category || null, name: rwCfg.name || "", desc: rwCfg.desc || "",
+              fallback: { kind: rwCfg.fallback || "prop", color: 0x845b23, s: 1 }, pool: rewardPool }
   };
 }
 
@@ -142,8 +172,6 @@ function loadState(){
   state.sfxVol = s.sfxVol != null ? s.sfxVol : 60;
   state.instrStep = Math.min(s.instrStep || 0, DRONE_DB.instructor.length - 1);
   state.instrOpen = s.instrOpen !== false;
-  // gate: if M1 not done, force module back to m1
-  if(state.module !== "m1" && !state.done["m1:polar"]) state.module = "m1";
 }
 function saveState(){
   try{
@@ -286,8 +314,9 @@ function airfoilModel(af, Re){
   const slope = 2*Math.PI*eta_thk*eta_Re;         // per rad (~6.0–6.6)
   // Re-scaled Cl_max and stall AoA
   const clMax = clamp(af.cl_max_ref*(1 + 0.10*Math.log10(Re/af.re_ref)), 0.7, 2.0);
-  const aStallGeoDeg = af.a_stall_ref*(1 + 0.04*Math.log10(Re/af.re_ref));
-  const aStallDeg = a0deg + aStallGeoDeg;         // absolute positive-stall AoA (deg)
+  // a_stall_ref is the ABSOLUTE stall AoA (NACA TR-824 wind-tunnel convention),
+  // Reynolds-scaled — not measured from the zero-lift line.
+  const aStallDeg = af.a_stall_ref*(1 + 0.04*Math.log10(Re/af.re_ref));
   const aStall = aStallDeg*DEG;
   // Viterna post-stall constants
   const CdMax = 2.0;
@@ -376,8 +405,11 @@ function propCoeffs(){
   const pd = pitch_in/Math.max(state.diameter_in,1);
   const pitch_fac = clamp(0.6 + 0.5*pd, 0.5, 1.4);
   const Ct0 = 0.11*(g.sigma/sigma_ref)*(Cl_design/1.0)*pitch_fac;
-  const Cq0 = Ct0*(0.045 + 0.11*pd + 0.6*Cd_design/Math.max(Cl_design,0.3));
-  const J0 = pd*0.9;                              // zero-thrust advance ratio (geometric)
+  // Cq/Ct baseline set so a well-designed blade (high pitch, high section L/D) peaks
+  // at a realistic propulsive efficiency (~0.6–0.8), matching momentum-theory / UIUC
+  // propeller data; induced term ∝√Ct, profile term ∝ Cd/Cl.
+  const Cq0 = Ct0*(0.014 + 0.045*pd + 0.85*Cd_design/Math.max(Cl_design,0.3));
+  const J0 = pd*0.92;                             // zero-thrust advance ratio (geometric)
   return { g, Re, model, Cl_design, Cd_design, pitch_in, pd, Ct0, Cq0, J0 };
 }
 function propAtJ(pc, J){
@@ -480,11 +512,20 @@ function diagnostics(){
   const { mod, exp } = currentExp();
   const metric = exp.metric;
 
-  // low-Re thin-airfoil breakdown (blocking for M1 polar — the model is unreliable)
-  if(Re < 1e5){
-    items.push({ sev:"err", block: metric==="cl", tag:"low-re",
-      msg:"Low blade Reynolds — Re "+Math.round(Re).toLocaleString()+" < 1×10⁵; thin-airfoil theory and the Cl_max scaling break down.",
-      fix:"Raise RPM, increase chord (root/tip), or use a larger diameter to lift the section Reynolds number." });
+  // low-Re thin-airfoil breakdown — an educational reality-check (BUILD_SPEC §3.6),
+  // never a hard block. M1 runs at wind-tunnel section Reynolds (~10⁶); the spinning-
+  // blade Reynolds only qualifies the M2 propeller model.
+  const reM1 = m1SectionRe();
+  if(metric === "cl"){
+    if(reM1 < 1e5){
+      items.push({ sev:"warn", tag:"low-re",
+        msg:"Low section Reynolds — Re "+Math.round(reM1).toLocaleString()+" < 1×10⁵; thin-airfoil theory and Cl_max are approximate at this scale.",
+        fix:"Increase airspeed or chord to raise the wind-tunnel section Reynolds number." });
+    }
+  } else if(Re < 1e5){
+    items.push({ sev:"warn", tag:"low-re",
+      msg:"Low blade Reynolds — Re "+Math.round(Re).toLocaleString()+" < 1×10⁵; the BEMT thrust / efficiency scaling is approximate at model scale.",
+      fix:"Raise RPM, increase chord (root/tip), or use a larger diameter to lift the blade Reynolds number." });
   }
   // tip Mach compressibility
   if(tm > 0.6){
@@ -495,7 +536,7 @@ function diagnostics(){
   // solidity too high — blades overlap (B·c̄ > π·R·0.6)
   const solLimit = Math.PI*g.R*0.6;
   if(g.B*g.cbar > solLimit){
-    items.push({ sev:"err", block: metric==="eta",
+    items.push({ sev:"err", block: metric==="m2",
       msg:"Solidity too high — "+g.B+" blades of "+(g.cbar*1000).toFixed(0)+" mm mean chord overlap on a "+(g.R*1000).toFixed(0)+" mm radius (σ = "+g.sigma.toFixed(2)+").",
       fix:"Fewer blades, narrower chord, or a larger diameter." });
   } else if(g.sigma > 0.18){
@@ -511,13 +552,13 @@ function diagnostics(){
   }
   // J beyond J0 (windmilling) — cruise
   const Jnow = (state.rpm/60*g.D>1e-6) ? state.wind_v/(state.rpm/60*g.D) : 0;
-  if(metric === "eta" && Jnow > pc.J0){
+  if(metric === "m2" && Jnow > pc.J0){
     items.push({ sev:"warn",
       msg:"Advance ratio J = "+Jnow.toFixed(2)+" exceeds the zero-thrust J₀ = "+pc.J0.toFixed(2)+" — the propeller is windmilling (negative thrust).",
       fix:"Lower the airspeed or raise RPM to bring J below J₀." });
   }
-  // rotor-wash advisory (M2 drag)
-  if(metric === "drag" && state.washOn){
+  // rotor-wash advisory (M2)
+  if(metric === "m2" && state.washOn){
     items.push({ sev:"warn",
       msg:"Rotor-wash interference is ON — the effective drag coefficient is raised ~20% to model rotor downwash over the frame.",
       fix:"Toggle it off to measure clean-frame drag." });
@@ -694,7 +735,20 @@ function seatModel(g, mode){
   if(mode === "hang") g.position.y -= (b.max.y - c.y) / s;
   else                g.position.y += (c.y - b.min.y) / s;
 }
-function modelFor(o, span, onReady){
+/* Orientation used for the small PREVIEW renders only (tiles, picker, reward
+   card). The assembled drone seats attachments with its own mount logic
+   (orientThinUp / orientCameraForward / seatModel "hang"), so this deliberately
+   does NOT touch the spec files — changing those would double-rotate the parts
+   on the rig. ORIENT has attachments:"none", which left a GPS board standing on
+   edge and a gimbal lying on its side in every preview. */
+function previewOrient(o){
+  if(!o || o.catKey !== "attachments") return undefined;
+  const mt = (o.phys && o.phys.mount_type) || "";
+  if(mt === "gps") return "flat";        // thin PCB face → horizontal
+  if(mt === "payload") return "axis";    // gimbal yoke → long axis vertical
+  return undefined;
+}
+function modelFor(o, span, onReady, orientRule){
   span = span || 1.6;
   const g = new THREE.Group();
   const fb = buildFallback((o && o.fallback) || {kind:"none",color:0xcccccc,s:1});
@@ -705,7 +759,7 @@ function modelFor(o, span, onReady){
       const parts = masters.map(m=>m.clone(true));
       parts.forEach(p=>merged.add(p));
       const oriented = o.catKey === "motor" && orientMotorCombo(merged, parts);
-      const fitted = fitUnit(merged, span, o, oriented ? "none" : undefined);
+      const fitted = fitUnit(merged, span, o, oriented ? "none" : orientRule);
       while(g.children.length) g.remove(g.children[0]);
       g.add(fitted);
       if(onReady) onReady(g);
@@ -760,74 +814,82 @@ function buildProceduralProp(o){
   const tipC  = o.tipChord_m  != null ? o.tipChord_m  : state.tip_chord_mm/1000;
   const pitchDeg = o.pitchDeg != null ? o.pitchDeg : state.pitch_angle_deg;
   const spinDir = o.spinDir != null ? o.spinDir : 1;
-  const span = o.span || null;                  // if set, group fitted to this world size
+  const span = o.span || null;
 
   const group = new THREE.Group();
   group.userData.spinDir = spinDir;
   const R = D_m/2;
-  const hubR = Math.max(rootC*0.55, 0.006);
-  const bladeMat = new THREE.MeshStandardMaterial({ color:0x2b3a63, roughness:.42, metalness:.35, side:THREE.DoubleSide });
-  const hubMat = new THREE.MeshStandardMaterial({ color:0x1b2436, roughness:.5, metalness:.5 });
+  const hubR = Math.max(rootC*0.5, 0.006);
+  // smooth, slightly glossy composite look
+  const bladeMat = new THREE.MeshStandardMaterial({ color:0x20293b, roughness:.32, metalness:.28, side:THREE.FrontSide, flatShading:false });
+  const hubMat   = new THREE.MeshStandardMaterial({ color:0x141a26, roughness:.4, metalness:.55 });
 
-  // hub
-  const hub = new THREE.Mesh(new THREE.CylinderGeometry(hubR, hubR*1.05, R*0.16, 20), hubMat);
+  // ── hub: barrel + rounded nose cone (spinner) ──
+  const hub = new THREE.Mesh(new THREE.CylinderGeometry(hubR, hubR*1.08, R*0.14, 28), hubMat);
   group.add(hub);
+  const nose = new THREE.Mesh(new THREE.SphereGeometry(hubR*0.92, 24, 16, 0, Math.PI*2, 0, Math.PI/2), hubMat);
+  nose.position.y = R*0.07; group.add(nose);
 
-  const NSPAN = 14;                              // spanwise stations
-  const outlineN = 26;                           // points per station ring
-  const baseOutline = airfoilOutline(af.m, af.p, af.t, outlineN); // [x∈0..1, y]
+  const NSPAN = 30;                              // spanwise stations (smooth loft)
+  const outlineN = 48;                           // points per section ring (smooth section)
+  const baseOutline = airfoilOutline(af.m, af.p, af.t, outlineN); // closed [x∈0..1, y]
   const P = baseOutline.length;
-  const r0 = hubR*1.1;
+  const r0 = hubR*1.05;
+
+  // realistic planform multiplier: narrow shank → wide inner → taper → rounded swept tip
+  function planform(tr){
+    let pf = 0.42 + 0.58*smoothstep(0.0, 0.16, tr);   // widen out of the shank
+    pf *= (1 - 0.42*tr);                              // gentle taper to tip
+    if(tr > 0.9){ const u = (tr-0.9)/0.1; pf *= Math.sqrt(Math.max(0, 1-u*u)); } // round the tip off
+    return pf;
+  }
+  const sweep = R*0.10;                            // tangential tip sweep-back
 
   for(let b=0; b<B; b++){
     const yaw = b*(2*Math.PI/B);
     const cyaw = Math.cos(yaw), syaw = Math.sin(yaw);
-    const positions = [];
-    const rings = [];                            // rings[i] = array of vec3
+    const rings = [];
     for(let i=0;i<NSPAN;i++){
-      const tr = i/(NSPAN-1);                    // 0 root → 1 tip
+      const tr = i/(NSPAN-1);                     // 0 root → 1 tip
       const radius = lerp(r0, R, tr);
-      const chord = lerp(rootC, tipC, tr);
-      // twist: root pitch → tip pitch − washout (pitch·0.5·r/R)
-      const twist = (pitchDeg*(1 - 0.5*tr))*DEG;
+      const chord = lerp(rootC, tipC, tr) * planform(tr);
+      const twist = (pitchDeg*(1 - 0.55*tr))*DEG;       // washout root→tip
       const ct = Math.cos(twist), st = Math.sin(twist);
+      const swp = sweep*smoothstep(0.35, 1.0, tr);      // sweep grows toward the tip
       const ring = [];
       for(let k=0;k<P;k++){
-        // section local coords: chordwise (xc about quarter-chord), thickness (yc)
-        const xc = (baseOutline[k][0]-0.25)*chord;
+        const xc = (baseOutline[k][0]-0.28)*chord;      // about ~0.28c pitch axis
         const yc = baseOutline[k][1]*chord;
-        // twist in the chord-thickness plane → gives pitch about the blade span axis
-        const chordDir = xc*ct - yc*st;          // along-rotation-plane component
-        const thick   = xc*st + yc*ct;           // out-of-plane (vertical) component
-        // place: radius along local blade axis, chordwise around rotation, thickness vertical
-        let px = radius;                         // blade axis (local +X before yaw)
-        let pz = chordDir;                       // tangential
-        let py = thick;                          // vertical (lift direction)
-        // yaw the blade about Y so B blades are evenly spaced
-        const wx = px*cyaw - pz*syaw;
-        const wz = px*syaw + pz*cyaw;
-        ring.push([wx, py, wz]);
+        const chordDir = xc*ct - yc*st + swp;           // in rotation plane (+ sweep)
+        const thick    = xc*st + yc*ct;                 // out of plane (lift dir)
+        const wx = radius*cyaw - chordDir*syaw;
+        const wz = radius*syaw + chordDir*cyaw;
+        ring.push([wx, thick, wz]);
       }
       rings.push(ring);
     }
-    // triangulate consecutive rings
-    const verts = [];
+    // ── indexed loft (shared verts → smooth vertex normals) ──
+    const positions = [];
+    for(let i=0;i<NSPAN;i++) for(let k=0;k<P;k++){ const v=rings[i][k]; positions.push(v[0],v[1],v[2]); }
+    const idx = [];
     for(let i=0;i<NSPAN-1;i++){
       for(let k=0;k<P;k++){
-        const k2 = (k+1)%P;
-        const a = rings[i][k], bb = rings[i][k2], cc = rings[i+1][k], dd = rings[i+1][k2];
-        verts.push(a[0],a[1],a[2], bb[0],bb[1],bb[2], cc[0],cc[1],cc[2]);
-        verts.push(bb[0],bb[1],bb[2], dd[0],dd[1],dd[2], cc[0],cc[1],cc[2]);
+        const k2=(k+1)%P;
+        const a=i*P+k, bb=i*P+k2, cc=(i+1)*P+k, dd=(i+1)*P+k2;
+        idx.push(a,bb,cc, bb,dd,cc);
       }
     }
-    // cap the tip
-    const tip = rings[NSPAN-1];
-    let cx=0,cy=0,cz=0; tip.forEach(v=>{cx+=v[0];cy+=v[1];cz+=v[2];});
-    cx/=P; cy/=P; cz/=P;
-    for(let k=0;k<P;k++){ const k2=(k+1)%P; const a=tip[k], bb=tip[k2];
-      verts.push(a[0],a[1],a[2], bb[0],bb[1],bb[2], cx,cy,cz); }
+    // root + tip centre caps
+    function cap(ringStart, flip){
+      let cx=0,cy=0,cz=0;
+      for(let k=0;k<P;k++){ cx+=positions[(ringStart+k)*3]; cy+=positions[(ringStart+k)*3+1]; cz+=positions[(ringStart+k)*3+2]; }
+      const ci = positions.length/3; positions.push(cx/P, cy/P, cz/P);
+      for(let k=0;k<P;k++){ const k2=(k+1)%P; if(flip) idx.push(ci, ringStart+k2, ringStart+k); else idx.push(ci, ringStart+k, ringStart+k2); }
+    }
+    cap(0, true); cap((NSPAN-1)*P, false);
     const geo = new THREE.BufferGeometry();
-    geo.setAttribute("position", new THREE.Float32BufferAttribute(verts, 3));
+    geo.setAttribute("position", new THREE.Float32BufferAttribute(positions, 3));
+    geo.setIndex(idx);
     geo.computeVertexNormals();
     group.add(new THREE.Mesh(geo, bladeMat));
   }
@@ -1029,12 +1091,57 @@ function buildDroneFromMounts(d, ch){
 /* ════════════ 7 · PREVIEW ENGINE + FX ════════════ */
 let previewRenderer = null;
 const previews = new Map();
+/* Supersample factor for every preview render. The canvas backing store is sized
+   to its ON-SCREEN size x this, so on a retina panel the component is rendered at
+   the display's real pixel density instead of half of it. Capped at 3 so a 4K
+   display doesn't quietly cost 16x the fill rate. */
+const PREVIEW_DPR = Math.max(2, Math.min(window.devicePixelRatio || 1, 3));
+/* A tiny sky/ground gradient, prefiltered through PMREM. Without an environment
+   map three.js MeshStandardMaterial metals have nothing to reflect and read as
+   flat grey plastic — this is what makes the motor bell and prop hub look
+   machined rather than painted. */
+let ENV_TEX = null;
+function ensureEnv(rnd){
+  if(ENV_TEX || !rnd || !THREE.PMREMGenerator) return ENV_TEX;
+  try{
+    const c = document.createElement("canvas"); c.width = 64; c.height = 32;
+    const x = c.getContext("2d"), grd = x.createLinearGradient(0,0,0,32);
+    grd.addColorStop(0,"#eef2f6"); grd.addColorStop(.45,"#b9c2cc");
+    grd.addColorStop(.58,"#6e7681"); grd.addColorStop(1,"#2b3036");
+    x.fillStyle = grd; x.fillRect(0,0,64,32);
+    const tex = new THREE.CanvasTexture(c);
+    tex.mapping = THREE.EquirectangularReflectionMapping;
+    const pm = new THREE.PMREMGenerator(rnd); pm.compileEquirectangularShader();
+    ENV_TEX = pm.fromEquirectangular(tex).texture; tex.dispose();
+  }catch(e){ ENV_TEX = null; }
+  return ENV_TEX;
+}
 function initPreviewEngine(){
-  previewRenderer = new THREE.WebGLRenderer({antialias:true, alpha:true});
-  previewRenderer.setSize(220,150);
-  previewRenderer.setPixelRatio(1);
+  previewRenderer = new THREE.WebGLRenderer({ antialias:true, alpha:true,
+                                              powerPreference:"high-performance" });
+  previewRenderer.setPixelRatio(1);          // sizes below are already device pixels
+  if(THREE.sRGBEncoding !== undefined) previewRenderer.outputEncoding = THREE.sRGBEncoding;
+  if(THREE.ACESFilmicToneMapping !== undefined){
+    previewRenderer.toneMapping = THREE.ACESFilmicToneMapping;
+    previewRenderer.toneMappingExposure = 0.82;   // calibrated against the env map below
+  }
+  previewRenderer.setSize(320,220,false);
 }
 /* preview a component GLB, OR a procedural prop (o.__proc), OR an airfoil section (o.__airfoil canvas is drawn separately) */
+/* The environment map is a full-strength reflection by default, which blows the
+   pale plastics out. Dial it back per material and keep a floor on roughness so
+   nothing turns into a mirror. */
+function tunePreviewMaterials(root){
+  if(!root || !root.traverse) return;
+  root.traverse(function(m){
+    if(!m.isMesh || !m.material) return;
+    (Array.isArray(m.material) ? m.material : [m.material]).forEach(function(mat){
+      if(mat.envMapIntensity !== undefined) mat.envMapIntensity = 0.38;
+      if(mat.roughness !== undefined) mat.roughness = Math.max(mat.roughness, 0.32);
+      mat.needsUpdate = true;
+    });
+  });
+}
 function registerPreview(canvas, o){
   if(!canvas || !o || !previewRenderer) return;
   const scene2 = new THREE.Scene();
@@ -1050,6 +1157,7 @@ function registerPreview(canvas, o){
   previews.set(canvas, {scene:scene2, camera:camera2, group});
 }
 let frameNo = 0;
+let previewW = 0, previewH = 0;
 function blitPreviews(){
   if(!previewRenderer) return;
   let i = 0;
@@ -1057,10 +1165,25 @@ function blitPreviews(){
     if(!cv.isConnected){ previews.delete(cv); continue; }
     if((i++ + frameNo) % 2 !== 0) continue;
     p.group.rotation.y += .022;
+    // Size the backing store to the canvas's ON-SCREEN box x PREVIEW_DPR. The
+    // markup ships a fixed width/height (280x190 for the reward card) while CSS
+    // stretches the element to fill its panel, so the old fixed buffer was both
+    // upscaled and rendered at half density on a retina display — that is what
+    // made the parts look jagged and soft.
+    const r = cv.getBoundingClientRect();
+    if(!r.width || !r.height) continue;
+    const w = Math.max(2, Math.round(r.width  * PREVIEW_DPR));
+    const h = Math.max(2, Math.round(r.height * PREVIEW_DPR));
+    if(cv.width !== w || cv.height !== h){ cv.width = w; cv.height = h; }
+    if(previewW !== w || previewH !== h){
+      previewW = w; previewH = h;
+      previewRenderer.setSize(w, h, false);
+    }
+    if(p.camera.aspect !== w/h){ p.camera.aspect = w/h; p.camera.updateProjectionMatrix(); }
     previewRenderer.render(p.scene, p.camera);
     const ctx = cv.getContext("2d");
-    ctx.clearRect(0,0,cv.width,cv.height);
-    ctx.drawImage(previewRenderer.domElement, 0,0, cv.width, cv.height);
+    ctx.clearRect(0,0,w,h);
+    ctx.drawImage(previewRenderer.domElement, 0,0, w, h);
   }
 }
 /* draw a NACA section outline onto a 2D canvas (tiles / pickers / charts) */
@@ -1162,7 +1285,7 @@ const FX = (function(){
 /* ════════════ 8 · MAIN VIEWPORT / SCENES ════════════ */
 let renderer, scene, camera, controls, rig, propGroups = [], procProps = [];
 let hoverPhase = 0;
-let airfoilScene = null, streamlines = [], clArrow = null, airfoilMesh = null;
+let airfoilScene = null, streamlines = [], clArrow = null, airfoilMesh = null, flowParticles = null;
 let dragArrow = null, flowArrows = [];
 function sceneModeType(){ return currentExp().exp.type || "airfoil"; }   // airfoil | wind
 function isAirfoilScene(){ return sceneModeType() === "airfoil"; }
@@ -1200,7 +1323,7 @@ function clearRig(){
   if(rig){ scene.remove(rig); rig = null; }
   if(airfoilScene){ scene.remove(airfoilScene); airfoilScene = null; }
   propGroups = []; procProps = [];
-  streamlines = []; flowArrows = [];
+  streamlines = []; flowArrows = []; flowParticles = null;
   clArrow = null; dragArrow = null; airfoilMesh = null;
   FX.clear();
 }
@@ -1236,28 +1359,164 @@ function buildAirfoilScene(){
   wingGeo.center();
   const wingMat = new THREE.MeshStandardMaterial({ color:0x2b3a63, roughness:.4, metalness:.35, side:THREE.DoubleSide });
   const wing = new THREE.Mesh(wingGeo, wingMat);
-  wing.rotation.x = Math.PI/2;                 // span along Z
+  // shape is chord-X / thickness-Y, extruded along +Z (span) — no rotation: profile stays in the XY view plane
   const wingPivot = new THREE.Group();
   wingPivot.add(wing);
   g.add(wingPivot);
   airfoilMesh = wingPivot;
-  // freestream streamlines L→R
-  const streamMat = new THREE.LineBasicMaterial({ color:0x4f6d9e, transparent:true, opacity:0.55 });
-  for(let r=0;r<7;r++){
-    const y0 = -1.3 + r*0.43;
+
+  // freestream streamlines (steady, deflected around the section) — 9 lanes across the tunnel
+  const streamMat = new THREE.LineBasicMaterial({ color:0x6f93c4, transparent:true, opacity:0.5 });
+  const LANES = 9;
+  for(let r=0;r<LANES;r++){
+    const y0 = -1.35 + r*(2.7/(LANES-1));
     const geo = new THREE.BufferGeometry();
     const arr = [];
-    for(let x=-3;x<=3;x+=0.25) arr.push(x, y0, 0);
+    for(let x=-3;x<=3.0001;x+=0.12) arr.push(x, y0, 0);
     geo.setAttribute("position", new THREE.Float32BufferAttribute(arr, 3));
     const line = new THREE.Line(geo, streamMat.clone());
-    line.userData.y0 = y0; line.userData.phase = r*0.5;
+    line.userData.y0 = y0;
     g.add(line); streamlines.push(line);
   }
+
+  // velocity-field flow particles (the visible AIRFLOW + turbulence) — dense, colour-coded
+  buildFlowField(g, "airfoil", 900);
+
   // Cl vector arrow (perpendicular to flow, up)
   clArrow = new THREE.ArrowHelper(new THREE.Vector3(0,1,0), new THREE.Vector3(0,0,0), 1.0, 0x1f8a5b, 0.28, 0.16);
   g.add(clArrow);
   updateAirfoilScene();
   rig = g; scene.add(g);
+}
+/* deflected streamline height at chordwise x for a lane baseline y0 — flow splits
+   at the leading edge and passes AROUND the tilted section (never through it):
+   upwash ahead, accelerated bulge over/under the surface, net downwash in the wake,
+   turbulent separation past stall. Chord spans roughly x∈[-1.3,1.3]. */
+function airfoilFlowY(x, y0, aoaRad, clN, stalled, t){
+  const bell   = Math.exp(-(x*x)/0.5);                 // section influence envelope
+  const chordY = -x*Math.sin(aoaRad)*0.85;             // tilted mean-camber line height at x
+  const rel    = y0 - chordY;                          // signed distance from the surface line
+  const side   = rel >= 0 ? 1 : -1;
+  // circulation turning ∝ lift: raise ahead, lower behind, plus a lasting wake downwash
+  const turn = clN*0.55*bell*(x < 0 ? 0.7 : -1.0) - (x > 0 ? clN*0.40*ramp(0,1.3,x) : 0);
+  // thickness/camber bulge: push the lane away from the surface, strongest for near lanes
+  const bulge = side*(0.14 + 0.46/(1 + 6*rel*rel))*bell*(0.6 + 0.5*Math.abs(clN));
+  let y = y0 + turn + bulge;
+  // hard clearance — keep every lane outside the section silhouette
+  const minGap = (0.15 + 0.10*Math.abs(clN))*bell;
+  y = side > 0 ? Math.max(y, chordY + minGap) : Math.min(y, chordY - minGap);
+  if(stalled && x > 0.05) y += Math.sin(x*5 + t*6 + y0*3)*0.15*ramp(0,0.7,x); // separated wake churn
+  return y;
+}
+
+/* ── velocity-field flow particle system (both modules) ─────────────────────
+   Each particle is advected by a local air-velocity field: freestream + the
+   body's disturbance (upwash/downwash + blockage for the airfoil; wake deficit
+   + vortex shedding for the drone) + genuine turbulent fluctuations once flow
+   separates. Particle colour tracks turbulence intensity (blue→amber). */
+const _flowTmp = { ux:0, uy:0, uz:0, turb:0 };
+function flowVelocity(kind, x, y, z, t, ctx){
+  let ux = ctx.U, uy = 0, uz = 0, turb = 0;
+  if(kind === "airfoil"){
+    const chordY = -x*Math.sin(ctx.aoaRad)*0.85;
+    const rel = y - chordY;
+    const bell = Math.exp(-(x*x)/0.6);
+    // circulation: upwash ahead, downwash behind (∝ lift)
+    uy += ctx.clN*0.95*bell*(x < 0 ? 0.55 : -0.9);
+    // thickness blockage: accelerate over the surface + steer the lane around it
+    ux += bell*0.55*Math.exp(-rel*rel*4);
+    uy += (rel>=0?1:-1)*bell*0.6*Math.exp(-rel*rel*3);
+    // persistent wake downwash behind the section
+    if(x > 0) uy -= ctx.clN*0.35*ramp(0,1.4,x);
+    // separated turbulent wake once past stall — chaotic recirculation
+    if(ctx.stalled){
+      const sev = clamp((ctx.aoaDeg - ctx.aStall)/9, 0, 1);
+      const inWake = x > -0.15 && Math.abs(rel) < 0.55 + 0.25*ramp(0,2,x);
+      if(inWake){
+        const a = 1.6*sev;
+        ux += (Math.sin(y*7 + t*7) + Math.sin(x*5 - t*5.5 + z*2))*0.45*a;
+        uy += (Math.sin(x*8 + t*6.5 + z*3) + Math.cos(y*6 - t*8))*0.7*a;
+        uz += (Math.sin(x*6 + y*5 + t*6))*0.5*a;
+        ux *= (1 - 0.55*sev);                      // momentum deficit in the wake
+        turb = 0.4 + 0.6*sev;
+      }
+    }
+  } else { // drone wake
+    const band = Math.exp(-((y*y + z*z))/2.6);      // broad downstream wake column
+    const near = Math.exp(-((x*x + y*y + z*z))/2.2); // disturbed air right around the frame
+    const sev = ctx.sev;
+    if(x > -0.6){
+      const w = band*ramp(-0.3,0.7,x);
+      ux -= (0.55 + 0.6*w)*sev*w;                    // momentum deficit grows downstream
+      // multi-scale vortex shedding (two frequencies) → richer turbulence
+      uy += (Math.sin(z*5 + t*7 + x*3) + 0.6*Math.sin(z*11 - t*12 + y*4))*0.8*sev*w;
+      uz += (Math.cos(y*5 - t*6.5 + x*3) + 0.6*Math.cos(y*10 + t*11 - z*4))*0.8*sev*w;
+      turb = clamp(w*sev*1.4, 0, 1);
+    }
+    // blockage: air shoulders around the frame just upstream/around it
+    uy += (y>=0?1:-1)*near*0.4*sev;
+    uz += (z>=0?1:-1)*near*0.3*sev;
+    if(ctx.washOn){ uy -= 0.7*band*ramp(0,0.4,x); turb = Math.min(1, turb+0.25*band); } // rotor downwash
+  }
+  _flowTmp.ux=ux; _flowTmp.uy=uy; _flowTmp.uz=uz; _flowTmp.turb=turb;
+  return _flowTmp;
+}
+function buildFlowField(host, kind, N){
+  const pos = new Float32Array(N*3), col = new Float32Array(N*3), meta = [];
+  for(let i=0;i<N;i++){
+    const x = -3 + Math.random()*6.2;
+    const y = kind==="airfoil" ? (-1.5 + Math.random()*3.0) : (-1.4 + Math.random()*2.8);
+    const z = (Math.random()-0.5)*(kind==="airfoil"?1.9:2.4);
+    meta.push({ x, y, z, jitter: 0.6+Math.random()*0.8 });
+    pos[i*3]=x; pos[i*3+1]=y; pos[i*3+2]=z;
+    col[i*3]=0.18; col[i*3+1]=0.43; col[i*3+2]=0.7;
+  }
+  const geo = new THREE.BufferGeometry();
+  geo.setAttribute("position", new THREE.Float32BufferAttribute(pos,3));
+  geo.setAttribute("color", new THREE.Float32BufferAttribute(col,3));
+  const mat = new THREE.PointsMaterial({ size: kind==="airfoil"?0.082:0.075, vertexColors:true, transparent:true, opacity:0.94, depthWrite:false });
+  flowParticles = new THREE.Points(geo, mat);
+  flowParticles.userData = { meta, kind };
+  host.add(flowParticles);
+  return flowParticles;
+}
+const _cLam = [0.18,0.43,0.72], _cTurb = [0.85,0.42,0.20];
+function updateFlowField(dt){
+  if(!flowParticles) return;
+  const kind = flowParticles.userData.kind;
+  const meta = flowParticles.userData.meta;
+  const pos = flowParticles.geometry.attributes.position;
+  const col = flowParticles.geometry.attributes.color;
+  const t = hoverPhase;
+  // per-scene context
+  let ctx;
+  if(kind === "airfoil"){
+    const model = airfoilModel(curAirfoil(), m1SectionRe());
+    ctx = { U:1.8, aoaRad:state.aoa_deg*DEG, aoaDeg:state.aoa_deg,
+            clN:clamp(model.clDeg(state.aoa_deg)/1.2,-1.6,1.6),
+            stalled:state.aoa_deg>model.aStallDeg, aStall:model.aStallDeg };
+  } else {
+    const d = dragForce(state.wind_v);
+    ctx = { U:1.5 + state.wind_v*0.05, sev:clamp(0.4 + d.F*3.5, 0.4, 1)*(0.7+0.3*(state.wind_v/20)), washOn:state.washOn };
+  }
+  const xMin=-3.1, xMax=3.1;
+  for(let i=0;i<meta.length;i++){
+    const m = meta[i];
+    const v = flowVelocity(kind, m.x, m.y, m.z, t, ctx);
+    const sp = dt*1.0;
+    m.x += v.ux*sp; m.y += v.uy*sp*m.jitter; m.z += v.uz*sp*m.jitter;
+    if(m.x > xMax){ m.x = xMin; m.y = (kind==="airfoil"?-1.5:-1.4) + Math.random()*(kind==="airfoil"?3.0:2.8); m.z=(Math.random()-0.5)*(kind==="airfoil"?1.9:2.4); }
+    // clamp airfoil lanes outside the section silhouette (no particle inside the wing)
+    if(kind==="airfoil"){
+      const chordY = -m.x*Math.sin(ctx.aoaRad)*0.85, rel=m.y-chordY;
+      const gap = 0.13*Math.exp(-(m.x*m.x)/0.5);
+      if(Math.abs(m.x)<1.25 && Math.abs(rel)<gap) m.y = chordY + (rel>=0?gap:-gap);
+    }
+    pos.setXYZ(i, m.x, m.y, m.z);
+    const f = clamp(v.turb,0,1);
+    col.setXYZ(i, lerp(_cLam[0],_cTurb[0],f), lerp(_cLam[1],_cTurb[1],f), lerp(_cLam[2],_cTurb[2],f));
+  }
+  pos.needsUpdate = true; col.needsUpdate = true;
 }
 function updateAirfoilScene(){
   if(!airfoilMesh) return;
@@ -1273,24 +1532,32 @@ function updateAirfoilScene(){
   }
 }
 
-/* ── M2 · wind scene: assembled drone in flow with drag vector + wash ── */
+/* ── M2 · wind scene: assembled drone in flow with drag vector + wash ──
+   IMPORTANT: the flow field + arrows live on the (unrotated) scene group `d`
+   so the freestream always runs world +X. ONLY the drone MODEL is yawed
+   (inside droneWrap) so its front meets the oncoming air — otherwise rotating
+   the whole group would spin the wind along with the drone. */
+const DRONE_FRONT_YAW = 0;                        // model yaw so the frame's nose (narrow frontal) faces upwind (−X)
 function buildWindScene(){
   const d = new THREE.Group();
   propGroups = []; procProps = [];
   d.position.y = 1.15;
-  d.rotation.x = 0.14;                           // pitched slightly forward
+  d.rotation.set(0, 0, 0);
+  const droneWrap = new THREE.Group();
+  droneWrap.rotation.y = DRONE_FRONT_YAW;
+  d.add(droneWrap);
   const ch = opt("chasis");
   if(ch && ch.mounts && ch.mounts.mounts && ch.files && ch.files.length){
-    buildDroneFromMounts(d, ch);
+    buildDroneFromMounts(droneWrap, ch);
   }else{
     // fallback simple frame + 4 procedural props
-    const fb = modelFor(ch, 2.4); d.add(fb);
+    const fb = modelFor(ch, 2.4); droneWrap.add(fb);
     for(let i=0;i<4;i++){ const a=Math.PI/4+i*Math.PI/2;
       const p = buildProceduralProp({ span:1.1, spinDir:i%2?1:-1 });
-      p.position.set(Math.cos(a)*1.2, .3, Math.sin(a)*1.2); d.add(p); propGroups.push(p); procProps.push(p);
+      p.position.set(Math.cos(a)*1.2, .3, Math.sin(a)*1.2); droneWrap.add(p); propGroups.push(p); procProps.push(p);
     }
   }
-  // freestream arrows (flow L→R along +X)
+  // freestream arrows (flow L→R along world +X) — on `d`, independent of drone yaw
   for(let r=0;r<5;r++){
     const y0 = 0.4 + r*0.5, z0 = -1 + (r%2)*0.5;
     const arr = new THREE.ArrowHelper(new THREE.Vector3(1,0,0), new THREE.Vector3(-3, y0-1.15, z0), 1.4, 0x4f6d9e, 0.3, 0.16);
@@ -1299,6 +1566,8 @@ function buildWindScene(){
   // drag vector (downstream, +X) — length ∝ F_D
   dragArrow = new THREE.ArrowHelper(new THREE.Vector3(1,0,0), new THREE.Vector3(0,0,0), 1.0, 0xc65d3b, 0.32, 0.2);
   d.add(dragArrow);
+  // velocity-field flow particles + turbulent wake behind the frame
+  buildFlowField(d, "wind", 820);
   updateWindScene();
   rig = d; scene.add(d);
 }
@@ -1309,3 +1578,1215 @@ function updateWindScene(){
   dragArrow.setLength(len, 0.3, 0.18);
   dragArrow.setColor(state.washOn ? 0x9a4426 : 0xc65d3b);
 }
+
+/* ════════════ 9 · LEFT PANEL + UI RENDERING ════════════ */
+const REF_AIRFOILS = ["naca0012","naca2412","naca4412"];
+const ramp = (x,a,b)=>clamp((x-a)/((b-a)||1e-9),0,1);
+
+/* — component tiles (the DRONE is assembled from these GLB assets) — */
+const tileCanvases = {};
+function tileInfo(key){
+  const c = cat(key);
+  if(c.multi){
+    const opts = selOpts(key);
+    return { mass: opts.reduce((a,o)=>a+o.mass*o.qty,0),
+      name: opts.length ? (opts.length===1 ? opts[0].name : opts.length+" attached") : "None (tap to add)",
+      preview: opts[0] || { fallback:{kind:"none",color:0xcccccc,s:1} } };
+  }
+  const o = opt(key);
+  return { mass:o?o.mass*o.qty:0, name:o?o.name:"—", preview:o };
+}
+function renderTiles(){
+  const grid = $("paramGrid"); if(!grid) return;
+  grid.innerHTML = "";
+  DRONE_DB.categories.forEach(c=>{
+    const info = tileInfo(c.key);
+    const b = el("button","tile"); b.type = "button";
+    b.innerHTML =
+      '<div class="tile-top"><span class="tile-label">'+txt(c.label)+'</span>'+
+      '<span class="tile-mass">'+fmtMass(info.mass)+'</span></div>'+
+      '<div class="tile-view"><canvas width="150" height="100"></canvas></div>'+
+      '<span class="tile-sel">'+txt(info.name)+'</span>';
+    b.addEventListener("click", ()=>openComponentPicker(c.key));
+    grid.appendChild(b);
+    const cv = b.querySelector("canvas");
+    tileCanvases[c.key] = cv;
+    registerPreview(cv, info.preview);
+  });
+  const cc = $("cfgCode"); if(cc) cc.textContent = configCode();
+  renderAirfoilCard();
+  renderBladeCount();
+}
+/* the airfoil is DESIGNED, not a catalog part — its own card + 2D section preview */
+function renderAirfoilCard(){
+  const af = curAirfoil();
+  const nm = $("airfoilName"); if(nm) nm.textContent = af.name;
+  const cv = $("airfoilCanvas"); if(cv) drawAirfoilCanvas(cv, af, { label:false });
+}
+function renderBladeCount(){
+  const bc = $("bladeCount"); if(!bc) return;
+  [].forEach.call(bc.querySelectorAll("button"), b=>{
+    b.classList.toggle("active", +b.dataset.b === state.blades);
+  });
+}
+
+/* — aero summary mini (left card) — */
+function renderAeroMini(){
+  const box = $("aeroMini"); if(!box) return;
+  const c = aeroCalc();
+  const rows = [
+    ["Cl max", c.clMax.toFixed(2)],
+    ["Stall α", c.aStallDeg.toFixed(1)+"°"],
+    ["F_D @ 10 m/s", c.Fd10.toFixed(2)+" N"],
+    ["Peak η", c.etaPeak.toFixed(0)+" %"],
+    ["Advance J₀", c.J0.toFixed(2)]
+  ];
+  box.innerHTML = "";
+  rows.forEach(r=>{
+    const d = el("div","mass-row");
+    d.innerHTML = '<span class="lbl">'+txt(r[0])+'</span><span class="val mono">'+txt(r[1])+'</span>';
+    box.appendChild(d);
+  });
+}
+
+/* — module + experiment tabs (independent, no cross-experiment gating) — */
+function renderModuleTabs(){
+  const box = $("moduleTabs"); if(!box) return;
+  box.innerHTML = "";
+  DRONE_DB.modules.forEach(m=>{
+    const b = el("button", m.id===state.module ? "active" : ""); b.type = "button";
+    b.innerHTML = txt(m.label)+' <small>· '+txt(m.sub)+'</small>';
+    b.addEventListener("click", ()=>{
+      if(simActive) stopSim(false);
+      state.module = m.id; saveState();
+      renderModuleTabs(); renderExpTabs(); buildScene(); drawLiveGraph(); refreshIdleTelemetry(); renderCalcChips(); renderLog();
+      instrJump();
+    });
+    box.appendChild(b);
+  });
+}
+function renderExpTabs(){
+  const box = $("expTabs"); if(!box) return;
+  box.innerHTML = "";
+  const m = DRONE_DB.modules.find(m=>m.id===state.module);
+  m.experiments.forEach(e=>{
+    const key = m.id+":"+e.id;
+    const b = el("button", e.id===state.exp[m.id] ? "active" : ""); b.type = "button";
+    b.innerHTML = (state.done[key] ? '<span class="done">✓</span>' : "") + txt(e.name);
+    b.addEventListener("click", ()=>{
+      if(simActive) stopSim(false);
+      state.exp[m.id] = e.id; saveState();
+      renderExpTabs(); buildScene(); drawLiveGraph(); refreshIdleTelemetry(); renderCalcChips(); renderLog();
+      instrJump();
+    });
+    box.appendChild(b);
+  });
+}
+function renderProgress(){
+  const total = allExperiments().length, n = doneCount();
+  const f = $("progressFill"), t = $("progressTxt");
+  if(f) f.style.width = (total ? n/total*100 : 0)+"%";
+  if(t) t.textContent = n+" / "+total;
+}
+
+/* — calculation chips (center) — */
+function renderCalcChips(){
+  const c = aeroCalc();
+  const chips = [
+    { k:"Cl @ α="+state.aoa_deg.toFixed(0)+"°", v:c.clNow.toFixed(2), cls: state.aoa_deg>c.aStallDeg?"warn":"good" },
+    { k:"L / D", v:c.ldNow.toFixed(1), cls:c.ldNow>=20?"good":c.ldNow>=8?"":"warn" },
+    { k:"F_D @ 10 m/s", v:c.Fd10.toFixed(2)+" N", cls:"" },
+    { k:"Peak η", v:c.etaPeak.toFixed(0)+" %", cls:c.etaPeak>=70?"good":c.etaPeak>=50?"":"warn" },
+    { k:"Air density ρ", v:c.rho.toFixed(3)+" kg/m³", cls:"" }
+  ];
+  const box = $("calcChips"); if(!box) return;
+  box.innerHTML = "";
+  chips.forEach(ch=>{
+    const d = el("div","calc-chip");
+    d.innerHTML = '<span class="k">'+ch.k+'</span><span class="v '+ch.cls+'">'+ch.v+'</span>';
+    box.appendChild(d);
+  });
+}
+
+/* — diagnostics log — */
+function renderLog(){
+  const dg = diagnostics();
+  const list = $("logList"); if(!list) return dg;
+  list.innerHTML = "";
+  const icon = s => s==="ok" ? "✓" : s==="warn" ? "!" : "×";
+  dg.items.forEach(it=>{
+    const d = el("div","log-item "+it.sev);
+    d.innerHTML = '<span class="ic">'+icon(it.sev)+'</span>'+
+      '<div class="body"><span class="msg">'+txt(it.msg)+'</span>'+
+      (it.fix ? '<span class="fix">Fix: '+txt(it.fix)+'</span>' : '')+'</div>';
+    list.appendChild(d);
+  });
+  const badge = $("logBadge"), sum = $("logSummary");
+  if(badge && sum){
+    if(dg.errors){ badge.className="log-badge err"; badge.textContent = dg.errors+" error"+(dg.errors>1?"s":"");
+      sum.textContent = "· "+dg.errors+" error"+(dg.errors>1?"s":"")+(dg.warns?", "+dg.warns+" warning"+(dg.warns>1?"s":""):""); }
+    else if(dg.warns){ badge.className="log-badge warn"; badge.textContent = dg.warns+" warning"+(dg.warns>1?"s":"");
+      sum.textContent = "· "+dg.warns+" warning"+(dg.warns>1?"s":""); }
+    else { badge.className="log-badge ok"; badge.textContent = "OK"; sum.textContent = "· model within limits"; }
+  }
+  const rb = $("runBtn");
+  if(rb){ if(dg.blocked && !simActive) rb.classList.add("blocked"); else rb.classList.remove("blocked"); }
+  return dg;
+}
+/* push the AoA / airspeed state back onto their sliders + labels (after a sweep restores them) */
+function syncOperatingSliders(){
+  const a=$("aoaSlider"), av=$("aoaVal");
+  if(a){ a.value = state.aoa_deg; if(av) av.textContent = state.aoa_deg.toFixed(1)+"°"; }
+  const w=$("windSlider"), wv=$("windVal");
+  if(w){ w.value = state.wind_v; if(wv) wv.textContent = state.wind_v.toFixed(1)+" m/s"; }
+}
+
+/* — reward (procedural blade profile) — */
+/* local mass formatter — exp-04 has no fmtMass() of its own */
+function rwMass(g){
+  if(typeof fmtMass === "function") return fmtMass(g);
+  return g >= 1000 ? (g/1000).toFixed(2)+" kg" : (g<10 && g>0 ? g.toFixed(1) : Math.round(g))+" g";
+}
+/* Draw a random component from the reward category and REMEMBER the draw, so the
+   card doesn't reshuffle on every re-render. Kept in localStorage under its own
+   key (not the experiment's state schema, which differs per experiment) so a
+   fresh play-through can award a different part. */
+let _rewardPick = null;
+function rewardPick(r){
+  if(!r || !r.pool || !r.pool.length) return null;
+  if(_rewardPick && r.pool.indexOf(_rewardPick) !== -1) return _rewardPick;
+  const KEY = "dtl-reward-" + (r.category || "x");
+  let id = null; try{ id = localStorage.getItem(KEY); }catch(e){}
+  let p = id ? r.pool.filter(function(o){ return o.id === id; })[0] : null;
+  if(!p){
+    p = r.pool[Math.floor(Math.random()*r.pool.length)];
+    try{ localStorage.setItem(KEY, p.id); }catch(e){}
+  }
+  _rewardPick = p;
+  return p;
+}
+function renderReward(){
+  const body = $("rewardBody"); if(!body) return;
+  const DB = (typeof DRONE_DB !== "undefined" && DRONE_DB) ? DRONE_DB
+           : (typeof ESC_DB   !== "undefined" && ESC_DB)   ? ESC_DB : null;
+  const r = (DB && DB.reward) || { pool: [] };
+  const unlocked = allDone();
+  const badge = $("rewardBadge");
+  body.innerHTML = "";
+  // capstone: the experiment IS the showdown, so there is nothing to unlock
+  if(!r.category){
+    if(badge) badge.textContent = unlocked ? "PASS" : "—";
+    const d = el("div","reward-locked"+(unlocked?" reward-final":""));
+    d.innerHTML = '<div class="lock">'+(unlocked?"🏆":"🔒")+'</div><p>'+
+      (unlocked ? "Full system verified — the build flies."
+                : txt(r.desc || "Complete every check to clear the flight test."))+'</p>';
+    body.appendChild(d);
+    return;
+  }
+  if(badge) badge.textContent = (unlocked?1:0)+" / 1";
+  if(unlocked){
+    const pick = rewardPick(r);
+    const d = el("div","reward-open");
+    const specs = (pick && pick.specs && pick.specs.length)
+      ? pick.specs.slice(0,3).map(function(s){ return '<span><i>'+txt(s[0])+'</i>'+txt(s[1])+'</span>'; }).join("")
+      : "";
+    d.innerHTML =
+      '<div class="view"><canvas width="280" height="190"></canvas></div>'+
+      '<div class="meta"><span class="rw-kind">'+txt(r.name)+' unlocked</span>'+
+      '<b>'+txt(pick ? pick.name : r.name)+'</b>'+
+      (specs ? '<div class="rw-specs mono">'+specs+'</div>' : '')+
+      (pick && pick.mass ? '<div class="rw-specs mono"><span><i>Mass</i>'+rwMass(pick.mass)+
+        (pick.qty>1?" × "+pick.qty:"")+'</span></div>' : '')+
+      '</div>';
+    body.appendChild(d);
+    // pick is a REAL catalogue option, so it carries catKey → fitUnit applies the
+    // same orientation rule this component uses everywhere else in the lab.
+    registerPreview(d.querySelector("canvas"), pick || { fallback:r.fallback });
+  }else{
+    const total = allExperiments().length;
+    const d = el("div","reward-locked");
+    d.innerHTML = '<div class="lock">🔒</div><p>Complete all '+total+' experiments<br>to unlock a '+
+      txt((r.name||"reward component").toLowerCase())+'</p>';
+    body.appendChild(d);
+  }
+}
+
+/* — live telemetry (6 rows, per-metric labels) — */
+const TEL_LABELS = {
+  cl: ["α","Cl","Cd","L/D","Re","Tip M"],
+  m2: ["V","F_D","J","η","T","Re"]
+};
+function setTelLabels(metric){
+  const labs = TEL_LABELS[metric] || TEL_LABELS.cl;
+  for(let i=0;i<6;i++){ const e = $("telL"+i); if(e) e.textContent = labs[i]; }
+}
+function setTelValues(vals){
+  for(let i=0;i<6;i++){ const e = $("telV"+i); if(e) e.textContent = vals[i]; }
+}
+function updateTelemetry(metric, vals, phase, cls){
+  setTelLabels(metric);
+  setTelValues(vals);
+  const ph = $("telPhase");
+  if(ph){ ph.textContent = phase || "STANDBY"; ph.className = "tel-phase mono"+(cls?" "+cls:""); }
+}
+/* idle telemetry from current sliders (no run active) */
+function refreshIdleTelemetry(){
+  const metric = currentExp().exp.metric;
+  if(metric === "cl"){
+    const model = airfoilModel(curAirfoil(), m1SectionRe());
+    const a = state.aoa_deg;
+    updateTelemetry("cl", [
+      a.toFixed(1)+"°", model.clDeg(a).toFixed(2), model.cdDeg(a).toFixed(3),
+      model.ldDeg(a).toFixed(1), Math.round(m1SectionRe()).toLocaleString(), tipMach().toFixed(2)
+    ], "STANDBY");
+  }else{
+    const pc = propCoeffs(), n = state.rpm/60, D = pc.g.D;
+    const V = state.wind_v, d = dragForce(V);
+    const J = (n*D>1e-6)?V/(n*D):0, r = propAtJ(pc, J);
+    updateTelemetry("m2", [
+      V.toFixed(1), d.F.toFixed(2), J.toFixed(2), (r.eta*100).toFixed(0)+"%",
+      r.T.toFixed(2)+" N", Math.round(d.Re_body).toLocaleString()
+    ], "STANDBY");
+  }
+}
+function refreshAfterSelection(key){
+  calcCache = null;
+  renderTiles(); renderAeroMini(); renderCalcChips(); renderLog();
+  clearLastRun(); drawSummaryChart(); drawLiveGraph();
+  buildScene(); refreshIdleTelemetry(); saveState();
+}
+
+/* ════════════ 10 · CHARTS (Chart.js) ════════════ */
+const C_COL = { blue:"#1f3a93", orange:"#c65d3b", green:"#1f8a5b", red:"#a83232",
+                slate:"#4f6d9e", grid:"#e7edeb", muted:"#8b9a95", ink:"#1e2a29" };
+const AF_PALETTE = ["#1f3a93","#c65d3b","#1f8a5b","#6c86c9","#a83232","#8b9a95"];
+if(window.Chart){
+  Chart.defaults.font.family = "'IBM Plex Sans', sans-serif";
+  Chart.defaults.font.size = 11;
+  Chart.defaults.color = "#5c6d68";
+  Chart.defaults.plugins.legend.labels.boxWidth = 11;
+  Chart.defaults.plugins.legend.labels.boxHeight = 11;
+  Chart.defaults.plugins.legend.labels.font = { size: 10.5 };
+  Chart.defaults.plugins.tooltip.titleFont = { family:"'IBM Plex Mono', monospace", size:10.5 };
+  Chart.defaults.plugins.tooltip.bodyFont  = { family:"'IBM Plex Mono', monospace", size:11 };
+}
+const ChartHub = {
+  reg:{},
+  put(id, cfg){ this.kill(id); const cv = $(id); if(!cv || !window.Chart) return null;
+    const ch = new Chart(cv, cfg); this.reg[id] = ch; return ch; },
+  kill(id){ if(this.reg[id]){ try{ this.reg[id].destroy(); }catch(e){} delete this.reg[id]; } },
+  killPrefix(pre){ Object.keys(this.reg).forEach(k=>{ if(k.indexOf(pre)===0) this.kill(k); }); }
+};
+let lastRun = { key:null, metric:null, xs:[], data:[], data2:[] };
+function clearLastRun(){ lastRun = { key:null, metric:null, xs:[], data:[], data2:[] }; }
+function downsample(arr, max){
+  if(!arr || arr.length <= max) return arr ? arr.slice() : [];
+  const step = arr.length/max, out = [];
+  for(let i=0;i<max;i++) out.push(arr[Math.floor(i*step)]);
+  out.push(arr[arr.length-1]); return out;
+}
+/* per-metric x/y series descriptors for the live + detail graphs */
+const AERO_SERIES = {
+  cl: { x:"Angle of attack α (°)", y:"Lift coefficient Cl", y2:"Drag coefficient Cd", c:C_COL.green, c2:C_COL.orange },
+  m2: { x:"Airspeed V (m/s)", y:"Frame drag F_D (N)", y2:"Propulsive efficiency η (%)", c:C_COL.orange, c2:C_COL.green }
+};
+function xyLine(metric, xs, data, data2, opts){
+  opts = opts || {};
+  const s = AERO_SERIES[metric] || AERO_SERIES.cl;
+  const pts = xs.map((x,i)=>({x:+(+x).toFixed(3), y:data[i]}));
+  const ds = [{ label:s.y, data:pts, borderColor:s.c, backgroundColor:s.c+"22",
+    borderWidth:2, pointRadius:0, tension:.25, fill:true, yAxisID:"y" }];
+  const scales = {
+    x:{ type:"linear", title:{display:!opts.mini, text:s.x}, grid:{color:C_COL.grid},
+        ticks:{ font:{family:"'IBM Plex Mono'", size:opts.mini?8:10}, maxTicksLimit:opts.mini?6:10 } },
+    y:{ title:{display:!opts.mini, text:s.y}, grid:{color:C_COL.grid},
+        ticks:{ font:{family:"'IBM Plex Mono'", size:opts.mini?8:10} } }
+  };
+  if(s.y2 && data2 && data2.length){
+    ds.push({ label:s.y2, data:xs.map((x,i)=>({x:+(+x).toFixed(3), y:data2[i]})), borderColor:s.c2,
+      borderWidth:2, pointRadius:0, tension:.25, borderDash:[5,4], yAxisID:"y1" });
+    scales.y1 = { position:"right", title:{display:!opts.mini, text:s.y2}, grid:{drawOnChartArea:false},
+      ticks:{ font:{family:"'IBM Plex Mono'", size:opts.mini?8:10} } };
+  }
+  return { type:"line", data:{ datasets:ds },
+    options:{ responsive:true, maintainAspectRatio:false, animation:opts.live?false:{duration:250},
+      interaction:{ mode:"nearest", intersect:false },
+      plugins:{ legend:{ display:!opts.mini, position:"bottom" }, tooltip:{ enabled:!opts.mini } },
+      scales } };
+}
+function drawLiveGraph(){
+  const { mod, exp } = currentExp();
+  const key = mod.id+":"+exp.id, metric = exp.metric;
+  const cap = $("graphCaption");
+  const live = simActive && sim.data.length > 1;
+  let xs, data, data2, recording = false;
+  if(live){ xs = sim.xs; data = sim.data; data2 = sim.data2; recording = true; }
+  else if(lastRun.key === key && lastRun.data.length > 1){ xs = lastRun.xs; data = lastRun.data; data2 = lastRun.data2; }
+  if(!data){
+    ChartHub.kill("liveGraph");
+    const cv = $("liveGraph");
+    if(cv){ const box = cv.parentElement;
+      const w = Math.max(box.clientWidth-2, 40), h = Math.max(box.clientHeight-2, 40);
+      cv.width = w; cv.height = h; cv.style.width = w+"px"; cv.style.height = h+"px";
+      const g = cv.getContext("2d"); g.clearRect(0,0,w,h);
+      g.fillStyle = "#a3b2ad"; g.font = "500 12px 'IBM Plex Mono', monospace"; g.textAlign = "center";
+      g.fillText("no data — run "+exp.name, w/2, h/2); }
+    if(cap) cap.textContent = exp.name+" · waiting for first run…";
+    return;
+  }
+  const ch = ChartHub.reg["liveGraph"];
+  if(recording && ch && ch._metric === metric){
+    ch.data.datasets[0].data = xs.map((x,i)=>({x:+(+x).toFixed(3), y:data[i]}));
+    if(ch.data.datasets[1]) ch.data.datasets[1].data = xs.map((x,i)=>({x:+(+x).toFixed(3), y:data2[i]}));
+    ch.update("none");
+  }else{
+    const c = ChartHub.put("liveGraph", xyLine(metric, xs, data, data2, {mini:true, live:recording}));
+    if(c) c._metric = metric;
+  }
+  if(cap) cap.textContent = exp.name+" · "+(exp.unit||"value")+(recording ? " · recording…" : " · last run");
+}
+
+/* — analysis chart configs — */
+function polarSeries(af){
+  const model = airfoilModel(af, m1SectionRe());
+  const cl=[], cd=[];
+  for(let a=-6; a<=22.0001; a+=0.5){ cl.push({x:a, y:+model.clDeg(a).toFixed(3)}); cd.push({x:a, y:+model.cdDeg(a).toFixed(4)}); }
+  return { model, cl, cd };
+}
+function cfgPolar(){
+  const ds = [];
+  REF_AIRFOILS.forEach((id,i)=>{
+    const af = airfoilById(id); if(!af) return;
+    const s = polarSeries(af);
+    ds.push({ label:af.name+" (Cl_max "+s.model.clMax.toFixed(2)+")", data:s.cl,
+      borderColor:AF_PALETTE[i], backgroundColor:AF_PALETTE[i]+"18", borderWidth: id===state.airfoil?2.6:1.8,
+      pointRadius:0, tension:.2, fill:false, yAxisID:"y" });
+  });
+  return { type:"line", data:{datasets:ds},
+    options:{ responsive:true, maintainAspectRatio:false, interaction:{mode:"nearest",intersect:false},
+      plugins:{ legend:{position:"bottom"} },
+      scales:{ x:{type:"linear", title:{display:true,text:"Angle of attack α (°)"}, grid:{color:C_COL.grid}},
+               y:{ title:{display:true,text:"Lift coefficient Cl"}, grid:{color:C_COL.grid}} } } };
+}
+function cfgDragPolar(){
+  const s = polarSeries(curAirfoil());
+  const pts = s.cl.map((p,i)=>({ x:s.cd[i].y, y:p.y }));
+  return { type:"scatter", data:{ datasets:[{ label:curAirfoil().name+" drag polar", data:pts,
+    borderColor:C_COL.blue, backgroundColor:C_COL.blue, showLine:true, borderWidth:2, tension:.2, pointRadius:0 }] },
+    options:{ responsive:true, maintainAspectRatio:false, plugins:{legend:{position:"bottom"}},
+      scales:{ x:{type:"linear", title:{display:true,text:"Drag coefficient Cd"}, grid:{color:C_COL.grid}},
+               y:{ title:{display:true,text:"Lift coefficient Cl"}, grid:{color:C_COL.grid}} } } };
+}
+function cfgFrameDragV(){
+  const sw = dragSweep(60, 15);
+  return { type:"line", data:{ datasets:[{ label:"Frame drag F_D vs V", data:sw.V.map((v,i)=>({x:v,y:sw.F[i]})),
+    borderColor:C_COL.orange, backgroundColor:C_COL.orange+"1f", borderWidth:2, pointRadius:0, tension:.25, fill:true }] },
+    options:{ responsive:true, maintainAspectRatio:false, plugins:{legend:{position:"bottom"}},
+      scales:{ x:{type:"linear", title:{display:true,text:"Airspeed V (m/s)"}, grid:{color:C_COL.grid}},
+               y:{ title:{display:true,text:"Drag force F_D (N)"}, grid:{color:C_COL.grid}, beginAtZero:true} } } };
+}
+function cfgFrameDragV2(){
+  const sw = dragSweep(60, 15);
+  const pts = sw.V2.map((v2,i)=>({x:v2, y:sw.F[i]}));
+  const fit = sw.V2.map(v2=>({x:v2, y:sw.slope*v2}));
+  return { type:"scatter", data:{ datasets:[
+    { label:"F_D vs V²", data:pts, borderColor:C_COL.blue, backgroundColor:C_COL.blue, showLine:false, pointRadius:2.5 },
+    { label:"linear fit (R²="+sw.R2.toFixed(4)+")", data:fit, borderColor:C_COL.green, borderWidth:2, showLine:true, pointRadius:0 } ] },
+    options:{ responsive:true, maintainAspectRatio:false, plugins:{legend:{position:"bottom"}},
+      scales:{ x:{type:"linear", title:{display:true,text:"V² (m²/s²)"}, grid:{color:C_COL.grid}},
+               y:{ title:{display:true,text:"Drag force F_D (N)"}, grid:{color:C_COL.grid}, beginAtZero:true} } } };
+}
+function cfgCruise(){
+  const pc = propCoeffs(), cs = cruiseSweep(pc, 60);
+  return { type:"line", data:{ datasets:[
+    { label:"Propulsive efficiency η", data:cs.J.map((j,i)=>({x:j,y:cs.eta[i]})),
+      borderColor:C_COL.green, backgroundColor:C_COL.green+"1f", borderWidth:2, pointRadius:0, tension:.3, fill:true, yAxisID:"y" },
+    { label:"peak η "+(cs.peak.eta*100).toFixed(0)+"% @ J="+cs.peak.J.toFixed(2),
+      data:[{x:cs.peak.J, y:+(cs.peak.eta*100).toFixed(2)}], borderColor:C_COL.orange, backgroundColor:C_COL.orange,
+      showLine:false, pointRadius:5, yAxisID:"y" } ] },
+    options:{ responsive:true, maintainAspectRatio:false, plugins:{legend:{position:"bottom"}},
+      scales:{ x:{type:"linear", title:{display:true,text:"Advance ratio J"}, grid:{color:C_COL.grid}},
+               y:{ title:{display:true,text:"η (%)"}, grid:{color:C_COL.grid}, beginAtZero:true} } } };
+}
+function cfgThrustJ(){
+  const pc = propCoeffs(), cs = cruiseSweep(pc, 60);
+  return { type:"line", data:{ datasets:[
+    { label:"Thrust T (N)", data:cs.J.map((j,i)=>({x:j,y:cs.T[i]})), borderColor:C_COL.blue,
+      backgroundColor:C_COL.blue+"1f", borderWidth:2, pointRadius:0, tension:.3, fill:true, yAxisID:"y" },
+    { label:"Thrust coeff. Ct", data:cs.J.map((j,i)=>({x:j,y:cs.Ct[i]})), borderColor:C_COL.slate,
+      borderWidth:2, pointRadius:0, tension:.3, borderDash:[5,4], yAxisID:"y1" } ] },
+    options:{ responsive:true, maintainAspectRatio:false, plugins:{legend:{position:"bottom"}},
+      scales:{ x:{type:"linear", title:{display:true,text:"Advance ratio J"}, grid:{color:C_COL.grid}},
+               y:{ title:{display:true,text:"Thrust (N)"}, grid:{color:C_COL.grid}, beginAtZero:true},
+               y1:{ position:"right", title:{display:true,text:"Ct"}, grid:{drawOnChartArea:false}, beginAtZero:true} } } };
+}
+/* right-panel summary chart — the airfoil polar overlay */
+function drawSummaryChart(){ const c = ChartHub.put("summaryChart", cfgPolar()); if(c) c._metric="polar"; }
+function plotDefsAll(){
+  return [
+    { id:"polar",  title:"Airfoil polar · Cl vs α (0012 · 2412 · 4412)", cfg:cfgPolar },
+    { id:"dpolar", title:"Drag polar · Cl vs Cd ("+curAirfoil().name+")", cfg:cfgDragPolar },
+    { id:"fdv",    title:"Frame drag · F_D vs V",                cfg:cfgFrameDragV },
+    { id:"fdv2",   title:"Frame drag linearised · F_D vs V²",    cfg:cfgFrameDragV2, note:()=>{ const s=dragSweep(30,15); return "slope "+s.slope.toFixed(5)+" N·s²/m² · theory 0.5ρCdA = "+s.sTheory.toFixed(5)+" ("+(s.errPct>=0?"+":"")+s.errPct.toFixed(1)+"%) · R² = "+s.R2.toFixed(4); } },
+    { id:"cruise", title:"Cruise efficiency · η vs J",           cfg:cfgCruise },
+    { id:"tj",     title:"Thrust & Ct vs advance ratio",         cfg:cfgThrustJ }
+  ];
+}
+
+/* ════════════ 11 · FLOATING WINDOWS ════════════ */
+function openModal(title, dotColor, footHTML){
+  $("modalTitle").innerHTML = title;
+  $("modalDot").style.background = dotColor || "#1f3a93";
+  const foot = $("modalFoot");
+  if(footHTML){ foot.innerHTML = footHTML; foot.hidden = false; } else foot.hidden = true;
+  $("modalBody").innerHTML = "";
+  $("modalOverlay").hidden = false;
+  document.body.style.overflow = "hidden";
+  return $("modalBody");
+}
+function closeModal(){
+  ChartHub.killPrefix("gc_");
+  $("modalOverlay").hidden = true;
+  $("modalBody").innerHTML = "";
+  document.body.style.overflow = "";
+}
+function openAirfoilPicker(){
+  const body = openModal('Blade Airfoil <em>· NACA section library</em>', "#1f3a93",
+    'thin-airfoil α₀ is computed live from the camber line; Cl_max and stall scale with blade Reynolds number');
+  const grid = el("div","pick-grid"); body.appendChild(grid);
+  const build = ()=>{
+    grid.innerHTML = "";
+    DRONE_DB.airfoils.forEach(af=>{
+      const selected = state.airfoil === af.id;
+      const card = el("button","pick-opt"+(selected?" selected":"")); card.type = "button";
+      const model = airfoilModel(af, 5e5);
+      const specs =
+        '<div><span class="k">Max camber</span><span class="v">'+(af.m*100).toFixed(0)+'%</span></div>'+
+        '<div><span class="k">Thickness</span><span class="v">'+(af.t*100).toFixed(0)+'%</span></div>'+
+        '<div><span class="k">α₀ (zero-lift)</span><span class="v">'+af.alpha0_deg.toFixed(1)+'°</span></div>'+
+        '<div><span class="k">Cl_max</span><span class="v">'+model.clMax.toFixed(2)+'</span></div>'+
+        '<div class="mass"><span class="k">Stall α</span><span class="v">'+model.aStallDeg.toFixed(1)+'°</span></div>';
+      card.innerHTML =
+        '<div class="top"><span class="name">'+txt(af.name)+'</span><span class="check">'+(selected?"✓ selected":"")+'</span></div>'+
+        '<div class="view"><canvas width="200" height="110"></canvas></div>'+
+        '<div class="specs">'+specs+'</div>';
+      card.addEventListener("click", ()=>{
+        state.airfoil = af.id; refreshAfterSelection("airfoil"); instrEvent("select"); sfx("tick"); build();
+      });
+      grid.appendChild(card);
+      drawAirfoilCanvas(card.querySelector("canvas"), af, { label:false });
+    });
+  };
+  build(); instrEvent("picker");
+}
+function openBladePicker(){
+  const body = openModal('Blade Count <em>· rotor solidity</em>', "#1f3a93",
+    'more blades raise solidity σ and thrust at fixed RPM, but add drag and lower peak efficiency');
+  const grid = el("div","pick-grid"); body.appendChild(grid);
+  [2,3,4].forEach(n=>{
+    const selected = state.blades === n;
+    const card = el("button","pick-opt"+(selected?" selected":"")); card.type = "button";
+    card.innerHTML =
+      '<div class="top"><span class="name">'+n+'-blade</span><span class="check">'+(selected?"✓ selected":"")+'</span></div>'+
+      '<div class="view"><canvas width="200" height="110"></canvas></div>'+
+      '<div class="specs"><div><span class="k">Blades</span><span class="v">'+n+'</span></div></div>';
+    card.addEventListener("click", ()=>{
+      state.blades = n; refreshAfterSelection("blades"); instrEvent("select"); sfx("tick"); closeModal();
+    });
+    grid.appendChild(card);
+    registerPreview(card.querySelector("canvas"), { __proc:true });
+  });
+}
+function openComponentPicker(catKey){
+  const c = cat(catKey); if(!c) return;
+  const body = openModal(txt(c.label)+' <em>· option library</em>', "#1f3a93",
+    'options are folder-driven — drop a folder with <b>spec.json</b> + model under <b>assets/'+txt(c.key)+'/</b>');
+  const grid = el("div","pick-grid"); body.appendChild(grid);
+  const build = ()=>{
+    grid.innerHTML = "";
+    c.options.forEach(o=>{
+      const selected = state.sel[catKey] === o.id;
+      const card = el("button","pick-opt"+(selected?" selected":"")); card.type = "button";
+      let specs = o.specs.map(s=>'<div><span class="k">'+txt(s[0])+'</span><span class="v">'+txt(s[1])+'</span></div>').join("");
+      if(o.size) specs += '<div class="mass"><span class="k">Size</span><span class="v">'+o.size.join(" × ")+' mm</span></div>';
+      card.innerHTML =
+        '<div class="top"><span class="name">'+txt(o.name)+'</span><span class="check">'+(selected?"✓ selected":"")+'</span></div>'+
+        '<div class="view"><canvas width="200" height="110"></canvas></div>'+
+        '<div class="specs">'+specs+'</div>';
+      card.addEventListener("click", ()=>{
+        state.sel[catKey] = o.id; refreshAfterSelection(catKey); instrEvent("select"); sfx("tick"); build();
+      });
+      grid.appendChild(card);
+      registerPreview(card.querySelector("canvas"), o);
+    });
+  };
+  build();
+}
+/* ── Graphs vs Charts split ───────────────────────────────────────────────────
+   A plot belongs on the Graphs card when it is drawn as a CURVE — a line chart,
+   or a scatter with showLine (the sweep / CDF style). Everything else — bars,
+   radars, doughnuts, clouds, histograms — stays in Charts. The kind is read off
+   the built config, so a new plot lands in the right panel without a flag. A def
+   with an `empty` fallback is a recorded-run plot: it is a line too, and the
+   Graphs modal shows it as the full-width live block instead of a tile. */
+function plotIsLine(def){
+  if(def.dom) return false;
+  if(def.empty) return true;
+  try{
+    const c = def.cfg();
+    if(!c) return true;
+    if(c.type === "line") return true;
+    return c.type === "scatter" && (c.data.datasets||[]).some(d=>d.showLine);
+  }catch(e){ return false; }
+}
+function graphDefs(){ return plotDefsAll().filter(plotIsLine); }
+function chartDefs(){
+  const out = plotDefsAll().filter(d=>!plotIsLine(d));
+  // Some experiments plot nothing but curves — say so instead of an empty panel.
+  return out.length ? out : [{ id:"nocharts", title:"No non-line charts in this experiment",
+    cfg:()=>null, empty:"Every plot here is a curve — they are all on the Graphs card." }];
+}
+/* gallery body shared by the Graphs modal: one block per def + expand button */
+function renderGraphBlocks(wrap, defs){
+  const pending = [];
+  defs.forEach(def=>{
+    const block = el("div","calc-block gchart");
+    const head = el("div","gchart-head");
+    head.innerHTML = '<h3>'+txt(def.title)+'</h3><button type="button" class="gchart-expand" title="Expand">⤢</button>';
+    head.querySelector("button").addEventListener("click", ()=>openSingleChart(def, "graphs"));
+    block.appendChild(head);
+    const cfg = def.cfg();
+    if(cfg){ const box = el("div","chart-box-lg");
+      box.innerHTML = '<canvas id="gc_'+def.id+'"></canvas>'; block.appendChild(box);
+      pending.push({ id:"gc_"+def.id, cfg }); }
+    else block.appendChild(el("div","runs-empty", txt(def.empty||"No data yet.")));
+    if(def.note) block.appendChild(el("p","chart-footnote", txt(def.note())));
+    wrap.appendChild(block);
+  });
+  return pending;
+}
+function openSingleChart(def, backTo){
+  const body = openModal(txt(def.title)+' <em>· detail</em>', "#c65d3b",
+    '<button type="button" class="modal-back" id="chartBack">‹ all '+(backTo==="graphs"?"graphs":"charts")+'</button>');
+  const wrap = el("div"); wrap.style.cssText = "height:62vh;min-height:340px;position:relative";
+  wrap.innerHTML = '<canvas id="gc_single"></canvas>'; body.appendChild(wrap);
+  const c = def.cfg(); if(c) ChartHub.put("gc_single", c);
+  if(def.note) body.appendChild(el("p","chart-footnote", txt(def.note())));
+  const back = $("chartBack"); if(back) back.addEventListener("click", backTo==="graphs"?openGraphDetail:openChartsDetail);
+}
+function openChartsDetail(){
+  ChartHub.killPrefix("gc_");
+  const body = openModal('Charts <em>· analysis · click any chart to expand</em>', "#c65d3b");
+  const c = aeroCalc();
+  const wrap = el("div","calc-blocks");
+  const tiles = el("div","metric-tiles");
+  const mt = (k,v,cls)=>'<div class="metric-tile"><span class="mk">'+k+'</span><span class="mv '+(cls||"")+'">'+v+'</span></div>';
+  tiles.innerHTML =
+    mt("Cl_max", c.clMax.toFixed(2)) +
+    mt("Stall α", c.aStallDeg.toFixed(1)+"°") +
+    mt("α₀", c.a0deg.toFixed(1)+"°") +
+    mt("F_D @ 10 m/s", c.Fd10.toFixed(2)+" N") +
+    mt("Peak η", c.etaPeak.toFixed(0)+" %", c.etaPeak>=70?"good":"") +
+    mt("J @ peak η", c.etaPeakJ.toFixed(2));
+  wrap.appendChild(tiles);
+  const pending = [];
+  chartDefs().forEach(def=>{
+    const block = el("div","calc-block gchart");
+    const head = el("div","gchart-head");
+    head.innerHTML = '<h3>'+txt(def.title)+'</h3><button type="button" class="gchart-expand" title="Expand">⤢</button>';
+    head.querySelector("button").addEventListener("click", ()=>openSingleChart(def));
+    block.appendChild(head);
+    const cfg0 = def.cfg;
+    if(typeof cfg0 === "function" && cfg0() == null){
+      block.appendChild(el("div","runs-empty", txt(def.empty||"No data yet.")));
+    }else{
+      const box = el("div","chart-box-lg");
+      box.innerHTML = '<canvas id="gc_'+def.id+'"></canvas>'; block.appendChild(box);
+      pending.push({ id:"gc_"+def.id, cfg:def.cfg });
+    }
+    if(def.note) block.appendChild(el("p","chart-footnote", txt(def.note())));
+    wrap.appendChild(block);
+  });
+  body.appendChild(wrap);
+  pending.forEach(pc=>{ const cfg = pc.cfg(); if(cfg) ChartHub.put(pc.id, cfg); });
+  wrap.appendChild(el("p","calc-footnote",
+    "Curves recompute live from the selected NACA section, blade geometry and the density-altitude slider. "+
+    "Cl(α) = 2π-slope thin-airfoil lift with a Viterna post-stall blend; drag F_D = ½ρV²·Cd·A_frontal; "+
+    "advance ratio J = V/(n·D); propulsive efficiency η = J·Ct/(2π·Cq)."));
+}
+function openGraphDetail(){
+  ChartHub.killPrefix("gc_");
+  const { mod, exp } = currentExp();
+  const key = mod.id+":"+exp.id;
+  const body = openModal('Graphs <em>· live run + parameter sweeps</em>', "#4f6d9e");
+  const wrap = el("div","calc-blocks");
+  let xs, data, data2;
+  if(simActive && sim.data.length>1){ xs=sim.xs; data=sim.data; data2=sim.data2; }
+  else if(lastRun.key===key && lastRun.data.length>1){ xs=lastRun.xs; data=lastRun.data; data2=lastRun.data2; }
+  const live = el("div","calc-block gchart");
+  live.innerHTML = '<div class="gchart-head"><h3>Live run · '+txt(exp.name)+'</h3></div>';
+  if(data){ const box = el("div","chart-box-lg");
+    box.innerHTML = '<canvas id="gc_live"></canvas>'; live.appendChild(box); }
+  else live.appendChild(el("div","runs-empty",
+    "No data yet for <b>"+txt(exp.name)+"</b>.<br>Press <b>▶ Run Sim</b> to plot this experiment."));
+  wrap.appendChild(live);
+  const pending = renderGraphBlocks(wrap, graphDefs().filter(d=>!d.empty));
+  body.appendChild(wrap);
+  if(data) ChartHub.put("gc_live", xyLine(exp.metric, xs, data, data2, {mini:false}));
+  pending.forEach(p=>ChartHub.put(p.id, p.cfg));
+}
+function openCalcDetail(){
+  const body = openModal("Detailed Calculations <em>· sub-calcs A · B · C</em>", "#c65d3b");
+  const c = aeroCalc(), af = curAirfoil(), g = c.g;
+  const n = state.rpm/60, D = g.D;
+  const Jnow = (n*D>1e-6) ? state.wind_v/(n*D) : 0;
+  const rNow = propAtJ(c.pc, Jnow);
+  const blocks = [
+    { t:"A · Lift coefficient  Cl = 2π(α − α₀)", b:
+      "airfoil "+af.name+"  ·  camber m = "+(af.m*100).toFixed(0)+"%, thickness t = "+(af.t*100).toFixed(0)+"%\n"+
+      "α₀ = thin-airfoil camber-line integral = "+c.a0deg.toFixed(2)+"°\n"+
+      "lift slope (finite-thickness, Re "+Math.round(m1SectionRe()).toLocaleString()+") ≈ "+c.model.slope.toFixed(2)+" /rad\n"+
+      "α = "+state.aoa_deg.toFixed(1)+"°  →  Cl = "+c.clNow.toFixed(3)+"  ·  Cd = "+c.cdNow.toFixed(4),
+      r:"Cl_max = "+c.clMax.toFixed(2)+"  at stall α = "+c.aStallDeg.toFixed(1)+"°" },
+    { t:"B · Frame drag  F_D = ½·ρ·V²·Cd·A_frontal", b:
+      "ρ("+state.altitude+" m) = "+c.rho.toFixed(4)+" kg/m³\n"+
+      "Cd (X-frame bluff body) ≈ 1.05"+(state.washOn?"  × 1.20 rotor-wash interference":"")+"\n"+
+      "A_frontal = "+frontalArea().toFixed(4)+" m²\n"+
+      "V = "+state.wind_v.toFixed(1)+" m/s  →  F_D = "+dragForce(state.wind_v).F.toFixed(3)+" N",
+      r:"F_D @ 10 m/s = "+c.Fd10.toFixed(2)+" N  ·  F_D ∝ V²" },
+    { t:"C · Advance ratio  J = V/(n·D)", b:
+      "n = RPM/60 = "+n.toFixed(1)+" rev/s  ·  D = "+(D*1000).toFixed(0)+" mm ("+state.diameter_in.toFixed(1)+" in)\n"+
+      "V = "+state.wind_v.toFixed(1)+" m/s  →  J = "+Jnow.toFixed(3)+"\n"+
+      "zero-thrust advance ratio J₀ = "+c.J0.toFixed(2),
+      r:"J = "+Jnow.toFixed(2)+"  (windmilling above J₀ = "+c.J0.toFixed(2)+")" },
+    { t:"C · Propulsive efficiency  η = T·V / (2π·n·Q)", b:
+      "η = J·Ct/(2π·Cq)   ·   Ct("+Jnow.toFixed(2)+") = "+rNow.Ct.toFixed(4)+", Cq = "+rNow.Cq.toFixed(5)+"\n"+
+      "T = "+rNow.T.toFixed(3)+" N  ·  Q = "+rNow.Q.toFixed(4)+" N·m  ·  η = "+(rNow.eta*100).toFixed(1)+" %",
+      r:"peak η = "+c.etaPeak.toFixed(0)+" %  at J = "+c.etaPeakJ.toFixed(2) }
+  ];
+  const wrap = el("div","calc-blocks");
+  blocks.forEach(bl=>{
+    const d = el("div","calc-block");
+    d.innerHTML = '<h3>'+txt(bl.t)+'</h3><pre>'+txt(bl.b)+'</pre><div class="res">'+txt(bl.r)+'</div>';
+    wrap.appendChild(d);
+  });
+  wrap.appendChild(el("p","calc-footnote",
+    "All values recompute live from the selected NACA section, blade geometry, operating point and density-altitude. "+
+    "α₀ from NACA TR-824 thin-airfoil theory; Cd = 1.05 per NASA TN-D-8236; torque coefficient Cq per BEMT-lite convention."));
+  body.appendChild(wrap);
+}
+
+/* ════════════ 12 · SIMULATION RUNNER ════════════ */
+const SIM_DURATION = 9;                    // seconds per parameter sweep
+let simActive = false;
+const sim = { t:0, xs:[], data:[], data2:[], key:null, metric:null, exp:null, mod:null,
+              phase:"STANDBY", sweepVal:0, spin:0, verdict:null, verdictOk:false };
+let calcCache = null, calcCacheAge = 0;
+function calcCached(){
+  if(!calcCache || (performance.now()-calcCacheAge) > 400){ calcCache = aeroCalc(); calcCacheAge = performance.now(); }
+  return calcCache;
+}
+function runSim(){
+  if(simActive){ stopSim(true); return; }
+  const dg = renderLog();
+  if(dg.blocked){
+    sfx("error");
+    const lc = $("logCard");
+    if(lc) lc.animate([{transform:"translateX(0)"},{transform:"translateX(-4px)"},{transform:"translateX(4px)"},{transform:"translateX(0)"}], {duration:280});
+    return;
+  }
+  const { mod, exp } = currentExp();
+  simActive = true; state.simRunning = true;
+  sim.t = 0; sim.xs = []; sim.data = []; sim.data2 = [];
+  sim.exp = exp; sim.mod = mod; sim.key = mod.id+":"+exp.id; sim.metric = exp.metric;
+  sim.verdict = null; sim.verdictOk = false; sim.spin = 0;
+  sim.savedAoa = state.aoa_deg; sim.savedWind = state.wind_v;   // restore the operating point after the sweep
+  sim.phase = exp.metric==="cl" ? "SWEEPING α" : "SWEEPING V";
+  const rb = $("runBtn"); if(rb){ rb.textContent = "■ Stop"; rb.classList.add("running"); }
+  const dot = $("telDot"); if(dot) dot.classList.add("on");
+  audioStart(); sfx("start"); instrEvent("run");
+}
+function stopSim(completed){
+  simActive = false; state.simRunning = false;
+  const rb = $("runBtn"); if(rb){ rb.textContent = "▶ Run Sim"; rb.classList.remove("running"); }
+  const dot = $("telDot"); if(dot) dot.classList.remove("on");
+  audioStop();
+  // the sweep mutated the operating point for animation — restore the user's set values
+  if(sim.savedAoa != null) state.aoa_deg = sim.savedAoa;
+  if(sim.savedWind != null) state.wind_v = sim.savedWind;
+  syncOperatingSliders();
+  if(isAirfoilScene()) updateAirfoilScene(); else updateWindScene();
+  if(completed && sim.data.length > 3){
+    state.done[sim.key] = true;
+    lastRun = { key:sim.key, metric:sim.metric,
+      xs:downsample(sim.xs,240), data:downsample(sim.data,240), data2:downsample(sim.data2,240) };
+    saveState();
+    renderModuleTabs(); renderExpTabs(); renderProgress(); renderReward(); renderAeroMini();
+    sfx("done");
+    if(sim.verdict){ showVerdictToast(sim.verdict, sim.verdictOk); }
+    if(allDone()){ instrGo(DRONE_DB.instructor.length-1); playVoice(); sfx("unlock"); }
+    else instrEvent("runDone");
+  }
+  refreshIdleTelemetry();
+  drawLiveGraph();
+}
+function resetSim(){
+  if(simActive) stopSim(false);
+  clearLastRun(); refreshIdleTelemetry(); drawLiveGraph();
+}
+function showVerdictToast(text, ok){
+  const t = el("div","verdict "+(ok?"pass":"fail"));
+  t.style.cssText = "position:fixed;left:50%;top:74px;transform:translateX(-50%);z-index:120;box-shadow:0 10px 30px rgba(20,40,40,.25);max-width:460px";
+  const parts = text.split("—");
+  t.innerHTML = '<span class="vic">'+(ok?"✓":"×")+'</span><div class="vtx"><b>'+txt(parts[0].trim())+'</b><span>'+txt(parts.slice(1).join("—").trim())+'</span></div>';
+  document.body.appendChild(t);
+  setTimeout(()=>{ t.style.transition="opacity .5s"; t.style.opacity="0"; setTimeout(()=>t.remove(),500); }, 3600);
+}
+function simStep(dt){
+  sim.t += dt;
+  const u = clamp(sim.t/SIM_DURATION, 0, 1);
+  const metric = sim.metric;
+
+  if(metric === "cl"){
+    const model = airfoilModel(curAirfoil(), m1SectionRe());
+    const aStall = model.aStallDeg;
+    // sweep from below zero-lift UP TO the AoA the user set on the slider — the operator
+    // decides how far to push (past stall or not), not an automatic max.
+    const aStart = Math.min(-5, sim.savedAoa - 2);
+    const aEnd   = clamp(sim.savedAoa, aStart + 3, 24);
+    const a = lerp(aStart, aEnd, u);
+    state.aoa_deg = +a.toFixed(2);
+    updateAirfoilScene();
+    const cl = model.clDeg(a), cd = model.cdDeg(a), ld = cd>1e-6 ? cl/cd : 0;
+    sim.xs.push(+a.toFixed(2)); sim.data.push(+cl.toFixed(3)); sim.data2.push(+cd.toFixed(4));
+    sim.spin = 0;
+    const stalled = a > aStall;
+    updateTelemetry("cl", [
+      a.toFixed(1)+"°", cl.toFixed(2), cd.toFixed(3), ld.toFixed(1),
+      Math.round(m1SectionRe()).toLocaleString(), tipMach().toFixed(2)
+    ], stalled ? "STALLED" : "ATTACHED", stalled ? "danger" : "good");
+    if(stalled && airfoilMesh && frameNo%3===0){
+      const wp = airfoilMesh.getWorldPosition(new THREE.Vector3());
+      FX.burstAt(wp.x+1.2, wp.y+0.1, wp.z, 2, 0.5, 0x9aa6b2, 1.4);
+    }
+    if(u >= 1){
+      state.profiled[state.airfoil] = { clMax:+model.clMax.toFixed(3), aStall:+aStall.toFixed(2), a0:+model.a0deg.toFixed(2) };
+      sim.verdictOk = true;
+      const reached = aEnd > aStall
+        ? "past stall — Cl_max "+model.clMax.toFixed(2)+" at α "+aStall.toFixed(1)+"°"
+        : "up to α "+aEnd.toFixed(1)+"° — Cl "+model.clDeg(aEnd).toFixed(2)+" (still attached, stall at "+aStall.toFixed(1)+"°)";
+      sim.verdict = curAirfoil().name+" profiled — swept "+reached+" (α₀ "+model.a0deg.toFixed(1)+"°)";
+      stopSim(true);
+    }
+    return;
+  }
+
+  // metric === "m2" — combined Forward-Flight sweep: frame drag AND cruise efficiency
+  // in one pass over airspeed V. F_D(V) traces the quadratic drag law; J=V/(nD) and
+  // η(J) trace the propulsive-efficiency curve. Both plotted vs the shared airspeed axis.
+  const pc = propCoeffs(), n = state.rpm/60, D = pc.g.D;
+  const cs = cruiseSweep(pc, 60);
+  const Vmax = Math.max(15, cs.Vmax);
+  const V = lerp(0, Vmax, u);
+  state.wind_v = +V.toFixed(2);
+  updateWindScene();
+  const d = dragForce(V);
+  const J = (n*D>1e-6) ? V/(n*D) : 0;
+  const r = propAtJ(pc, J);
+  sim.xs.push(+V.toFixed(2));
+  sim.data.push(+d.F.toFixed(4));                    // frame drag F_D (N)
+  sim.data2.push(+(r.eta*100).toFixed(2));           // propulsive efficiency η (%)
+  sim.spin = 1.5;
+  updateTelemetry("m2", [
+    V.toFixed(1), d.F.toFixed(2), J.toFixed(2), (r.eta*100).toFixed(0)+"%",
+    r.T.toFixed(2)+" N", Math.round(d.Re_body).toLocaleString()
+  ], J>pc.J0 ? "WINDMILLING · "+V.toFixed(1)+" m/s" : "SWEEPING V · "+V.toFixed(1)+" m/s", J>pc.J0?"warn":"good");
+  if(u >= 1){
+    const sw = dragSweep(60, 15), etaPk = cs.peak.eta*100;
+    sim.verdictOk = sw.R2 > 0.999 && etaPk >= 40;
+    sim.verdict = "Forward flight mapped — drag F_D ∝ V² (R² "+sw.R2.toFixed(4)+
+      "), peak propulsive η "+etaPk.toFixed(0)+"% at advance ratio J = "+cs.peak.J.toFixed(2);
+    stopSim(true);
+  }
+}
+
+/* ════════════ 13 · PROCEDURAL AUDIO ENGINE ════════════ */
+let actx = null, aMaster = null, noiseBuf = null, engine = null;
+function ac(){
+  if(!actx){
+    actx = new (window.AudioContext||window.webkitAudioContext)();
+    aMaster = actx.createGain(); aMaster.gain.value = state.sfxVol/100; aMaster.connect(actx.destination);
+    const n = actx.sampleRate*2, b = actx.createBuffer(1,n,actx.sampleRate), ch = b.getChannelData(0);
+    for(let i=0;i<n;i++) ch[i] = Math.random()*2-1;
+    noiseBuf = b;
+  }
+  if(actx.state === "suspended") actx.resume();
+  return actx;
+}
+function setMasterVol(){ if(aMaster) aMaster.gain.value = state.sfxVol/100; }
+function tone(freq, t0, dur, gain, type){
+  const ctx = ac();
+  const o = ctx.createOscillator(), g = ctx.createGain();
+  o.type = type||"sine"; o.frequency.value = freq;
+  g.gain.setValueAtTime(0, ctx.currentTime+t0);
+  g.gain.linearRampToValueAtTime(gain, ctx.currentTime+t0+.02);
+  g.gain.exponentialRampToValueAtTime(.0001, ctx.currentTime+t0+dur);
+  o.connect(g); g.connect(aMaster);
+  o.start(ctx.currentTime+t0); o.stop(ctx.currentTime+t0+dur+.05);
+}
+function sfx(kind){
+  if(state.sfxVol<=0) return;
+  const v = .22;
+  try{
+    if(kind==="tick") tone(880,0,.07,v);
+    else if(kind==="start"){ tone(392,0,.09,v); tone(587,.09,.12,v); }
+    else if(kind==="done"){ tone(660,0,.1,v); tone(880,.12,.18,v); }
+    else if(kind==="error"){ tone(200,0,.12,v,"square"); tone(150,.12,.18,v,"square"); }
+    else if(kind==="unlock"){ [523,659,784,1047].forEach((f,i)=>tone(f,i*.13,.22,v)); }
+  }catch(e){}
+}
+function voiceBlip(){
+  if(state.voiceVol<=0) return;
+  try{
+    const ctx = ac();
+    const o = ctx.createOscillator(), g = ctx.createGain();
+    o.type = "triangle"; o.frequency.value = 523;
+    const vol = Math.min(state.voiceVol/100,1)*0.22;
+    g.gain.setValueAtTime(0, ctx.currentTime);
+    g.gain.linearRampToValueAtTime(vol, ctx.currentTime+.02);
+    g.gain.exponentialRampToValueAtTime(.0001, ctx.currentTime+.18);
+    o.connect(g); g.connect(ctx.destination);
+    o.start(); o.stop(ctx.currentTime+.22);
+  }catch(e){}
+}
+/* wind-tunnel engine: broadband air (band-passed noise) + optional blade whine */
+function audioStart(){
+  if(state.sfxVol<=0) return;
+  try{
+    const ctx = ac();
+    audioStopNow();
+    const g = ctx.createGain(); g.gain.value = 0; g.connect(aMaster);
+    const noise = ctx.createBufferSource(); noise.buffer = noiseBuf; noise.loop = true;
+    const bp = ctx.createBiquadFilter(); bp.type="bandpass"; bp.frequency.value=700; bp.Q.value=1.2;
+    const noiseG = ctx.createGain(); noiseG.gain.value=.5; noise.connect(bp); bp.connect(noiseG); noiseG.connect(g);
+    const whine = ctx.createOscillator(); whine.type="triangle"; whine.frequency.value=220;
+    const whineG = ctx.createGain(); whineG.gain.value=0; whine.connect(whineG); whineG.connect(g);
+    noise.start(); whine.start();
+    engine = { g, noise, bp, whine, whineG, cur:0 };
+    g.gain.setTargetAtTime(.8, ctx.currentTime, .25);
+  }catch(e){}
+}
+function audioStopNow(){
+  if(!engine) return;
+  try{ engine.noise.stop(); engine.whine.stop(); }catch(e){}
+  engine = null;
+}
+function audioStop(){
+  if(!engine || !actx) return;
+  const e = engine, t = actx.currentTime;
+  e.g.gain.setTargetAtTime(0, t, .18);
+  setTimeout(()=>{ try{ e.noise.stop(); e.whine.stop(); }catch(x){} }, 500);
+  if(engine === e) engine = null;
+}
+function audioUpdate(){
+  if(!engine || !actx) return;
+  const ctx = actx;
+  const u = clamp(sim.t/SIM_DURATION, 0, 1);
+  if(sim.metric === "cl"){
+    // wind-tunnel airspeed roughly constant; turbulence surges past stall
+    const model = airfoilModel(curAirfoil(), m1SectionRe());
+    const stalled = state.aoa_deg > model.aStallDeg;
+    engine.bp.frequency.setTargetAtTime(stalled?420:800, ctx.currentTime, .1);
+    engine.bp.Q.setTargetAtTime(stalled?0.6:1.6, ctx.currentTime, .1);
+    engine.whineG.gain.setTargetAtTime(0, ctx.currentTime, .1);
+    engine.g.gain.setTargetAtTime(0.55 + (stalled?0.35:0.1), ctx.currentTime, .1);
+  }else{
+    // airspeed ramps with the sweep; blade whine tracks RPM
+    const rev = state.rpm/60, blade = rev*(state.blades||2);
+    engine.whine.frequency.setTargetAtTime(Math.min(Math.max(blade,60), 1400), ctx.currentTime, .05);
+    engine.whineG.gain.setTargetAtTime(.05, ctx.currentTime, .1);
+    engine.bp.frequency.setTargetAtTime(500 + u*900, ctx.currentTime, .1);
+    engine.g.gain.setTargetAtTime(0.4 + u*0.55, ctx.currentTime, .1);
+  }
+}
+
+/* ════════════ 14 · INSTRUCTOR ════════════ */
+let currentVoice = null, lastVoiceUrl = null;
+function stopVoice(){
+  if(currentVoice){ try{ currentVoice.pause(); currentVoice.currentTime = 0; }catch(e){} currentVoice = null; }
+}
+function playVoiceFile(url){
+  if(!url) return;
+  lastVoiceUrl = url;
+  if(state.voiceVol<=0) return;
+  stopVoice();
+  try{
+    const a = new Audio(url);
+    a.volume = Math.min(state.voiceVol/100,1);
+    currentVoice = a;
+    a.addEventListener("ended", ()=>{ if(currentVoice===a) currentVoice = null; });
+    a.play().catch(()=>{});
+  }catch(e){}
+}
+function playVoice(){
+  const step = DRONE_DB.instructor[state.instrStep];
+  if(step && step.audio){ playVoiceFile(step.audio); return; }
+  if(state.voiceVol<=0) return;
+  try{ [392,494,587].forEach((f,i)=>tone(f, i*.16, .2, (state.voiceVol/100)*.18, "triangle")); }catch(e){}
+}
+function replayVoice(){ if(lastVoiceUrl) playVoiceFile(lastVoiceUrl); else playVoice(); }
+function renderInstr(){
+  const steps = DRONE_DB.instructor;
+  const tx = $("instrText"), st = $("instrStepTxt"), pn = $("instrPanel");
+  if(tx) tx.textContent = steps[state.instrStep].text;
+  if(st) st.textContent = "step "+(state.instrStep+1)+" / "+steps.length;
+  if(pn) pn.hidden = !state.instrOpen;
+}
+function instrGo(n){
+  state.instrStep = Math.max(0, Math.min(n, DRONE_DB.instructor.length-1));
+  saveState(); renderInstr();
+}
+/* map the active experiment to its narration step (see manifest.instructor order) */
+const EXP_STEP = { "m1:polar":1, "m2:forward":5 };
+function instrJump(){
+  const key = state.module+":"+state.exp[state.module];
+  const s = EXP_STEP[key];
+  if(s != null && state.instrStep < s){ instrGo(s); if(state.instrOpen) playVoice(); }
+}
+function instrEvent(evt){
+  const key = state.module+":"+state.exp[state.module];
+  // picker / select — gentle: only nudge forward if the student is behind (no repeats)
+  if(evt==="picker" || evt==="select"){
+    const t = EXP_STEP[key];
+    if(t != null && state.instrStep < t){ instrGo(t); if(state.instrOpen) playVoice(); }
+    return;
+  }
+  // run / runDone — ALWAYS narrate the moment (even on a repeat run), so the lab
+  // never goes silent when you press Run or an experiment finishes.
+  let step = null;
+  if(evt==="run")          step = key==="m1:polar" ? 2 : 7;   // "running…" narration
+  else if(evt==="runDone") step = key==="m1:polar" ? 4 : 9;   // result narration
+  if(step != null){ instrGo(step); if(state.instrOpen) playVoice(); }
+}
+
+/* ════════════ 15 · WIRING + BOOT ════════════ */
+document.querySelectorAll("#tabbar button").forEach(b=>{
+  b.addEventListener("click", ()=>{
+    document.querySelectorAll("#tabbar button").forEach(x=>x.classList.toggle("active", x===b));
+    const target = $(b.dataset.target);
+    if(target) window.scrollTo({ top: target.offsetTop - 6, behavior:"smooth" });
+  });
+});
+
+let lastT = 0, graphEvery = 0;
+/* ── propeller spin ─────────────────────────────────────────────────────────
+   True shaft speed is ω = rpm/60·2π rad/s. Drawing that literally only strobes
+   (a 2-blade prop at 9 000 rpm passes a blade every 3 ms — far under a frame),
+   so the view runs at a fixed fraction of real ω: PROP_VIS. Every rpm RATIO
+   stays exact — double the rpm, double the on-screen rate — and the result is
+   integrated against dt, so it no longer runs faster on a 120 Hz display than
+   on a 60 Hz one the way the old per-frame constant did. */
+const PROP_VIS = 1/12;
+function propSpinRate(rpm){ return Math.max(0, (rpm||0)/60*2*Math.PI*PROP_VIS); }
+function loop(t){
+  requestAnimationFrame(loop);
+  frameNo++;
+  const dt = Math.min((t-lastT)/1000, .05) || .016;
+  lastT = t;
+  if(rig){
+    hoverPhase += .02;
+    if(!isAirfoilScene()){
+      // wind scene: gentle forward-pitched hover bob
+      const box = new THREE.Box3().setFromObject(rig);
+      const baseY = 1.15;
+      rig.position.y = baseY + Math.sin(hoverPhase)*.03;
+    }
+    // spin any propellers (procedural or rotor-attached)
+    // rotors turn at the rpm the student set, not a fixed rate
+    const spin = (simActive || !isAirfoilScene()) ? propSpinRate(state.rpm)*(simActive?1:0.25) : 0;
+    propGroups.forEach((p,i)=>{
+      const dir = p.userData.spinDir != null ? p.userData.spinDir : (i%2?1:-1);
+      p.rotation.y += spin*dir*dt;
+    });
+    procProps.forEach((p,i)=>{
+      if(p.parent && p.parent.userData && p.parent.userData.spinDir!=null) return; // spun via its spinner
+      p.rotation.y += spin*(i%2?1:-1)*dt;
+    });
+    // airfoil-scene streamlines follow the deflected mean field (particles handled below)
+    if(isAirfoilScene() && streamlines.length){
+      const model = airfoilModel(curAirfoil(), m1SectionRe());
+      const aoaRad = state.aoa_deg*DEG;
+      const clN = clamp(model.clDeg(state.aoa_deg)/1.2, -1.6, 1.6);
+      const stalled = state.aoa_deg > model.aStallDeg;
+      streamlines.forEach(line=>{
+        const pos = line.geometry.attributes.position; if(!pos) return;
+        const y0 = line.userData.y0 || 0;
+        for(let k=0;k<pos.count;k++){
+          pos.setY(k, airfoilFlowY(pos.getX(k), y0, aoaRad, clN, stalled, hoverPhase));
+        }
+        pos.needsUpdate = true;
+      });
+    }
+    // velocity-field particle advection — runs in BOTH scenes (airflow + turbulence)
+    updateFlowField(dt);
+  }
+  if(simActive){
+    simStep(dt);
+    audioUpdate();
+    if(++graphEvery % 3 === 0) drawLiveGraph();
+  }
+  FX.tick(dt);
+  blitPreviews();
+  if(controls) controls.update();
+  if(renderer) renderer.render(scene, camera);
+}
+
+function hideBoot(){
+  const o = $("bootOverlay");
+  if(o){ o.classList.add("gone"); o.style.transition="opacity .5s"; o.style.opacity="0"; setTimeout(()=>o.remove(), 520); }
+}
+async function boot(){
+  try{ await loadCatalog(); }
+  catch(e){ console.error("Catalog failed to load:", e); bootProgress("failed to load catalog", 1); return; }
+  bootProgress("initialising lab…", .8);
+  try{
+  loadState();
+  initPreviewEngine();
+  initViewport();
+  renderTiles();
+  renderAeroMini();
+  renderModuleTabs();
+  renderExpTabs();
+  renderProgress();
+  renderCalcChips();
+  renderLog();
+  renderReward();
+  renderInstr();
+  drawSummaryChart();
+  drawLiveGraph();
+  refreshIdleTelemetry();
+
+  // blade geometry sliders — live labels + recalc; scene rebuild on release
+  const geomWire = (sliderId, valId, key, fmt)=>{
+    const sl = $(sliderId), vv = $(valId); if(!sl) return;
+    sl.value = state[key];
+    if(vv) vv.textContent = fmt(state[key]);
+    sl.addEventListener("input", e=>{
+      state[key] = +e.target.value;
+      if(vv) vv.textContent = fmt(state[key]);
+      calcCache = null; renderCalcChips(); renderLog(); renderAeroMini(); refreshIdleTelemetry(); saveState();
+    });
+    sl.addEventListener("change", ()=>{ drawSummaryChart(); buildScene(); });
+  };
+  geomWire("diaSlider","diaVal","diameter_in", v=>v.toFixed(1)+" in");
+  geomWire("rootSlider","rootVal","root_chord_mm", v=>v.toFixed(0)+" mm");
+  geomWire("tipSlider","tipVal","tip_chord_mm", v=>v.toFixed(0)+" mm");
+  geomWire("pitchSlider","pitchVal","pitch_angle_deg", v=>v.toFixed(1)+"°");
+  geomWire("rpmSlider","rpmVal","rpm", v=>Math.round(v).toLocaleString());
+
+  // operating point — AoA (M1) + airspeed (M2) drive their scenes live
+  const aoaSl = $("aoaSlider"), aoaV = $("aoaVal");
+  if(aoaSl){ aoaSl.value = state.aoa_deg; if(aoaV) aoaV.textContent = state.aoa_deg.toFixed(1)+"°";
+    aoaSl.addEventListener("input", e=>{
+      state.aoa_deg = +e.target.value; if(aoaV) aoaV.textContent = state.aoa_deg.toFixed(1)+"°";
+      calcCache = null; if(isAirfoilScene()) updateAirfoilScene();
+      renderCalcChips(); renderLog(); if(!simActive) refreshIdleTelemetry(); saveState();
+    });
+  }
+  const windSl = $("windSlider"), windV = $("windVal");
+  if(windSl){ windSl.value = state.wind_v; if(windV) windV.textContent = state.wind_v.toFixed(1)+" m/s";
+    windSl.addEventListener("input", e=>{
+      state.wind_v = +e.target.value; if(windV) windV.textContent = state.wind_v.toFixed(1)+" m/s";
+      calcCache = null; if(!isAirfoilScene()) updateWindScene();
+      renderCalcChips(); renderLog(); renderAeroMini(); if(!simActive) refreshIdleTelemetry(); saveState();
+    });
+  }
+  const washT = $("washToggle");
+  if(washT){
+    washT.setAttribute("aria-checked", state.washOn?"true":"false");
+    washT.classList.toggle("on", state.washOn);
+    washT.addEventListener("click", ()=>{
+      state.washOn = !state.washOn;
+      washT.setAttribute("aria-checked", state.washOn?"true":"false");
+      washT.classList.toggle("on", state.washOn);
+      calcCache = null; if(!isAirfoilScene()) updateWindScene();
+      renderCalcChips(); renderLog(); renderAeroMini(); if(!simActive) refreshIdleTelemetry(); sfx("tick"); saveState();
+    });
+  }
+
+  // density altitude
+  const altSl = $("altSlider"), altV = $("altVal"), rhoV = $("rhoVal");
+  if(altSl){ altSl.value = state.altitude;
+    if(altV) altV.textContent = state.altitude+" m";
+    if(rhoV) rhoV.textContent = rhoAt(state.altitude).toFixed(4)+" kg/m³";
+    altSl.addEventListener("input", e=>{
+      state.altitude = +e.target.value;
+      if(altV) altV.textContent = state.altitude+" m";
+      if(rhoV) rhoV.textContent = rhoAt(state.altitude).toFixed(4)+" kg/m³";
+      calcCache = null; renderCalcChips(); renderLog(); renderAeroMini(); if(!simActive) refreshIdleTelemetry(); saveState();
+    });
+  }
+
+  // designed airfoil + blade count (not catalog parts)
+  const afc = $("airfoilCard"); if(afc) afc.addEventListener("click", ()=>openAirfoilPicker());
+  const bc = $("bladeCount");
+  if(bc){
+    [].forEach.call(bc.querySelectorAll("button"), b=>{
+      b.addEventListener("click", ()=>{
+        state.blades = +b.dataset.b;
+        refreshAfterSelection("blades"); instrEvent("select"); sfx("tick");
+      });
+    });
+  }
+
+  // cards / buttons
+  const on = (id, fn, evt)=>{ const e = $(id); if(e) e.addEventListener(evt||"click", fn); };
+  on("aeroCard", openCalcDetail);
+  on("calcCard", openCalcDetail);
+  on("graphCard", openGraphDetail);
+  on("chartCard", openChartsDetail);
+  on("logHead", ()=>{ const l = $("logList"); if(l) l.classList.toggle("hidden"); });
+  on("runBtn", runSim);
+  on("resetBtn", resetSim);
+  on("modalClose", closeModal);
+  const mo = $("modalOverlay");
+  if(mo) mo.addEventListener("click", e=>{ if(e.target === mo) closeModal(); });
+  document.addEventListener("keydown", e=>{ if(e.key==="Escape" && mo && !mo.hidden) closeModal(); });
+
+  // instructor
+  on("instrOrb", ()=>{ state.instrOpen = !state.instrOpen; saveState(); renderInstr(); if(state.instrOpen) playVoice(); });
+  on("instrPrev", ()=>{ instrGo(state.instrStep-1); playVoice(); });
+  on("instrNext", ()=>{ instrGo(state.instrStep+1); playVoice(); });
+  on("instrReplay", replayVoice);
+  const vVol = $("voiceVol"), vTxt = $("voiceVolTxt");
+  if(vVol){ vVol.value = state.voiceVol; if(vTxt) vTxt.textContent = state.voiceVol;
+    vVol.addEventListener("input", e=>{ state.voiceVol = +e.target.value; if(vTxt) vTxt.textContent = e.target.value;
+      if(currentVoice) currentVoice.volume = Math.min(state.voiceVol/100,1); saveState(); });
+    vVol.addEventListener("change", voiceBlip);
+  }
+  const sVol = $("sfxVol"), sTxt = $("sfxVolTxt");
+  if(sVol){ sVol.value = state.sfxVol; if(sTxt) sTxt.textContent = state.sfxVol;
+    sVol.addEventListener("input", e=>{ state.sfxVol = +e.target.value; if(sTxt) sTxt.textContent = e.target.value; setMasterVol(); saveState(); });
+    sVol.addEventListener("change", ()=>sfx("tick"));
+  }
+
+  window.addEventListener("resize", resizeViewport);
+  let _rzT = 0;
+  window.addEventListener("resize", ()=>{ clearTimeout(_rzT); _rzT = setTimeout(()=>{ if(!ChartHub.reg["liveGraph"]) drawLiveGraph(); }, 120); });
+
+  if(state.instrOpen) playVoice();
+  let audioPrimed = false;
+  const primeAudio = ()=>{
+    if(audioPrimed) return; audioPrimed = true;
+    try{ if(actx && actx.state === "suspended") actx.resume(); }catch(e){}
+    if(state.instrOpen && (!currentVoice || currentVoice.paused)) playVoice();
+  };
+  window.addEventListener("pointerdown", primeAudio, { once:true });
+  window.addEventListener("keydown", primeAudio, { once:true });
+
+  bootProgress("ready", 1);
+  hideBoot();
+  requestAnimationFrame(loop);
+  }catch(e){ console.error("BOOT ERROR:", e); bootProgress("boot error", 1); }
+}
+boot();

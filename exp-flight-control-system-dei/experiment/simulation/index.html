@@ -6,7 +6,7 @@
 <title>Flight Control System — PID · Ziegler-Nichols · Sensor Fusion</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="./css/main.css?v=3">
+<link rel="stylesheet" href="./css/main.css?v=rw6">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/GLTFLoader.js"></script>
@@ -88,6 +88,34 @@
 
       <div class="ff-badge mono" id="ffBadge" hidden>60× FAST-FORWARD</div>
 
+      <!-- ══ cinematic playback: caption strip + transport ══ -->
+      <div class="vp-cine" id="vpCine" hidden>
+        <div class="cine-caption">
+          <div class="cine-head">
+            <span class="cine-chap mono" id="cineChap">01</span>
+            <span class="cine-stage mono" id="cineStage"></span>
+          </div>
+          <p class="cine-txt" id="cineTxt"></p>
+        </div>
+        <div class="cine-transport">
+          <button type="button" class="cine-btn" id="cinePrev" title="Previous chapter">⏮</button>
+          <button type="button" class="cine-btn cine-play" id="cinePlay" title="Play / pause">❚❚</button>
+          <button type="button" class="cine-btn" id="cineNext" title="Next chapter">⏭</button>
+          <div class="cine-track" id="cineTrack">
+            <div class="cine-fill" id="cineFill"></div>
+            <div class="cine-ticks" id="cineTicks"></div>
+          </div>
+          <span class="cine-time mono" id="cineTime">0.0 s</span>
+          <div class="cine-speed" id="cineSpeed">
+            <button type="button" data-sp="0.5">0.5×</button>
+            <button type="button" data-sp="1" class="on">1×</button>
+            <button type="button" data-sp="2">2×</button>
+            <button type="button" data-sp="4">4×</button>
+          </div>
+          <button type="button" class="cine-btn cine-skip" id="cineSkip" title="Skip to result">Skip ▸</button>
+        </div>
+      </div>
+
       <div class="vp-exps" id="expTabs"><!-- experiment tabs injected --></div>
       <div class="vp-hint mono">drag · orbit &nbsp; scroll · zoom</div>
     </div>
@@ -148,8 +176,8 @@
     <div class="out-pair">
     <button class="card out-card" id="graphCard" type="button">
       <div class="row-between">
-        <span class="card-title">Graphs <em>· live</em></span>
-        <span class="link-hint slate">expand ⤢</span>
+        <span class="card-title">Graphs <em>· live + sweeps</em></span>
+        <span class="link-hint slate">all graphs ⤢</span>
       </div>
       <div class="chart-box"><canvas id="liveGraph"></canvas></div>
       <div class="mono caption" id="graphCaption">waiting for first run…</div>
@@ -186,7 +214,7 @@
     <p class="instr-text" id="instrText"></p>
     <div class="instr-nav">
       <button type="button" id="instrPrev">‹ Back</button>
-      <button type="button" id="instrReplay" class="primary">↻ Replay audio</button>
+      <button type="button" id="instrReplay" class="primary">Replay audio</button>
       <button type="button" id="instrNext" class="solid">Next ›</button>
     </div>
     <div class="instr-audio">
@@ -227,6 +255,6 @@
   </div>
 </div>
 
-<script src="./js/main.js?v=32"></script>
+<script src="./js/main.js?v=rw6"></script>
 </body>
 </html>

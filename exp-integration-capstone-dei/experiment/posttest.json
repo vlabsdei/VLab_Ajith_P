@@ -1,0 +1,175 @@
+{
+  "version": 2.0,
+  "questions": [
+    {
+      "question": "Q1. Your build fails only the flight-time constraint; every other check passes. Which experiment's concept is most directly implicated?",
+      "answers": {
+        "a": "Frame Structural Integrity",
+        "b": "Energy Storage System",
+        "c": "Flight Control System",
+        "d": "Navigation & Positioning"
+      },
+      "explanations": {
+        "a": "Incorrect — structure governs mass and strength, not endurance directly.",
+        "b": "Correct — flight time follows from usable capacity and hover current: the Energy Storage concept.",
+        "c": "Incorrect — control governs stability, not endurance.",
+        "d": "Incorrect — positioning hardware does not set flight time."
+      },
+      "correctAnswer": "b",
+      "difficulty": "beginner"
+    },
+    {
+      "question": "Q2. The verifier reports the propeller is too large for the chosen frame and the motor is drawing above its rated current. Which experiment must be revisited?",
+      "answers": {
+        "a": "Propulsion System Design",
+        "b": "Aerodynamic Analysis",
+        "c": "Thermal Management",
+        "d": "TWR · Hover · Efficiency"
+      },
+      "explanations": {
+        "a": "Correct — prop sizing and motor–prop current matching are the Propulsion System Design concept.",
+        "b": "Incorrect — aerodynamics covers airfoil/drag, not motor current matching.",
+        "c": "Incorrect — thermal is a downstream symptom, not the sizing cause.",
+        "d": "Incorrect — that concerns the lift envelope, not part matching."
+      },
+      "correctAnswer": "a",
+      "difficulty": "intermediate"
+    },
+    {
+      "question": "Q3. Two builds meet the same weight and payload. Build A hovers at 45% throttle, Build B at 80%. Which statement is correct?",
+      "answers": {
+        "a": "Build B has more control margin",
+        "b": "Build A has a higher TWR and more reserve for maneuvers",
+        "c": "Both have identical flight performance",
+        "d": "Build B is more efficient by definition"
+      },
+      "explanations": {
+        "a": "Incorrect — higher hover throttle means less reserve.",
+        "b": "Correct — lower hover throttle implies higher TWR and a larger control margin (Flight Performance).",
+        "c": "Incorrect — hover throttle differs, so performance differs.",
+        "d": "Incorrect — hovering near full throttle usually means less margin, not more efficiency."
+      },
+      "correctAnswer": "b",
+      "difficulty": "intermediate"
+    },
+    {
+      "question": "Q4. Why does the capstone name the failed experiment but withhold the fix?",
+      "answers": {
+        "a": "To save computation",
+        "b": "To force you back to the correct prior experiment to re-derive the concept, proving understanding rather than pattern-matching a fix",
+        "c": "Because the fix is unknown to the simulator",
+        "d": "Because all fixes are identical"
+      },
+      "explanations": {
+        "a": "Incorrect — the reason is pedagogical, not computational.",
+        "b": "Correct — the goal is verified understanding; you have to return to the concept rather than be handed an answer.",
+        "c": "Incorrect — the simulator knows the failing constraint precisely.",
+        "d": "Incorrect — fixes differ per failure mode."
+      },
+      "correctAnswer": "b",
+      "difficulty": "beginner"
+    },
+    {
+      "question": "Q5. The verifier separates mission-critical checks from advisory ones. An advisory check fails but the build is still accepted. What is the correct interpretation?",
+      "answers": {
+        "a": "The check is unimportant and can be ignored permanently",
+        "b": "The aircraft meets the mission as specified, but the flagged item is a real weakness that will limit it outside these exact conditions",
+        "c": "The verifier has made an error",
+        "d": "The build should be rejected anyway"
+      },
+      "explanations": {
+        "a": "Incorrect — advisory items are genuine findings; they simply do not block this particular mission.",
+        "b": "Correct — a mission is a specific set of requirements, not a definition of quality. An advisory failure marks where the design has no margin left for a different mission or a worse day.",
+        "c": "Incorrect — the distinction is deliberate and encoded in the constraint set.",
+        "d": "Incorrect — rejecting a build that meets every mission-critical requirement would be applying a standard the mission never asked for."
+      },
+      "correctAnswer": "b",
+      "difficulty": "intermediate"
+    },
+    {
+      "question": "Q6. Two builds both clear the mission. Build A has 40% margin on every constraint; Build B clears three constraints by under 5%. Which is the better design, and why?",
+      "answers": {
+        "a": "Build B, because it uses resources more efficiently",
+        "b": "Build A, because margin absorbs the variation that real parts, temperature and ageing introduce, whereas B will fail in service",
+        "c": "They are equivalent, since both passed",
+        "d": "Build B, because tighter tolerances indicate better engineering"
+      },
+      "explanations": {
+        "a": "Incorrect — operating with no headroom is not efficiency, it is fragility.",
+        "b": "Correct — a verification is a snapshot at nominal values. Real cells age, real motors vary from their datasheets, and real air is sometimes warmer. Margin is what turns a passing simulation into a working aircraft.",
+        "c": "Incorrect — the pass is binary but the robustness is not.",
+        "d": "Incorrect — tight margins on outcomes are not the same thing as tight manufacturing tolerances."
+      },
+      "correctAnswer": "b",
+      "difficulty": "advanced"
+    },
+    {
+      "question": "Q7. A build fails on all-up weight and on flight time simultaneously. Why is it a mistake to treat those as two separate problems?",
+      "answers": {
+        "a": "They are unrelated and should be fixed independently",
+        "b": "Mass and endurance are coupled through hover current, so a single change to the pack or structure moves both, and fixing one in isolation can worsen the other",
+        "c": "Only the first failure listed matters",
+        "d": "Weight failures always resolve themselves once flight time is fixed"
+      },
+      "explanations": {
+        "a": "Incorrect — this is precisely the mistake the capstone is designed to expose.",
+        "b": "Correct — a bigger pack fixes endurance and breaks weight; a lighter build fixes weight and can break endurance. The two have to be solved together, at one operating point.",
+        "c": "Incorrect — the listing order carries no priority.",
+        "d": "Incorrect — the usual fix for flight time is more capacity, which makes the weight failure worse."
+      },
+      "correctAnswer": "b",
+      "difficulty": "advanced"
+    },
+    {
+      "question": "Q8. The mission's positioning requirement is satisfied by fitting hardware, yet the earlier navigation experiment showed that GPS accuracy depends on satellite geometry and environment. What does the capstone check actually verify?",
+      "answers": {
+        "a": "That the achievable position accuracy meets a stated metre figure",
+        "b": "That the necessary hardware is present, which is a necessary but not sufficient condition for accurate positioning",
+        "c": "That the aircraft has a clear view of the sky",
+        "d": "That the GPS module is the most accurate one available"
+      },
+      "explanations": {
+        "a": "Incorrect — no accuracy figure is evaluated at the capstone level.",
+        "b": "Correct — fitting a GPS and a receiver is the build-level requirement. Whether the resulting fix is good enough is the question the navigation experiment answers, and hardware presence does not guarantee it.",
+        "c": "Incorrect — sky visibility is an operational condition, not a build property.",
+        "d": "Incorrect — the check tests presence, not ranking."
+      },
+      "correctAnswer": "b",
+      "difficulty": "advanced"
+    },
+    {
+      "question": "Q9. Why does the verifier evaluate the loaded thrust-to-weight ratio rather than the unloaded figure?",
+      "answers": {
+        "a": "Because unloaded TWR is harder to compute",
+        "b": "Because the aircraft has to fly with the payload aboard, so the unloaded figure describes a condition the mission never operates in",
+        "c": "Because payload reduces thrust",
+        "d": "Because loaded TWR is always the larger number"
+      },
+      "explanations": {
+        "a": "Incorrect — both are equally easy to compute from the same quantities.",
+        "b": "Correct — the mission requires the payload to be carried. A TWR that only holds with the bay empty is a number about a different aircraft.",
+        "c": "Incorrect — payload adds weight; it does not reduce the thrust the propulsion system can make.",
+        "d": "Incorrect — loaded TWR is always the smaller and more demanding figure."
+      },
+      "correctAnswer": "b",
+      "difficulty": "intermediate"
+    },
+    {
+      "question": "Q10. What does it demonstrate when a build clears every mission-critical constraint on the first verification?",
+      "answers": {
+        "a": "That the constraints were too easy",
+        "b": "That the coupled consequences of each component choice were anticipated correctly before verifying, which is what integration skill actually is",
+        "c": "That the simulator failed to check properly",
+        "d": "That the components happened to be compatible by chance"
+      },
+      "explanations": {
+        "a": "Incorrect — the same constraints reject most first attempts.",
+        "b": "Correct — the verifier only reports; the reasoning happened beforehand. Predicting how a motor choice would land on mass, current, heat and endurance simultaneously is the skill the capstone is testing.",
+        "c": "Incorrect — the constraint set is evaluated in full on every run.",
+        "d": "Incorrect — the interactions are deterministic and can be reasoned about in advance."
+      },
+      "correctAnswer": "b",
+      "difficulty": "advanced"
+    }
+  ]
+}

@@ -1,68 +1,93 @@
 # Lab Procedure: Battery Pack Energy Storage & Discharge Behaviour
 
-This document outlines the step-by-step workflow for **Experiment 2: Energy Storage System**. The experiment inherits the propulsion build from Experiment 1 and characterises the battery pack feeding it across four bench sub-experiments, grouped into two modules: **Module 1** (C-Rating Safety Check + Voltage Sag Under Load) and **Module 2** (Endurance & Diminishing Returns + SoC Discharge Mapping). Only the battery pack changes between runs — the airframe is held fixed so that each pack's C-rating and internal resistance are isolated. Every value is computed live from the same motor/propeller/pack solve used throughout the lab, and your session saves automatically.
+You are on a battery bench, not a flight line. The airframe stays fixed for the whole experiment and only the pack changes, which is the point — it isolates what the C-rating and the internal resistance actually do. Three sub-experiments across two modules, all on one page.
+
+| Module | Sub-experiment | Reports |
+|---|---|---|
+| Module 1 · Pack Under Load | Pack Under Load — C-Rating & Sag | Peak draw (A) and volts per cell |
+| Module 2 · Energy & Endurance | Endurance & Diminishing Returns | Hover time (min) |
+| Module 2 · Energy & Endurance | SoC Discharge Mapping | State of charge (%) |
+
+A **Procedure** card sits beside the viewport and lists the physical bench steps for whichever sub-experiment is active, ticking them off as the run reaches them. It is worth reading before you press Run — it tells you what the instruments in the 3D scene are actually doing.
+
+The telemetry strip carries pack voltage, volts per cell, state of charge and C-rate headroom alongside the usual thrust and current readouts.
 
 ---
 
-## **Stage 1: C-Rating Safety Check (Module 1)**
+## Module 1 · Pack Under Load
 
-### **Objective**
-Confirm the pack can sustain the airframe's real full-throttle current draw without exceeding its continuous discharge rating.
+### Objective
 
-![C-Rating safety margins across four catalog battery packs](./images/crate_safety_margins.png)
+Find out whether the pack can supply the current this airframe demands, and how far its terminal voltage falls while doing it.
 
-### **Step-by-Step Procedure**
-1. **Launch the Simulator:** Open the virtual lab page. It loads into **Module 1 → C-Rating Safety Check**, with the inherited build and the default pack selected.
-2. **Note the pack specs.** The left panel shows the selected pack's capacity (mAh), continuous C-rating and burst C-rating. Compute the limits: **I_cont = C_cont · Capacity_Ah** and **I_burst = C_burst · Capacity_Ah**.
-3. **Read the actual draw.** The solver reports the real full-throttle current **I_total** pulled by the four-motor circuit — not an assumed value. Compare it against I_cont.
-4. **Run the discharge test.** Click **Run**. A current spike during the throttle ramp is normal; the timer only flags a fault after **3 seconds of sustained draw above I_cont**.
-5. **Read the verdict.** Confirm the default 4S 3300 mAh (15C) pack **vents** on this airframe (116.2 A draw vs 49.5 A continuous): `Battery vented — sustained draw exceeds continuous rating`.
-6. **Fix by C-rating, not capacity.** Swap in the 4S 1500 mAh high-C pack (100C): the same motors now draw 133.9 A against a 150 A limit — a clean pass off a pack with *less* than half the mAh. Confirm capacity and discharge capability are independent specs.
+![C-rating safety margins across four catalog battery packs](./images/crate_safety_margins.png)
 
----
+The bench steps, in order: pack on the ESD mat with the XT60 into the analyzer, analyzer output into the load bank with Kelvin sense clipped to the pack terminals, zero the shunt and record open-circuit voltage, then ramp the load from 0 to 100% of four-motor demand over eight seconds.
 
-## **Stage 2: Voltage Sag Under Load (Module 1)**
+1. Read the pack's specs on the left: capacity in mAh, continuous C-rating, burst C-rating. Work the limits out yourself — I_cont = C_cont × Capacity_Ah is the number that matters, and it is usually smaller than people expect.
 
-### **Objective**
-Trace the terminal-voltage drop under full load back to the pack's internal resistance, and check it clears the brownout floor.
+2. Compare that against the draw the solver reports. This is the real four-motor current for the build in front of you, not a rule of thumb.
+
+3. Press **▶ Run Sim**. A spike during the ramp is normal and does not fail anything; the fault timer only trips after three seconds of sustained draw above I_cont.
+
+4. Watch the volts-per-cell readout while the load comes on. Terminal voltage is V_terminal = N_cells·(V_oc − I·R_cell,eff), and R_cell,eff grows as the pack empties, so the sag gets worse as the run goes on.
 
 ![Battery pack equivalent circuit and voltage sag curve](./images/battery_circuit_and_sag.png)
 
-### **Step-by-Step Procedure**
-1. **Switch to the Voltage Sag tab.** The viewport shows the pack's equivalent circuit: open-circuit voltage source in series with the pack resistance R_pack.
-2. **Read the open-circuit voltage.** The OCV follows the nonlinear cell curve **V_oc = 3.50 + 0.70·SoC + 0.10·SoC³** per cell — steep near full and empty, flat through the middle.
-3. **Apply full load.** Run the test and watch the terminal voltage sag: **V_terminal = N_cells·(V_oc − I·R_cell,eff)**, where R_cell,eff grows sharply as the pack empties (the low-SoC swell term).
-4. **Read the per-cell voltage.** Confirm the default 3300 mAh pack (6.5 mΩ/cell) sags to **3.541 V/cell** at 116.2 A — clearing the 3.50 V/cell pass floor by only 0.041 V (marginal).
-5. **Trigger a brownout.** Swap in the 4S 1300 mAh low-C pack (24 mΩ/cell): terminal voltage collapses to the 2.8 V/cell floor, deep past the **3.30 V/cell brownout line**, and the readout reports `ESC BROWNOUT` after 1.5 s sustained.
-6. **Connect cause to spec.** Note that the high-C pack's low `cell_ir_mohm` is the *same* physical property that sets its C-rating — a good pack wins both checks at once.
+### The two ways to fail
+
+The build starts on a **4S 5200 mAh** pack rated 30C continuous. It draws about 80 A against a 156 A limit and holds 3.74 V/cell, so it passes both checks — and it weighs 480 g to do it. That is your baseline, not the interesting case.
+
+Now fit the **4S 1300 mAh (low-C)** pack, 12C continuous with 24 mΩ cells. It fails both checks at once. The draw is around 56 A against a 15.6 A continuous limit, so it vents. And the terminal voltage collapses to about 3.02 V/cell, well under the 3.30 V brownout floor, so the ESC lets go too. Those are not two coincidences: the high cell resistance is what caps the C-rating *and* what causes the sag.
+
+Then fit the **4S 1500 mAh (high-C)** pack, 100C continuous with 3.2 mΩ cells. It pulls *more* current than the 5200 — about 91 A, because the stiffer pack holds its voltage up and the motors take advantage — and it still passes, at 4.01 V/cell, on less than a third of the capacity and 175 g instead of 480 g.
+
+That is the lesson of the module. Capacity and discharge capability are separate specifications, and the mAh printed on the label tells you nothing about whether the pack can survive the airframe. Try the **4S 3300 mAh** (25C) too — about 81 A against an 82.5 A limit is a pass by a hair, and a pack that thin on margin is one warm day from venting.
 
 ---
 
-## **Stage 3: Endurance & Diminishing Returns (Module 2)**
+## Module 2 · Endurance & Diminishing Returns
 
-### **Objective**
-Convert the pack's Peukert-derated real capacity into hover endurance, and see why a bigger pack does not buy proportionally more flight time.
+### Objective
+
+Turn the pack's real, derated capacity into minutes of hover — and find out why buying a bigger pack stops helping.
 
 ![Peukert-derated effective capacity and over-discharge risk across battery packs](./images/peukert_derating_soc.png)
 
-### **Step-by-Step Procedure**
-1. **Proceed to Module 2 → Endurance & Diminishing Returns.** The panel shows nameplate vs effective capacity for the selected pack.
-2. **Read the Peukert derating.** The effective capacity is **Capacity_eff = Capacity_nameplate · peukertFactor(C_cont)** — a low-C pack is penalised twice (once on safe current, once on deliverable capacity). Confirm the default 15C pack delivers only **~2599 mAh of its 3300 mAh** nameplate (−21%).
-3. **Sweep pack capacity.** Increase capacity and watch hover endurance rise — but note the pack's own mass rises with it, so the endurance gain flattens.
-4. **Read the diminishing-returns curve.** Confirm the endurance-vs-capacity curve bends over: past a point, added cells mostly carry their own weight rather than extending flight time.
-5. **Check over-discharge risk.** Verify the readout warns when a pack would be drawn below its safe minimum SoC to complete the mission.
+The bench steps here are a flight: fit the pack, check all-up weight and thrust-to-weight, arm and confirm hover current, climb to the commanded altitude, hold the hover until the SoC cut-off, land, and read the flight time against capacity.
+
+1. Start with the derating. Effective capacity is the nameplate figure multiplied by a Peukert factor set by the pack's own continuous C-rating, so a low-C pack is penalised twice over — once on safe current, once on the capacity it can actually deliver. Anything at 30C or above keeps its full nameplate; the 25C 3300 mAh pack keeps about 95% of it; the 12C 1300 mAh pack keeps only 72%, losing more than a quarter of what the label promises. A high-C pack tracks its nameplate almost exactly, which is a second reason the good pack keeps winning.
+
+2. Run the hover and let it fly to the cut-off. The simulator fast-forwards once the hover is stable, so a multi-minute endurance fits into a short run.
+
+3. Now step the capacity up and re-run. Endurance rises, but not proportionally, because the pack's own mass rises with it and that mass has to be carried.
+
+4. Keep going until the curve visibly bends over. Past that point the extra cells are mostly lifting themselves.
+
+5. The readout warns you when a mission would need the pack drawn below its safe minimum SoC to finish. That is not a pass with a caveat, it is a plan that damages the pack.
+
+Push the capacity far enough and the build stops hovering altogether — the verdict says so directly. Bigger is not always better is not a slogan here; it is a thrust-to-weight ratio dropping below one.
 
 ---
 
-## **Stage 4: SoC Discharge Mapping (Module 2)**
+## Module 2 · SoC Discharge Mapping
 
-### **Objective**
-Compare a naive fuel gauge against a true coulomb counter and OCV-inverted reading, exposing the state-of-charge error.
+### Objective
 
-### **Step-by-Step Procedure**
-1. **Switch to the SoC Discharge Mapping tab.** Two SoC estimators run in parallel from the same current draw.
-2. **Run the discharge.** The **naive** counter integrates against the *nameplate* capacity (**SoC_naive −= ΔAh / Capacity_nameplate**); the **true** counter integrates against the Peukert-derated *effective* capacity.
-3. **Watch the two diverge.** Confirm the naive gauge reads optimistically high as the pack empties, because it is counting against a capacity the pack cannot actually deliver.
-4. **Read SoC from voltage.** Compare the naive linear voltage reading **SoC_naive,V = (V_cell − 3.5)/(4.2 − 3.5)·100%** against the true OCV-inverted value — the true curve is far flatter through the middle of the discharge.
-5. **Interpret the gap.** Note that the gap between the two is exactly the safety margin a cheap fuel gauge silently eats, and the reason a pack can hit brownout while its gauge still reads charge remaining.
-6. **Complete the experiment.** Once all four sub-experiments pass, the reward model unlocks under **Components Unlocked**, confirming completion of **Experiment 2**.
+Run a naive fuel gauge and an honest one side by side, and measure the gap between them.
+
+The bench steps: pack onto the rig with the balance lead in the port, set the constant-current bench load, discharge while logging cell voltage against coulombs out, and watch the 20% gauge cut-off arm.
+
+1. Two coulomb counters run from the same current draw. The **naive** one integrates against the pack's *nameplate* capacity; the **true** one integrates against the Peukert-derated *effective* capacity.
+
+2. Watch them separate. The naive gauge reads optimistically high, and the error grows as the pack empties, because it is counting down from a capacity that was never there.
+
+3. Compare the voltage-based readings too. A linear map from cell voltage to percentage looks reasonable at the ends and is badly wrong through the middle, where the OCV curve is nearly flat. The true OCV-inverted value shows how flat.
+
+4. Let the run reach the cut-off. If the auto-cut fires, the verdict tells you where it stopped. If the pack goes genuinely empty, it reports the resting cell voltage — that is an over-discharged cell, and it does not come back.
+
+The gap between the two gauges is the safety margin a cheap fuel gauge quietly eats. It is also why a pack can brown out an ESC while the display still claims charge remaining.
+
+---
+
+Pass all three and the reward pack unlocks under **Components Unlocked**.

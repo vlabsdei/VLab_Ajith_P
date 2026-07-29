@@ -80,23 +80,59 @@ async function loadCatalog(){
     const opts = (byCat[c.key] || []).sort((a,b)=>order.indexOf(a.id)-order.indexOf(b.id));
     return { key:c.key, label:c.label, multi:!!c.multi, options:opts };
   });
+  /* Reward pool. The reward names a CATEGORY and the unlock draws a random real
+     component from it. That category is not always a selectable one in this
+     experiment (exp-03 awards a propeller but never lets you pick one), so any
+     option that wasn't already loaded is fetched straight from its spec.json. */
+  const rwCfg = manifest.reward || {};
+  let rewardPool = [];
+  if(rwCfg.category){
+    const inCat = byCat[rwCfg.category] || [];
+    const wantIds = rwCfg.options || inCat.map(o=>o.id);
+    const missing = wantIds.filter(id => !inCat.some(o=>o.id===id));
+    let extra = [];
+    if(missing.length){
+      extra = (await Promise.all(missing.map(async id=>{
+        const base = "assets/" + rwCfg.category + "/" + id;
+        try{
+          const spec = await (await fetch(base + "/spec.json", {cache:"no-store"})).json();
+          let files = [];
+          if(spec.model){
+            const arr = Array.isArray(spec.model) ? spec.model : [spec.model];
+            files = arr.map(f => f.includes("/") ? f : base + "/" + f);
+          }
+          return { id, name: spec.name || id, catKey: rwCfg.category,
+                   mass: spec.mass_g || 0, qty: spec.qty || 1,
+                   size: spec.size_mm || null, view: spec.view || null,
+                   specs: Object.entries(spec.specs || {}), phys: spec.physics || {},
+                   files, mounts: null,
+                   fallback: { kind: rwCfg.fallback || "none", color: 0x5a6672, s: 1 } };
+        }catch(e){ console.warn("reward spec missing for", base); return null; }
+      }))).filter(Boolean);
+    }
+    const all = inCat.concat(extra);
+    rewardPool = wantIds.map(id => all.find(o=>o.id===id)).filter(Boolean);
+  }
   DRONE_DB = {
     categories,
     defaults: manifest.defaults || {},
     modules: manifest.modules,
     instructor: manifest.instructor,
-    reward: {
-      name: manifest.reward.name, desc: manifest.reward.desc,
-      files: manifest.reward.model ? [manifest.reward.model] : [],
-      fallback: { kind: manifest.reward.fallback || "lidar", color: 0x845b23, s: 1 }
-    }
+    /* The reward is no longer one hardcoded mesh: it names a CATEGORY, and the
+       unlock draws a random real component from it (a random motor, a random
+       airframe, …). Because the drawn option is a genuine catalogue entry it
+       carries its own catKey, so fitUnit applies the same orientation rule the
+       component uses everywhere else — the old reward object had no catKey at
+       all, which is why it rendered at an arbitrary angle. */
+        reward: { category: rwCfg.category || null, name: rwCfg.name || "", desc: rwCfg.desc || "",
+              fallback: { kind: rwCfg.fallback || "lidar", color: 0x845b23, s: 1 }, pool: rewardPool }
   };
 }
 
 /* ════════════ 2 · STATE + PERSISTENCE ════════════ */
 const LS_KEY = "nav-v1";   // PROGRESS-ONLY nav storage — no cross-experiment / Exp-11 data
 const state = {
-  sel:{}, altitude:0, module:"m1", exp:{},
+  sel:{}, altitude:1500, module:"m1", exp:{},
   done:{}, voiceVol:80, sfxVol:60, instrStep:0,
   simRunning:false, instrOpen:true, manualThrottle:0,
   // ── navigation inputs ──
@@ -119,7 +155,7 @@ function loadState(){
       state.sel[c.key] = c.options[0] && c.options[0].id;
     }
   });
-  state.altitude = s.altitude != null ? s.altitude : 0;
+  state.altitude = s.altitude != null ? s.altitude : 1500;
   state.module = DRONE_DB.modules.some(m=>m.id===s.module) ? s.module : DRONE_DB.modules[0].id;
   DRONE_DB.modules.forEach(m=>{
     const saved = s.exp && s.exp[m.id];
@@ -258,7 +294,22 @@ function cellIR(p, soc){
 }
 function motorRm(p, tempC){ return p.rm20 * (1 + ALPHA_CU*((tempC==null?20:tempC) - 20)); }
 
-/* BEMT-lite propeller aero coefficients — pitch/diameter + Reynolds + induced-flow corrected */
+/* BEMT-lite propeller aero coefficients — pitch/diameter + Reynolds + figure of merit.
+
+   Ct is a static thrust coefficient fitted to the catalogue's hand-authored
+   empirical propellers (5x4.3 tri -> 0.130, 10x4.5 bi -> 0.100).
+
+   Cq is NOT an independent fit. Hover shaft power must equal the induced power
+   divided by the rotor's figure of merit:
+
+       2*pi*Cq*rho*n^3*D^5  =  T^1.5 / (FoM * sqrt(2*rho*A)),   T = Ct*rho*n^2*D^4
+
+   which reduces to  Cq = Ct^1.5 * 0.12699 / FoM.  Deriving Cq this way keeps
+   thrust and torque thermodynamically consistent — the previous independent
+   `ct*(0.045*reFactor + 0.11*pd)` fit drifted about 30% high on torque while Ct
+   itself read ~20% low, so every build drew far more current than the same parts
+   would in reality. Bigger discs are more efficient; low Reynolds (small, slow
+   props) costs figure of merit. */
 function propAero(p, omega){
   const pd = Math.max(0.2, Math.min(1.2, p.pitchIn / Math.max(p.diaIn,1)));
   const R = p.D/2, chord = 0.1*p.D;
@@ -266,17 +317,15 @@ function propAero(p, omega){
   const rho = rhoNow();
   const Re = Math.max(rho * Vtip * chord / MU_AIR, 1000);
   const reFactor = Math.pow(150000/Re, 0.25);
-  const ctStatic = p.ctRaw!=null ? p.ctRaw : 0.115 * pd;
-  const cqBase = p.cqRaw!=null ? p.cqRaw : ctStatic * (0.045*reFactor + 0.11*pd);
-  const Ji = Math.sqrt(Math.max(2*ctStatic/Math.PI, 0));
-  const ctEff = ctStatic;                    // authored Ct is already an empirical hover measurement
-  const cqEff = cqBase * (1 + 1.5*Ji*Ji);     // induced-power penalty still raises torque/current/heat
-  return { ctEff, cqEff, rho };
+  const ctStatic = p.ctRaw!=null ? p.ctRaw : 0.067 + 0.073*pd;
+  const fom = Math.max(0.40, Math.min(0.78, 0.42 + 0.022*p.diaIn)) / Math.sqrt(Math.max(reFactor,1));
+  const cqEff = p.cqRaw!=null ? p.cqRaw : Math.pow(ctStatic,1.5)*0.12699/Math.max(fom,0.25);
+  return { ctEff: ctStatic, cqEff, rho };
 }
 /* solve steady-state motor+prop point via quadratic torque balance. returns null on stall. */
 function calcMotorPoint(duty, V, Rm, Resc){
   const p = propulsionParams();
-  if(duty <= 0 || V <= 0) return { rpm:0, omega:0, T:0, Q:0, I:p.i0*0, P:0, Pmech:0, stalled:false };
+  if(duty <= 0 || V <= 0) return { rpm:0, omega:0, T:0, Q:0, I:p.i0*0, Idc:0, P:0, Pmech:0, stalled:false };
   Rm = Rm==null ? motorRm(p,20) : Rm;
   const Reff = Rm + (Resc||0);
   const ke = 60/(2*Math.PI*p.kv), kt = ke;
@@ -292,13 +341,24 @@ function calcMotorPoint(duty, V, Rm, Resc){
     if(!isFinite(next) || next < 0){ stalled = true; omega = 0; break; }
     omega += (next - omega) * 0.6;
   }
-  if(stalled) return { rpm:0, omega:0, T:0, Q:0, I:0, P:0, Pmech:0, stalled:true };
+  if(stalled) return { rpm:0, omega:0, T:0, Q:0, I:0, Idc:0, P:0, Pmech:0, stalled:true };
   const n = omega/(2*Math.PI);
   const T = aero.ctEff * aero.rho * n*n * Math.pow(p.D,4);
   const Q = aero.cqEff * aero.rho * n*n * Math.pow(p.D,5);
   const I = Math.min(Q/kt + p.i0, p.imax*1.6);
   const Vterm = Math.max(V*duty - I*Reff, 0);
-  return { rpm: n*60, omega, T:Math.max(T,0), Q, I, P: Vterm*I + I*I*Reff, Pmech: Q*omega, stalled:false };
+  // Two different currents, and mixing them up is the classic drive-train error:
+  //   I    — PHASE current in the motor branch. Sets copper loss, motor heating
+  //          and the motor / ESC per-channel ratings.
+  //   Idc  — DC-LINK current the PACK actually supplies. The ESC is a switching
+  //          converter, so it steps V down to V·duty: power in = power out gives
+  //          V·Idc = (V·duty)·I, i.e. Idc = duty·I. The two coincide at full
+  //          throttle, but at a ~30 % hover the pack sees roughly a third of the
+  //          phase current — treating them as equal made hover draw ~3× too high
+  //          and cut every endurance figure to a third of the real value.
+  const Idc = duty * I;
+  return { rpm: n*60, omega, T:Math.max(T,0), Q, I, Idc,
+           P: Vterm*I + I*I*Reff, Pmech: Q*omega, stalled:false };
 }
 /* full quad at throttle d + state-of-charge soc (0..1), incl. pack sag under 4-motor draw */
 function solveQuad(d, soc){
@@ -307,11 +367,14 @@ function solveQuad(d, soc){
   const rIR = cellIR(p, s), Rpack = p.cells*rIR;
   let V = cellOCV(s)*p.cells, r = calcMotorPoint(d, V, motorRm(p,20), p.rdsOn);
   for(let k=0;k<6;k++){
-    V = Math.max(cellOCV(s)*p.cells - 4*r.I*Rpack, p.cells*2.8);
+    // the pack sags against what it actually delivers — the DC-link current
+    V = Math.max(cellOCV(s)*p.cells - 4*r.Idc*Rpack, p.cells*2.8);
     r = calcMotorPoint(d, V, motorRm(p,20), p.rdsOn);
   }
-  return { rpm:r.rpm, omega:r.omega, Tper:r.T, Ttot:4*r.T, Iper:r.I, Itot:4*r.I,
-           V, P:V*4*r.I, Pmech:4*r.Pmech, Q:r.Q, stalled:r.stalled };
+  return { rpm:r.rpm, omega:r.omega, Tper:r.T, Ttot:4*r.T,
+           Iper:r.I,          // phase current — motor / ESC channel ratings, heating
+           Itot:4*r.Idc,      // pack current  — C-rating, sag, coulomb count
+           V, P:4*r.P, Pmech:4*r.Pmech, Q:r.Q, stalled:r.stalled };
 }
 /* single motor on the bench (1 motor draws from the pack); tempC = winding temp for Rm */
 function solveBench(d, soc, tempC){
@@ -321,7 +384,7 @@ function solveBench(d, soc, tempC){
   const Rm = motorRm(p, tempC==null?20:tempC);
   let V = cellOCV(s)*p.cells, r = calcMotorPoint(d, V, Rm, p.rdsOn);
   for(let k=0;k<6;k++){
-    V = Math.max(cellOCV(s)*p.cells - r.I*Rpack, p.cells*2.8);
+    V = Math.max(cellOCV(s)*p.cells - r.Idc*Rpack, p.cells*2.8);
     r = calcMotorPoint(d, V, Rm, p.rdsOn);
   }
   return Object.assign(r, { V, Rm });
@@ -648,7 +711,9 @@ function diagnosticsProp(){
   }
   // 3 · motor over-current at full throttle
   if(mo){
-    if(c.full.Iper > p.imax){
+    // max_current_a is a short-burst (~60 s) rating, so a modest exceedance at
+    // wide-open throttle is a warning, not a dead build.
+    if(c.full.Iper > p.imax*1.15){
       items.push({ sev:"err", block:false,
         msg:"Motor over-current — draws "+c.full.Iper.toFixed(1)+" A vs "+p.imax+" A rating at full throttle.",
         fix:"Use a smaller prop, lower cell count, or a higher-current motor." });
@@ -661,10 +726,19 @@ function diagnosticsProp(){
   // 4 · ESC current rating
   if(esc && esc.phys && esc.phys.current_a){
     const escA = esc.phys.current_a;
-    if(c.full.Iper > escA){
+    // Judge against the ESC's authored BURST rating (burst_current_a) when the
+    // spec carries one — it was present in every ESC spec.json but unused — and
+    // fall back to +25% headroom otherwise. current_a is the continuous figure,
+    // and wide-open throttle is a burst condition.
+    const escBurst = (esc.phys.burst_current_a || escA*1.25);
+    if(c.full.Iper > escBurst){
       items.push({ sev:"err", block:false,
         msg:"ESC under-rated — "+escA+" A/ch vs "+c.full.Iper.toFixed(1)+" A motor draw.",
         fix:"Choose an ESC rated above the motor's peak current." });
+    } else if(c.full.Iper > escA){
+      items.push({ sev:"warn",
+        msg:"ESC above continuous rating ("+c.full.Iper.toFixed(1)+" / "+escA+" A per channel).",
+        fix:"Survivable in bursts; it will run hot at sustained full throttle." });
     }
   }
   // 5 · battery discharge capability — burst (warn) vs continuous (error)
@@ -672,14 +746,23 @@ function diagnosticsProp(){
     const capAh = ba.phys.capacity_mah/1000;
     const burstA = capAh * (ba.phys.c_rating||30);
     const contA  = capAh * p.cRatingCont;
-    if(c.full.Itot > contA){
+    // Full throttle is a BURST condition, not a sustained one — a pack may legally
+    // exceed its continuous rating in a punch-out and only has to survive its burst
+    // rating. The previous ordering tested continuous first, so the burst branch was
+    // unreachable and every build that merely bursted past continuous was failed
+    // outright. Sustained overdraw is judged separately, at the hover point.
+    if(c.full.Itot > burstA){
       items.push({ sev:"err", block:false, tag:"batt-crate",
-        msg:"Battery continuous C-rate exceeded — pack sustains "+contA.toFixed(0)+" A but the build pulls "+c.full.Itot.toFixed(0)+" A; cells overheat and vent.",
+        msg:"Battery burst limit exceeded — pack peaks at "+burstA.toFixed(0)+" A but full throttle pulls "+c.full.Itot.toFixed(0)+" A; cells overheat and vent.",
         fix:"Higher C-rating / capacity, or a lower-current motor & prop." });
-    } else if(c.full.Itot > burstA){
+    } else if(c.hoverI > contA){
+      items.push({ sev:"err", block:false, tag:"batt-crate",
+        msg:"Battery continuous C-rate exceeded in the hover — pack sustains "+contA.toFixed(0)+" A but hover alone needs "+c.hoverI.toFixed(0)+" A.",
+        fix:"Higher C-rating / capacity, or a more efficient motor & prop." });
+    } else if(c.full.Itot > contA){
       items.push({ sev:"warn",
-        msg:"Battery burst limit exceeded — pack "+burstA.toFixed(0)+" A vs "+c.full.Itot.toFixed(0)+" A full-throttle draw.",
-        fix:"Higher C-rating or capacity keeps voltage sag in check." });
+        msg:"Full throttle ("+c.full.Itot.toFixed(0)+" A) is above the pack's "+contA.toFixed(0)+" A continuous rating.",
+        fix:"Fine in bursts; sustained wide-open throttle will heat the cells." });
     }
   }
   // 6 · over-voltage — pack cell count above ESC / motor rating (burns the ESC on spin-up)
@@ -979,7 +1062,20 @@ function seatModel(g, mode){
   else                g.position.y += (c.y - b.min.y) / s;
 }
 /* immediate placeholder group; swaps in the real oriented+fitted model on arrival */
-function modelFor(o, span, onReady){
+/* Orientation used for the small PREVIEW renders only (tiles, picker, reward
+   card). The assembled drone seats attachments with its own mount logic
+   (orientThinUp / orientCameraForward / seatModel "hang"), so this deliberately
+   does NOT touch the spec files — changing those would double-rotate the parts
+   on the rig. ORIENT has attachments:"none", which left a GPS board standing on
+   edge and a gimbal lying on its side in every preview. */
+function previewOrient(o){
+  if(!o || o.catKey !== "attachments") return undefined;
+  const mt = (o.phys && o.phys.mount_type) || "";
+  if(mt === "gps") return "flat";        // thin PCB face → horizontal
+  if(mt === "payload") return "axis";    // gimbal yoke → long axis vertical
+  return undefined;
+}
+function modelFor(o, span, onReady, orientRule){
   span = span || 1.6;
   const g = new THREE.Group();
   const fb = buildFallback((o && o.fallback) || {kind:"none",color:0xcccccc,s:1});
@@ -990,7 +1086,7 @@ function modelFor(o, span, onReady){
       const parts = masters.map(m=>m.clone(true));
       parts.forEach(p=>merged.add(p));
       const oriented = o.catKey === "motor" && orientMotorCombo(merged, parts);
-      const fitted = fitUnit(merged, span, o, oriented ? "none" : undefined);
+      const fitted = fitUnit(merged, span, o, oriented ? "none" : orientRule);
       while(g.children.length) g.remove(g.children[0]);
       g.add(fitted);
       if(onReady) onReady(g);
@@ -1064,23 +1160,92 @@ function detectArmTips(root, fallbackR){
 /* ════════════ 7 · PREVIEW ENGINE ════════════ */
 let previewRenderer = null;
 const previews = new Map();
+/* Supersample factor for every preview render. The canvas backing store is sized
+   to its ON-SCREEN size x this, so on a retina panel the component is rendered at
+   the display's real pixel density instead of half of it. Capped at 3 so a 4K
+   display doesn't quietly cost 16x the fill rate. */
+const PREVIEW_DPR = Math.max(2, Math.min(window.devicePixelRatio || 1, 3));
+/* A tiny sky/ground gradient, prefiltered through PMREM. Without an environment
+   map three.js MeshStandardMaterial metals have nothing to reflect and read as
+   flat grey plastic — this is what makes the motor bell and prop hub look
+   machined rather than painted. */
+let ENV_TEX = null;
+/* A PMREM texture belongs to the GL context that generated it, so the tile
+   previews and the main viewport each need their own (see sceneEnvTex). */
+function makeEnvTex(rnd){
+  try{
+    const c = document.createElement("canvas"); c.width = 64; c.height = 32;
+    const x = c.getContext("2d"), grd = x.createLinearGradient(0,0,0,32);
+    grd.addColorStop(0,"#eef2f6"); grd.addColorStop(.45,"#b9c2cc");
+    grd.addColorStop(.58,"#6e7681"); grd.addColorStop(1,"#2b3036");
+    x.fillStyle = grd; x.fillRect(0,0,64,32);
+    const tex = new THREE.CanvasTexture(c);
+    tex.mapping = THREE.EquirectangularReflectionMapping;
+    const pm = new THREE.PMREMGenerator(rnd); pm.compileEquirectangularShader();
+    const out = pm.fromEquirectangular(tex).texture; tex.dispose();
+    return out;
+  }catch(e){ return null; }
+}
+function ensureEnv(rnd){
+  if(ENV_TEX || !rnd || !THREE.PMREMGenerator) return ENV_TEX;
+  ENV_TEX = makeEnvTex(rnd);
+  return ENV_TEX;
+}
+/* Env map for the MAIN viewport renderer. Applied per-material (never as
+   scene.environment) so only the parts that ask for it — the galvanised tower
+   steel — gain reflections and the loaded component GLBs keep their tuned look. */
+let SCENE_ENV = null, SCENE_ENV_TRIED = false;
+function sceneEnvTex(){
+  if(SCENE_ENV || SCENE_ENV_TRIED || !renderer || !THREE.PMREMGenerator) return SCENE_ENV;
+  SCENE_ENV_TRIED = true;
+  SCENE_ENV = makeEnvTex(renderer);
+  return SCENE_ENV;
+}
 function initPreviewEngine(){
-  previewRenderer = new THREE.WebGLRenderer({antialias:true, alpha:true});
-  previewRenderer.setSize(220,150);
-  previewRenderer.setPixelRatio(1);
+  previewRenderer = new THREE.WebGLRenderer({ antialias:true, alpha:true,
+                                              powerPreference:"high-performance" });
+  previewRenderer.setPixelRatio(1);          // sizes below are already device pixels
+  if(THREE.sRGBEncoding !== undefined) previewRenderer.outputEncoding = THREE.sRGBEncoding;
+  if(THREE.ACESFilmicToneMapping !== undefined){
+    previewRenderer.toneMapping = THREE.ACESFilmicToneMapping;
+    previewRenderer.toneMappingExposure = 0.82;   // calibrated against the env map below
+  }
+  previewRenderer.setSize(320,220,false);
+}
+/* The environment map is a full-strength reflection by default, which blows the
+   pale plastics out. Dial it back per material and keep a floor on roughness so
+   nothing turns into a mirror. */
+function tunePreviewMaterials(root){
+  if(!root || !root.traverse) return;
+  root.traverse(function(m){
+    if(!m.isMesh || !m.material) return;
+    (Array.isArray(m.material) ? m.material : [m.material]).forEach(function(mat){
+      if(mat.envMapIntensity !== undefined) mat.envMapIntensity = 0.38;
+      if(mat.roughness !== undefined) mat.roughness = Math.max(mat.roughness, 0.32);
+      mat.needsUpdate = true;
+    });
+  });
 }
 function registerPreview(canvas, o){
   if(!canvas || !o || !previewRenderer) return;
   const scene = new THREE.Scene();
-  scene.add(new THREE.AmbientLight(0xffffff,.85));
-  const d = new THREE.DirectionalLight(0xffffff,.9); d.position.set(2,3,2); scene.add(d);
-  const d2 = new THREE.DirectionalLight(0xdce3f2,.35); d2.position.set(-2,-1,-2); scene.add(d2);
-  const group = modelFor(o); scene.add(group);
-  const camera = new THREE.PerspectiveCamera(34, 220/150, .1, 50);
+  scene.environment = ensureEnv(previewRenderer);   // reflections for metal parts
+  // Studio 3-point rig. Ambient is dialled back from .85 because the environment
+  // map now supplies the fill — leaving it high washed every material out flat.
+  scene.add(new THREE.AmbientLight(0xffffff,.20));
+  const d = new THREE.DirectionalLight(0xffffff,.62); d.position.set(2.4,3.2,2.2); scene.add(d);
+  const d2 = new THREE.DirectionalLight(0xdce3f2,.26); d2.position.set(-2.6,-.6,-1.8); scene.add(d2);
+  const d3 = new THREE.DirectionalLight(0xffffff,.18); d3.position.set(-1.4,2.0,-2.6); scene.add(d3);
+  const group = modelFor(o, undefined, function(g){ tunePreviewMaterials(g); }, previewOrient(o));
+  tunePreviewMaterials(group);
+  scene.add(group);
+  const aspect = (canvas.width && canvas.height) ? canvas.width/canvas.height : 220/150;
+  const camera = new THREE.PerspectiveCamera(34, aspect, .1, 50);
   camera.position.set(1.9,1.35,1.9); camera.lookAt(0,0,0);
   previews.set(canvas, {scene, camera, group});
 }
 let frameNo = 0;
+let previewW = 0, previewH = 0;
 function blitPreviews(){
   if(!previewRenderer) return;
   let i = 0;
@@ -1088,10 +1253,25 @@ function blitPreviews(){
     if(!cv.isConnected){ previews.delete(cv); continue; }
     if((i++ + frameNo) % 2 !== 0) continue;
     p.group.rotation.y += .022;
+    // Size the backing store to the canvas's ON-SCREEN box x PREVIEW_DPR. The
+    // markup ships a fixed width/height (280x190 for the reward card) while CSS
+    // stretches the element to fill its panel, so the old fixed buffer was both
+    // upscaled and rendered at half density on a retina display — that is what
+    // made the parts look jagged and soft.
+    const r = cv.getBoundingClientRect();
+    if(!r.width || !r.height) continue;
+    const w = Math.max(2, Math.round(r.width  * PREVIEW_DPR));
+    const h = Math.max(2, Math.round(r.height * PREVIEW_DPR));
+    if(cv.width !== w || cv.height !== h){ cv.width = w; cv.height = h; }
+    if(previewW !== w || previewH !== h){
+      previewW = w; previewH = h;
+      previewRenderer.setSize(w, h, false);
+    }
+    if(p.camera.aspect !== w/h){ p.camera.aspect = w/h; p.camera.updateProjectionMatrix(); }
     previewRenderer.render(p.scene, p.camera);
     const ctx = cv.getContext("2d");
-    ctx.clearRect(0,0,cv.width,cv.height);
-    ctx.drawImage(previewRenderer.domElement, 0,0, cv.width, cv.height);
+    ctx.clearRect(0,0,w,h);
+    ctx.drawImage(previewRenderer.domElement, 0,0, w, h);
   }
 }
 
@@ -1260,7 +1440,7 @@ function syncCamera(){
   if(!controls) return;
   const t = sceneModeType();
   if(t === "skyplot"){ controls.target.set(0,1.4,0); camera.position.set(5.0,4.2,5.4); }
-  else if(t === "baro"){ controls.target.set(0,2.2,0); camera.position.set(4.6,2.6,5.2); }
+  else if(t === "baro"){ controls.target.set(0,2.4,0); camera.position.set(5.6,3.0,6.4); }
   else if(t === "nav3d"){ controls.target.set(0,1.4,0); camera.position.set(4.6,3.2,5.0); }
   else if(isBench()){ controls.target.set(0,1.2,0); }
   else { controls.target.set(0, state.module==="m3" ? 1.2 : 1.1, 0); }
@@ -1270,16 +1450,23 @@ function syncCamera(){
    Motors/props are SEATED onto the real chassis geometry via downward raycast
    (works instantly against the fallback mesh, then re-seats once the real GLB loads). */
 function buildDrone(){
+  const d = assembleDrone();
+  rig = d; scene.add(d);
+}
+/* Assemble the real component GLBs into one drone group WITHOUT parenting it to
+   the scene or claiming `rig`. `detached` keeps it at its own local origin (no
+   flight height) so a caller — the navigation scenes — can nest and scale it. */
+function assembleDrone(detached){
   const d = new THREE.Group();
   propGroups = [];
   const ch = opt("chasis");
-  d.position.y = state.module==="m3" ? 1.0 : 1.15;   // flight height
+  const flyY = detached ? 0 : (state.module==="m3" ? 1.0 : 1.15);
+  d.position.y = flyY;                               // flight height
   // Data-driven path: if the chassis ships authored mount transforms
   // (DARUKA mounts.json), seat every real component GLB at its exact mount.
   if(ch && ch.mounts && ch.mounts.mounts && ch.files && ch.files.length){
     buildDroneFromMounts(d, ch);
-    rig = d; scene.add(d);
-    return;
+    return d;
   }
   const wb = (ch && ch.phys && ch.phys.wheelbase_mm) || 220;
   const u = 3.0 / wb;                         // world units per mm
@@ -1290,7 +1477,7 @@ function buildDrone(){
   const pSpan = pDiaMm * u;                    // propeller sized to its TRUE diameter
   const motorH = mo && mo.size ? mo.size[1]*u : mSpan*0.6;
   const armR = wb/2 * u;
-  d.position.y = state.module==="m3" ? 1.0 : 1.15;   // set BEFORE seating so world→local offset is known
+  d.position.y = flyY;                               // set BEFORE seating so world→local offset is known
   const rig3 = [];  // {motor, prop} — positions assigned via detected arm tips
   for(let i=0;i<4;i++){
     const rec = { motor:null, prop:null };
@@ -1329,7 +1516,7 @@ function buildDrone(){
   }
   if(ch){ chGroup = modelFor(ch, maxmm(ch)*u, ()=>reseatAll()); d.add(chGroup); }
   reseatAll();
-  rig = d; scene.add(d);
+  return d;
 }
 
 /* ── Mount-driven assembly ───────────────────────────────────────────────────
@@ -1669,28 +1856,34 @@ function buildBenchRig(){
    These reuse three.js (r128) and the FX particle system. Each builder sets the
    global `navGroup` (added to `scene`), installs `navSceneTick(dt)` for its own
    animation, and — where relevant — `updateSkyplotSats()` so the sky-plot editor
-   can push live constellation edits into the 3-D view. buildDrone stays intact
-   and untouched; the nav3d scene builds a compact procedural quad marker. */
+   can push live constellation edits into the 3-D view. The drone shown in every
+   nav scene is the SAME real component assembly used by buildDrone (real GLBs),
+   just nested and scaled down to marker size. */
 
-/* small procedural quad marker (frame + 4 arms + rotor discs) — a lightweight
-   stand-in for the assembled drone in the nav scenes (buildDrone is preserved). */
+/* The assembled drone (real chassis / motors / props / payload GLBs), wrapped so
+   the nav scenes can treat it like the small marker they used to draw: the inner
+   wrapper normalises the ~3-world-unit rig down to ≈1.8 units across, so `scale`
+   and any child added by the caller (mast, GPS, baro) keep their old coordinates.
+   Rotors come back through `propGroups` and are spun by spinNavProps(). */
+const NAV_DRONE_FIT = 0.58;        // real rig span (3.0 u) → marker span (~1.8 u)
 function navDrone(scale){
   const T = THREE, g = new T.Group();
-  const body = new T.Mesh(new T.BoxGeometry(.5,.14,.5), mat(0x2b3036));
-  g.add(body);
-  const disc = [];
-  for(let i=0;i<4;i++){
-    const a = Math.PI/4 + i*Math.PI/2;
-    const arm = new T.Mesh(new T.BoxGeometry(.62,.05,.09), mat(0x39424b));
-    arm.position.set(Math.cos(a)*.34,0,Math.sin(a)*.34); arm.rotation.y = -a; g.add(arm);
-    const hub = new T.Mesh(new T.CylinderGeometry(.05,.05,.1,12), mat(0x1f3a93));
-    hub.position.set(Math.cos(a)*.62,.05,Math.sin(a)*.62); g.add(hub);
-    const d = new T.Mesh(new T.CylinderGeometry(.26,.26,.012,24), mat(0x4f6d9e,{transparent:true,opacity:.32}));
-    d.position.set(Math.cos(a)*.62,.11,Math.sin(a)*.62); g.add(d); disc.push(d);
-  }
-  g.userData.discs = disc;
+  const inner = new T.Group();
+  inner.scale.setScalar(NAV_DRONE_FIT);
+  inner.add(assembleDrone(true));
+  g.add(inner);
+  g.userData.discs = [];           // legacy field — rotors now live in propGroups
   g.scale.setScalar(scale||1);
   return g;
+}
+/* Spin the loaded rotor groups of the nav-scene drone. The main loop only spins
+   propGroups while `rig` exists (assembly / bench views), and the nav scenes set
+   rig = null, so they drive their rotors from here instead. */
+function spinNavProps(step){
+  propGroups.forEach((p,i)=>{
+    const dir = p.userData.spinDir != null ? p.userData.spinDir : (i%2?1:-1);
+    p.rotation.y += step*dir;
+  });
 }
 /* billboard dot sprite (satellite / fix marker) */
 function dotSprite(color, size){
@@ -1705,6 +1898,63 @@ function dotSprite(color, size){
   s.scale.setScalar(size||.3);
   return s;
 }
+/* ── in-scene labels ──────────────────────────────────────────────────────────
+   A rounded plate drawn on a canvas and shown as a camera-facing sprite with
+   depthTest off, so a reading is never swallowed by the geometry it annotates.
+   `setText` is a no-op when the text hasn't changed, so a label can be driven
+   straight from the per-frame tick without re-rasterising every frame. */
+function roundRectPath(g,x,y,w,h,r){
+  g.beginPath(); g.moveTo(x+r,y); g.lineTo(x+w-r,y); g.quadraticCurveTo(x+w,y,x+w,y+r);
+  g.lineTo(x+w,y+h-r); g.quadraticCurveTo(x+w,y+h,x+w-r,y+h); g.lineTo(x+r,y+h);
+  g.quadraticCurveTo(x,y+h,x,y+h-r); g.lineTo(x,y+r); g.quadraticCurveTo(x,y,x+r,y); g.closePath();
+}
+function labelTex(lines, color){
+  const L = Array.isArray(lines) ? lines : [lines];
+  const W = 512, LH = 52, PAD = 14, H = L.length*LH + PAD*2;
+  const c = document.createElement("canvas"); c.width = W; c.height = H;
+  const g = c.getContext("2d");
+  g.fillStyle = "rgba(255,255,255,.92)"; g.strokeStyle = color; g.lineWidth = 5;
+  roundRectPath(g, 4, 4, W-8, H-8, 16); g.fill(); g.stroke();
+  g.fillStyle = color; g.textAlign = "center"; g.textBaseline = "middle";
+  L.forEach((ln,i)=>{
+    g.font = (i===0 ? "700 30px" : "500 34px")+" 'IBM Plex Mono', ui-monospace, monospace";
+    g.fillText(String(ln), W/2, PAD + LH*(i+0.5));
+  });
+  const t = new THREE.CanvasTexture(c); t.needsUpdate = true;
+  return { tex:t, aspect: W/H };
+}
+function navLabel(lines, color, width){
+  const w = width || 0.95;
+  const first = labelTex(lines, color);
+  const s = new THREE.Sprite(new THREE.SpriteMaterial({ map:first.tex, transparent:true, depthTest:false }));
+  s.scale.set(w, w/first.aspect, 1);
+  s.renderOrder = 999;
+  s.userData.key = JSON.stringify([lines, color]);
+  s.userData.setText = (lines2, color2)=>{
+    const key = JSON.stringify([lines2, color2 || color]);
+    if(key === s.userData.key) return;                 // nothing changed — skip the raster
+    s.userData.key = key;
+    if(s.material.map) s.material.map.dispose();
+    const r = labelTex(lines2, color2 || color);
+    s.material.map = r.tex; s.material.needsUpdate = true;
+    s.scale.set(w, w/r.aspect, 1);
+  };
+  return s;
+}
+/* dashed measurement line between two points (leader / clearance lines) */
+function dashLine(a, b, color, dashSize){
+  const geo = new THREE.BufferGeometry().setFromPoints([a, b]);
+  const m = new THREE.LineDashedMaterial({ color, dashSize:dashSize||0.09, gapSize:0.06,
+                                           transparent:true, opacity:.85 });
+  const l = new THREE.Line(geo, m); l.computeLineDistances();
+  return l;
+}
+function setLinePoints(line, a, b){
+  line.geometry.setFromPoints([a, b]);
+  line.geometry.attributes.position.needsUpdate = true;
+  line.computeLineDistances();
+}
+
 /* thin ring in the XZ plane (ground circles) */
 function groundRing(radius, color, opacity){
   const geo = new THREE.RingGeometry(Math.max(radius-0.02,0.001), radius, 48);
@@ -1752,7 +2002,7 @@ function buildSkyplotScene(){
 
   navSceneTick = (dt)=>{
     navSim.t += dt;
-    drone.userData.discs.forEach((d,i)=> d.rotation.y += (i%2?1:-1)*0.25);
+    spinNavProps(0.25);
     // during a run the sim drives navSim.cepWorld + jitter; when idle show current geometry
     if(!simActive){
       const nc = navCalc();
@@ -1786,19 +2036,49 @@ function buildBaroScene(){
   g.add(bands);
   // altitude axis line + ticks
   const axisMat = new T.LineBasicMaterial({ color:0xc4d1cc });
-  g.add(new T.Line(new T.BufferGeometry().setFromPoints([new T.Vector3(COL_R+0.2,0,0),new T.Vector3(COL_R+0.2,COL_H,0)]), axisMat));
+  const AX = COL_R+0.2;
+  g.add(new T.Line(new T.BufferGeometry().setFromPoints([new T.Vector3(AX,0,0),new T.Vector3(AX,COL_H,0)]), axisMat));
+  /* ISA pressure tape: the altimeter has no idea how high it is — it only reads
+     a pressure, so the column is ticked in BOTH units. Each tick prints the ISA
+     pressure at that height, which is the whole lookup the sensor inverts. */
+  for(let h=0; h<=3000; h+=500){
+    const y = mToY(h);
+    g.add(new T.Line(new T.BufferGeometry().setFromPoints(
+      [new T.Vector3(AX,y,0), new T.Vector3(AX+0.14,y,0)]), axisMat));
+    if(h % 1000 === 0){
+      const tick = navLabel([h+" m", (pressureAt(h)/100).toFixed(1)+" hPa"], "#5c6d68", 0.8);
+      tick.position.set(AX+0.62, y, 0); g.add(tick);
+    }
+  }
   // drone hovering (moves to true altitude)
   const drone = navDrone(0.9); g.add(drone);
-  // TRUE marker (green disc) and SENSED marker (amber disc)
-  const trueRing = groundRing(COL_R+0.35, C_COL.green, .9);
-  const sensRing = groundRing(COL_R+0.35, C_COL.orange, .9);
+  // TRUE marker (green disc) and SENSED marker (amber disc) — wider than the
+  // assembled drone (≈2.1 u across) so both rings stay readable around it
+  const trueRing = groundRing(COL_R+0.85, C_COL.green, .9);
+  const sensRing = groundRing(COL_R+0.85, C_COL.orange, .9);
   g.add(trueRing); g.add(sensRing);
+
+  /* ── the detection chain, spelled out in the scene ──
+     sensor plate (what the barometer measures) → conversion → sensed altitude,
+     with a bracket spanning the disagreement against truth. */
+  const sensorLbl = navLabel(["BARO", "P 000.0 hPa"], "#1f3a93", 1.5);
+  const convLbl   = navLabel(["ISA INVERSE", "h 0 m"], "#1f3a93", 1.5);
+  const trueLbl   = navLabel(["TRUE", "0 m"], "#1f8a5b", 1.05);
+  const sensLbl   = navLabel(["SENSED", "0 m"], "#c65d3b", 1.05);
+  const errLbl    = navLabel(["ERROR", "0.0 m"], "#5c6d68", 1.0);
+  g.add(sensorLbl); g.add(convLbl); g.add(trueLbl); g.add(sensLbl); g.add(errLbl);
+  // leader from the drone to the sensor plate, and the true↔sensed bracket
+  const feed = dashLine(new T.Vector3(), new T.Vector3(), 0x1f3a93, .07);
+  const bracket = new T.Line(new T.BufferGeometry().setFromPoints(
+    [new T.Vector3(), new T.Vector3()]), new T.LineBasicMaterial({ color:0xc65d3b }));
+  g.add(feed); g.add(bracket);
 
   navGroup = g; scene.add(g); rig = null;
   navSim = { trueM: state.altitude, sensedM: state.altitude };
 
+  const BX = -(COL_R+1.55);        // sensor-chain column, left of the atmosphere
   navSceneTick = (dt)=>{
-    drone.userData.discs.forEach((d,i)=> d.rotation.y += (i%2?1:-1)*0.4);
+    spinNavProps(0.4);
     if(!simActive){
       const nc = navCalc();
       navSim.trueM = nc.hTrue; navSim.sensedM = nc.baro.sensed;
@@ -1809,7 +2089,241 @@ function buildBaroScene(){
     // sensed ring reddens as it separates from truth
     const sep = Math.abs(navSim.sensedM - navSim.trueM);
     sensRing.material.opacity = 0.5 + Math.min(sep/20, 0.5);
+
+    // ── readouts: pressure actually seen, its altitude sensitivity, the
+    //    altitude that pressure converts to, and the resulting error ──
+    const Phat = pressureAt(navSim.sensedM);          // the pressure the sensor reports
+    const sens = dhdP(pressureAt(navSim.trueM))*100;  // m per hPa at this height
+    const grade = state.baroGrade === "coarse" ? "COARSE BARO" : "MS5611 BARO";
+    sensorLbl.userData.setText([grade, "P " + (Phat/100).toFixed(2) + " hPa"]);
+    convLbl.userData.setText(["h = ISA⁻¹(P) · " + sens.toFixed(1) + " m/hPa",
+                              "h " + navSim.sensedM.toFixed(1) + " m"]);
+    trueLbl.userData.setText(["TRUE", Math.round(navSim.trueM) + " m"]);
+    sensLbl.userData.setText(["SENSED", navSim.sensedM.toFixed(1) + " m"]);
+    const d = navSim.sensedM - navSim.trueM;
+    const bad = Math.abs(d) > 3.5;
+    errLbl.userData.setText(["ERROR", (d>=0?"+":"") + d.toFixed(1) + " m"],
+                            bad ? "#a83232" : "#5c6d68");
+    sensorLbl.position.set(BX, yT + 0.62, 0);
+    convLbl.position.set(BX, yT + 0.14, 0);
+    // truth in front, sensed behind — they sit at nearly the same height when the
+    // sensor is good, so they are separated in depth rather than vertically
+    trueLbl.position.set(COL_R+0.95, yT, 1.3);
+    sensLbl.position.set(COL_R+1.05, yS, -1.7);
+    // below the markers: the top-right of the viewport is covered by the live
+    // telemetry card, so an upward offset hides this label on a narrow pane
+    errLbl.position.set(COL_R+1.7, (yT+yS)/2 - 0.5, 0.35);
+    setLinePoints(feed, new T.Vector3(-0.25, yT, 0), new T.Vector3(BX+0.62, yT+0.14, 0));
+    setLinePoints(bracket, new T.Vector3(COL_R+1.05, yT, 0), new T.Vector3(COL_R+1.05, yS, 0));
+    bracket.material.color.setHex(bad ? 0xa83232 : 0xc65d3b);
   };
+}
+
+/* ── LATTICE COMMS TOWER (the Module 3 obstacle) ──────────────────────────────
+   A self-supporting square lattice mast, modelled the way a real one is built:
+   four tapered legs on concrete footings, X-braced bays with horizontal ties, a
+   caged climbing ladder, a top platform carrying three sector panels and a
+   microwave dish, a waveguide bundle running up one leg, guy wires, and a
+   flashing aviation obstruction beacon. Every member is a real tube (10-segment
+   cylinders), so the silhouette holds up under orbit and zoom. */
+function towerSteel(color, rough, metal, envI){
+  const m = mat(color, { roughness:rough, metalness:metal });
+  const env = sceneEnvTex();
+  if(env){ m.envMap = env; m.envMapIntensity = envI == null ? 0.9 : envI; }
+  return m;
+}
+/* one tube between two points — the primitive every lattice member is made of */
+function strut(a, b, r, material, seg){
+  const dir = new THREE.Vector3().subVectors(b, a);
+  const len = dir.length() || 1e-4;
+  const mesh = new THREE.Mesh(new THREE.CylinderGeometry(r, r, len, seg || 10, 1), material);
+  mesh.position.copy(a).addScaledVector(dir, .5);
+  mesh.quaternion.setFromUnitVectors(new THREE.Vector3(0,1,0), dir.clone().normalize());
+  return mesh;
+}
+function buildCommsTower(H){
+  const T = THREE, g = new T.Group();
+  H = H || 2.9;
+  const SHAFT = H*0.74;                       // lattice height; mast rises above it
+  const W0 = 0.40, W1 = 0.115;                // half-width at base / at shaft top
+  const BAYS = 9, hb = SHAFT/BAYS;
+  const halfW = y => W0 + (W1-W0)*Math.min(y/SHAFT, 1);
+  const SGN = [[1,1],[1,-1],[-1,-1],[-1,1]];
+  const corner = (i, y) => { const w = halfW(y); return new T.Vector3(SGN[i][0]*w, y, SGN[i][1]*w); };
+
+  // materials — ICAO alternating paint on the members, galvanised hardware
+  // Hot-dip galvanised steel is a LIGHT matte grey. A high-metalness material
+  // with only this dim gradient to reflect renders near-black here, so the
+  // hardware is kept semi-metallic and bright instead.
+  const RED = towerSteel(0xb0392c, .52, .22), WHT = towerSteel(0xe9edf1, .5, .18);
+  const GALV = towerSteel(0xc3cbd2, .44, .55, 1.0);
+  const CONCRETE = mat(0x9a978f, { roughness:.95, metalness:.02 });
+  const RADOME = towerSteel(0xdfe4e8, .58, .1);
+  const BANDS = 7;
+  const paintAt = y => (Math.floor(y/H*BANDS) % 2) ? WHT : RED;
+
+  // ── foundations: a chamfered concrete pier + anchor bolts under each leg ──
+  for(let i=0;i<4;i++){
+    const c = corner(i, 0);
+    const pier = new T.Mesh(new T.CylinderGeometry(.13,.17,.22,4,1), CONCRETE);
+    pier.position.set(c.x, .11, c.z); pier.rotation.y = Math.PI/4; g.add(pier);
+    const plate = new T.Mesh(new T.BoxGeometry(.15,.02,.15), GALV);
+    plate.position.set(c.x, .23, c.z); g.add(plate);
+    for(let b=0;b<4;b++){
+      const bx = new T.Mesh(new T.CylinderGeometry(.008,.008,.05,8), GALV);
+      bx.position.set(c.x + (b%2?.05:-.05), .25, c.z + (b<2?.05:-.05)); g.add(bx);
+    }
+  }
+
+  // ── legs, horizontal ties, X bracing, secondary (redundant) bracing ──
+  for(let bay=0; bay<BAYS; bay++){
+    const y0 = .22 + bay*hb, y1 = .22 + (bay+1)*hb;
+    const legR = 0.026 - 0.012*(bay/BAYS);     // legs thin out with height
+    const braceR = 0.011 - 0.004*(bay/BAYS);
+    const paint = paintAt((y0+y1)/2);
+    for(let i=0;i<4;i++){
+      const a = corner(i, y0), b = corner(i, y1);
+      g.add(strut(a, b, legR, paint, 12));
+      // flange plate at every leg splice — the joint a real tower bolts up
+      const fl = new T.Mesh(new T.CylinderGeometry(legR*1.9, legR*1.9, .018, 12), GALV);
+      fl.position.copy(b); g.add(fl);
+      const j = (i+1)%4;
+      const a2 = corner(j, y0), b2 = corner(j, y1);
+      g.add(strut(b, b2, braceR, paint, 10));            // horizontal tie
+      g.add(strut(a, b2, braceR*0.85, GALV, 8));         // X brace
+      g.add(strut(a2, b, braceR*0.85, GALV, 8));
+      // short redundant member from the X crossing to the tie mid-point
+      const mid = a.clone().add(b2).multiplyScalar(.5);
+      const tieMid = b.clone().add(b2).multiplyScalar(.5);
+      g.add(strut(mid, tieMid, braceR*0.6, GALV, 6));
+    }
+  }
+  // base cross-bracing between the widest legs (the K-frame at ground level)
+  for(let i=0;i<4;i++){
+    const a = corner(i, .24), b = corner((i+1)%4, .24);
+    g.add(strut(a, b, .014, RED, 10));
+  }
+
+  // ── caged climbing ladder up the +X face ──
+  const ladder = new T.Group();
+  const LY0 = .3, LY1 = SHAFT - .05;
+  const lx = y => halfW(y) + .06;
+  for(const dz of [-.075, .075]){
+    const a = new T.Vector3(lx(LY0), LY0, dz), b = new T.Vector3(lx(LY1), LY1, dz);
+    ladder.add(strut(a, b, .012, GALV, 10));
+  }
+  for(let y = LY0+.06; y < LY1; y += .105){
+    const r = new T.Mesh(new T.CylinderGeometry(.007,.007,.15,8), GALV);
+    r.position.set(lx(y), y, 0); r.rotation.x = Math.PI/2; ladder.add(r);
+  }
+  for(let y = 1.0; y < LY1; y += .34){          // safety cage hoops start at ~2 m scale height
+    const hoop = new T.Mesh(new T.TorusGeometry(.15, .009, 8, 22, Math.PI*1.25), GALV);
+    hoop.position.set(lx(y), y, 0); hoop.rotation.y = Math.PI/2; hoop.rotation.z = -Math.PI*0.62;
+    ladder.add(hoop);
+  }
+  g.add(ladder);
+
+  // ── waveguide / feeder bundle snaking up one leg into the platform ──
+  const curve = new T.CatmullRomCurve3([
+    new T.Vector3(-W0-.08, .05, -W0-.02), new T.Vector3(-W0*.9, .6, -W0*.8),
+    new T.Vector3(-halfW(1.4)-.04, 1.4, -halfW(1.4)-.03),
+    new T.Vector3(-halfW(SHAFT*.8)-.03, SHAFT*.8, -halfW(SHAFT*.8)-.02),
+    new T.Vector3(-.06, SHAFT+.02, -.05)
+  ]);
+  const bundle = new T.Mesh(new T.TubeGeometry(curve, 64, .022, 10, false),
+    towerSteel(0x2f3439, .78, .1));
+  g.add(bundle);
+
+  // ── platform: octagon deck + double handrail + kick plate ──
+  const plat = new T.Group(); plat.position.y = SHAFT;
+  const deckR = W1 + .3;
+  const deck = new T.Mesh(new T.CylinderGeometry(deckR, deckR, .022, 8), GALV);
+  plat.add(deck);
+  for(const rh of [.18, .34]){
+    const rail = new T.Mesh(new T.TorusGeometry(deckR, .009, 8, 32), GALV);
+    rail.rotation.x = Math.PI/2; rail.position.y = rh; plat.add(rail);
+  }
+  for(let i=0;i<8;i++){
+    const a = i/8*Math.PI*2, p = new T.Mesh(new T.CylinderGeometry(.011,.011,.36,8), GALV);
+    p.position.set(Math.cos(a)*deckR, .18, Math.sin(a)*deckR); plat.add(p);
+  }
+  g.add(plat);
+
+  // ── three sector panel antennas on stand-off arms ──
+  for(let i=0;i<3;i++){
+    const a = i/3*Math.PI*2 + Math.PI/6, R = deckR + .1;
+    const panel = new T.Mesh(new T.BoxGeometry(.055,.34,.13), RADOME);
+    panel.position.set(Math.cos(a)*R, SHAFT+.30, Math.sin(a)*R);
+    panel.rotation.y = -a; panel.rotation.z = 0.06;         // slight downtilt
+    g.add(panel);
+    const cap = new T.Mesh(new T.CylinderGeometry(.028,.028,.055,10), RADOME);
+    cap.position.copy(panel.position); cap.position.y += .18; cap.rotation.z = Math.PI/2;
+    cap.rotation.y = -a; g.add(cap);
+    for(const dy of [.10, -.10]){
+      const arm = strut(
+        new T.Vector3(Math.cos(a)*(W1+.02), SHAFT+.30+dy, Math.sin(a)*(W1+.02)),
+        new T.Vector3(Math.cos(a)*R, SHAFT+.30+dy, Math.sin(a)*R), .009, GALV, 8);
+      g.add(arm);
+    }
+  }
+
+  // ── microwave dish: a thin spherical-cap reflector, rolled rim, and a feed
+  //    horn held at the focus by a three-leg spar. Built opening toward +Y, then
+  //    yawed a quarter turn so it points out from the tower with a slight uptilt.
+  const dish = new T.Group();
+  const DR = 0.165, SR = DR*1.45;
+  const shell = new T.Mesh(
+    new T.SphereGeometry(SR, 44, 26, 0, Math.PI*2, Math.PI*0.72, Math.PI*0.28), RADOME);
+  shell.material.side = T.DoubleSide; dish.add(shell);
+  const rimY = SR*Math.cos(Math.PI*0.72), rimR = SR*Math.sin(Math.PI*0.72);
+  const rim = new T.Mesh(new T.TorusGeometry(rimR, .012, 10, 40), GALV);
+  rim.rotation.x = Math.PI/2; rim.position.y = rimY; dish.add(rim);
+  const horn = new T.Mesh(new T.CylinderGeometry(.018,.032,.07,14), GALV);
+  horn.position.y = rimY + .085; dish.add(horn);
+  for(let i=0;i<3;i++){
+    const a = i/3*Math.PI*2;
+    dish.add(strut(new T.Vector3(Math.cos(a)*rimR*.92, rimY, Math.sin(a)*rimR*.92),
+                   new T.Vector3(0, rimY + .07, 0), .0055, GALV, 6));
+  }
+  const backHub = new T.Mesh(new T.CylinderGeometry(.03,.04,.06,12), GALV);
+  backHub.position.y = -SR + .01; dish.add(backHub);
+  dish.rotation.z = -Math.PI/2 + 0.10;                 // open outward (+X), slight uptilt
+  dish.position.set(deckR + .30, SHAFT + .02, 0);
+  g.add(dish);
+  g.add(strut(new T.Vector3(W1, SHAFT+.02, 0), new T.Vector3(deckR+.13, SHAFT+.02, 0), .012, GALV, 8));
+
+  // ── mast, lightning finial, obstruction beacon ──
+  const mastTop = H;
+  g.add(strut(new T.Vector3(0, SHAFT, 0), new T.Vector3(0, mastTop-.1, 0), .028, WHT, 14));
+  const finial = new T.Mesh(new T.ConeGeometry(.016,.16,10), GALV);
+  finial.position.y = mastTop + .06; g.add(finial);
+  const beaconMat = new T.MeshStandardMaterial({ color:0xd63b2a, emissive:0xff3b25,
+    emissiveIntensity:1.2, roughness:.35, metalness:.1 });
+  const beacon = new T.Mesh(new T.SphereGeometry(.05, 20, 14), beaconMat);
+  beacon.position.y = mastTop - .06; g.add(beacon);
+  const beaconCage = new T.Mesh(new T.CylinderGeometry(.055,.055,.10,12,1,true), GALV);
+  beaconCage.position.y = mastTop - .06; beaconCage.material = GALV; g.add(beaconCage);
+  const glow = dotSprite(0xff4b2e, .2); glow.position.y = mastTop - .06; g.add(glow);
+
+  // ── guy wires to concrete anchor blocks ──
+  const wireMat = towerSteel(0x6f767d, .6, .8);
+  for(let i=0;i<3;i++){
+    const a = i/3*Math.PI*2 + .4, GR = 1.25, gy = SHAFT*.72;
+    const anchor = new T.Mesh(new T.BoxGeometry(.16,.1,.16), CONCRETE);
+    anchor.position.set(Math.cos(a)*GR, .05, Math.sin(a)*GR); g.add(anchor);
+    g.add(strut(new T.Vector3(Math.cos(a)*GR, .1, Math.sin(a)*GR),
+                new T.Vector3(Math.cos(a)*halfW(gy), gy, Math.sin(a)*halfW(gy)), .0055, wireMat, 6));
+  }
+
+  // beacon flash: ~1 s period, sharp on-pulse like a real medium-intensity light
+  g.userData.tick = (t)=>{
+    const ph = (t % 1.15) / 1.15;
+    const on = ph < 0.22 ? 1 : Math.max(0, 1 - (ph-0.22)*4);
+    beaconMat.emissiveIntensity = 0.25 + on*2.6;
+    glow.material.opacity = 0.10 + on*0.55;
+    glow.scale.setScalar(.16 + on*.12);
+  };
+  return g;
 }
 
 /* ── NAV3D SCENE: drone + translucent error ellipsoid + drift cloud + obstacle ── */
@@ -1829,19 +2343,37 @@ function buildNav3dScene(){
   const cloud = new T.Group(); g.add(cloud);
   const cloudPts = [];
   for(let i=0;i<40;i++){ const sp = dotSprite(0x4f6d9e, .12); sp.visible=false; cloud.add(sp); cloudPts.push(sp); }
-  // nearby obstacle (a pylon the drone drifts toward when the sphere is large)
-  const obstacle = new T.Group();
-  const pole = new T.Mesh(new T.CylinderGeometry(.12,.16,2.6,16), mat(0x8a5b23,{roughness:.8}));
-  pole.position.y = 1.3; obstacle.add(pole);
-  const cap = new T.Mesh(new T.SphereGeometry(.22,14,10), mat(0xc65d3b)); cap.position.y=2.6; obstacle.add(cap);
-  obstacle.position.set(2.4, 0, 0); g.add(obstacle);
+  // nearby obstacle: a lattice comms tower the drone drifts toward when the
+  // error sphere grows (the thing a bad fix actually flies you into)
+  const TOWER_H = 3.1, TOWER_X = 2.6, TOWER_R = 0.55;   // TOWER_R ≈ base half-width + guys
+  const obstacle = buildCommsTower(TOWER_H);
+  obstacle.position.set(TOWER_X, 0, 0); obstacle.rotation.y = -0.35; g.add(obstacle);
+
+  /* ── what the tower is FOR ────────────────────────────────────────────────
+     The ellipsoid is scaled at 1 world unit per 12 m (see cepW below), so the
+     same factor converts the drone↔tower gap into a real separation. Labelled
+     live: the tower's size, the 3-D error radius, and the clearance left over
+     — the moment the error exceeds the clearance the fix can no longer prove
+     the drone is clear of the structure. */
+  const M_PER_U = 12;
+  const uToM = u => u * M_PER_U;
+  const towerLbl = navLabel(["COMMS MAST", Math.round(uToM(TOWER_H))+" m obstacle"], "#5c6d68", 1.05);
+  towerLbl.position.set(TOWER_X, TOWER_H + 0.42, 0); g.add(towerLbl);
+  const errLbl = navLabel(["3-D ERROR", "0.0 m"], "#1f8a5b", 0.92); g.add(errLbl);
+  const clrLbl = navLabel(["CLEARANCE", "0 m"], "#5c6d68", 0.92); g.add(clrLbl);
+  const clrLine = dashLine(new T.Vector3(), new T.Vector3(), 0x5c6d68, .10); g.add(clrLine);
+  // radius bar from the drone to the edge of its own error sphere
+  const radLine = new T.Line(new T.BufferGeometry().setFromPoints([new T.Vector3(), new T.Vector3()]),
+    new T.LineBasicMaterial({ color:0x1f8a5b }));
+  g.add(radLine);
 
   navGroup = g; scene.add(g); rig = null;
   navSim = { cepW:0.4, hW:0.4, t:0, cloudI:0, drift:0, unsafe:false, rewardShown:false };
 
   navSceneTick = (dt)=>{
     navSim.t += dt;
-    drone.userData.discs.forEach((d,i)=> d.rotation.y += (i%2?1:-1)*0.45);
+    spinNavProps(0.45);
+    if(obstacle.userData.tick) obstacle.userData.tick(navSim.t);   // beacon flash
     if(!simActive){
       const nc = navCalc();
       const cepM = isFinite(nc.cep)?nc.cep:60, hM = nc.hErr;
@@ -1855,8 +2387,10 @@ function buildNav3dScene(){
     const safe = !navSim.unsafe;
     const col = safe ? 0x1f8a5b : 0xa83232;
     ellipsoid.material.color.setHex(col); ellWire.material.color.setHex(col);
-    // drift toward the obstacle when the sphere is large
-    const target = navSim.unsafe ? Math.min((navSim.cepW-0.8)*0.5, 1.6) : 0;
+    // drift toward the obstacle when the sphere is large. Clamped at 0: the old
+    // (cepW−0.8) form went NEGATIVE for a marginally-unsafe fix, which pushed the
+    // drone away from the mast — the opposite of the point being made.
+    const target = navSim.unsafe ? Math.max(0, Math.min((navSim.cepW-0.4)*0.9, 1.6)) : 0;
     navSim.drift += (target - navSim.drift) * Math.min(dt*1.5, 1);
     drone.position.x = navSim.drift; ellipsoid.position.x = navSim.drift; ellWire.position.x = navSim.drift;
     // spawn a drift-cloud fix now and then
@@ -1866,6 +2400,26 @@ function buildNav3dScene(){
       sp.position.set(navSim.drift + (Math.random()-.5)*navSim.cepW*1.4, BASE_Y + (Math.random()-.5)*navSim.hW*1.4, (Math.random()-.5)*navSim.cepW*1.4);
       sp.material.color.setHex(safe?0x4f6d9e:0xc65d3b);
     }
+    // ── live obstacle geometry: error radius vs the gap left to the mast ──
+    // semi-axes back out of world units (undo the 0.15 floor), then the same
+    // √(CEP² + h_err²) the experiment is grading
+    const aM = uToM(Math.max(navSim.cepW - 0.15, 0)), bM = uToM(Math.max(navSim.hW - 0.15, 0));
+    const errM = Math.sqrt(aM*aM + bM*bM);
+    const gapU  = (TOWER_X - TOWER_R) - drone.position.x;
+    const clrM  = Math.max(0, uToM(gapU));
+    const hit   = errM >= clrM;
+    const errHex = safe ? "#1f8a5b" : "#a83232";
+    errLbl.userData.setText(["3-D ERROR", "±" + errM.toFixed(1) + " m"], errHex);
+    errLbl.position.set(drone.position.x, BASE_Y + navSim.hW + 0.42, 0);
+    clrLbl.userData.setText([hit ? "COLLISION RISK" : "CLEARANCE",
+                             clrM.toFixed(0) + " m gap"], hit ? "#a83232" : "#5c6d68");
+    clrLbl.position.set((drone.position.x + TOWER_X - TOWER_R)/2, BASE_Y + 0.05, 0);
+    setLinePoints(clrLine, new T.Vector3(drone.position.x, BASE_Y-0.28, 0),
+                           new T.Vector3(TOWER_X - TOWER_R, BASE_Y-0.28, 0));
+    clrLine.material.color.setHex(hit ? 0xa83232 : 0x5c6d68);
+    setLinePoints(radLine, new T.Vector3(drone.position.x, BASE_Y, 0),
+                           new T.Vector3(drone.position.x + navSim.cepW, BASE_Y, 0));
+    radLine.material.color.setHex(safe ? 0x1f8a5b : 0xa83232);
     // when passed, reveal the mounted GPS mast + barometer box reward
     if(navSim.reward && !navSim.rewardShown){
       navSim.rewardShown = true; addNav3dReward(drone, BASE_Y);
@@ -2040,6 +2594,9 @@ function renderModuleTabs(){
       if(simActive) stopSim(false);
       state.module = m.id; saveState();
       renderModuleTabs(); renderExpTabs(); syncRunControls(); drawLiveGraph(); buildScene(); syncRunControls();
+      // each module here holds a single experiment, so the module tab IS the
+      // experiment switch — introduce it the same way the experiment tab does
+      playIntroVoice(currentIntroKey());
     });
     box.appendChild(b);
   });
@@ -2114,7 +2671,7 @@ function renderLog(){
     const d = el("div","log-item "+it.sev);
     d.innerHTML = '<span class="ic">'+icon(it.sev)+'</span>'+
       '<div class="body"><span class="msg">'+txt(it.msg)+'</span>'+
-      (it.fix ? '<span class="fix">→ '+txt(it.fix)+'</span>' : '')+'</div>';
+      (it.fix ? '<span class="fix">Fix: '+txt(it.fix)+'</span>' : '')+'</div>';
     list.appendChild(d);
   });
   const badge = $("logBadge"), sum = $("logSummary");
@@ -2129,22 +2686,71 @@ function renderLog(){
   else { rb.classList.remove("blocked"); }
   return dg;
 }
+/* local mass formatter — exp-04 has no fmtMass() of its own */
+function rwMass(g){
+  if(typeof fmtMass === "function") return fmtMass(g);
+  return g >= 1000 ? (g/1000).toFixed(2)+" kg" : (g<10 && g>0 ? g.toFixed(1) : Math.round(g))+" g";
+}
+/* Draw a random component from the reward category and REMEMBER the draw, so the
+   card doesn't reshuffle on every re-render. Kept in localStorage under its own
+   key (not the experiment's state schema, which differs per experiment) so a
+   fresh play-through can award a different part. */
+let _rewardPick = null;
+function rewardPick(r){
+  if(!r || !r.pool || !r.pool.length) return null;
+  if(_rewardPick && r.pool.indexOf(_rewardPick) !== -1) return _rewardPick;
+  const KEY = "dtl-reward-" + (r.category || "x");
+  let id = null; try{ id = localStorage.getItem(KEY); }catch(e){}
+  let p = id ? r.pool.filter(function(o){ return o.id === id; })[0] : null;
+  if(!p){
+    p = r.pool[Math.floor(Math.random()*r.pool.length)];
+    try{ localStorage.setItem(KEY, p.id); }catch(e){}
+  }
+  _rewardPick = p;
+  return p;
+}
 function renderReward(){
-  const body = $("rewardBody");
+  const body = $("rewardBody"); if(!body) return;
+  const DB = (typeof DRONE_DB !== "undefined" && DRONE_DB) ? DRONE_DB
+           : (typeof ESC_DB   !== "undefined" && ESC_DB)   ? ESC_DB : null;
+  const r = (DB && DB.reward) || { pool: [] };
   const unlocked = allDone();
-  $("rewardBadge").textContent = (unlocked?1:0)+" / 1";
+  const badge = $("rewardBadge");
   body.innerHTML = "";
-  if(unlocked){
-    const r = DRONE_DB.reward;
-    const d = el("div","reward-open");
-    d.innerHTML = '<div class="view"><canvas width="280" height="190"></canvas></div>'+
-      '<div class="meta"><b>★ '+txt(r.name)+'</b><p>'+txt(r.desc)+'</p></div>';
+  // capstone: the experiment IS the showdown, so there is nothing to unlock
+  if(!r.category){
+    if(badge) badge.textContent = unlocked ? "PASS" : "—";
+    const d = el("div","reward-locked"+(unlocked?" reward-final":""));
+    d.innerHTML = '<div class="lock">'+(unlocked?"🏆":"🔒")+'</div><p>'+
+      (unlocked ? "Full system verified — the build flies."
+                : txt(r.desc || "Complete every check to clear the flight test."))+'</p>';
     body.appendChild(d);
-    registerPreview(d.querySelector("canvas"), r);
+    return;
+  }
+  if(badge) badge.textContent = (unlocked?1:0)+" / 1";
+  if(unlocked){
+    const pick = rewardPick(r);
+    const d = el("div","reward-open");
+    const specs = (pick && pick.specs && pick.specs.length)
+      ? pick.specs.slice(0,3).map(function(s){ return '<span><i>'+txt(s[0])+'</i>'+txt(s[1])+'</span>'; }).join("")
+      : "";
+    d.innerHTML =
+      '<div class="view"><canvas width="280" height="190"></canvas></div>'+
+      '<div class="meta"><span class="rw-kind">'+txt(r.name)+' unlocked</span>'+
+      '<b>'+txt(pick ? pick.name : r.name)+'</b>'+
+      (specs ? '<div class="rw-specs mono">'+specs+'</div>' : '')+
+      (pick && pick.mass ? '<div class="rw-specs mono"><span><i>Mass</i>'+rwMass(pick.mass)+
+        (pick.qty>1?" × "+pick.qty:"")+'</span></div>' : '')+
+      '</div>';
+    body.appendChild(d);
+    // pick is a REAL catalogue option, so it carries catKey → fitUnit applies the
+    // same orientation rule this component uses everywhere else in the lab.
+    registerPreview(d.querySelector("canvas"), pick || { fallback:r.fallback });
   }else{
     const total = allExperiments().length;
     const d = el("div","reward-locked");
-    d.innerHTML = '<div class="lock">🔒</div><p>Complete all '+total+' experiments<br>to unlock a reward component</p>';
+    d.innerHTML = '<div class="lock">🔒</div><p>Complete all '+total+' experiments<br>to unlock a '+
+      txt((r.name||"reward component").toLowerCase())+'</p>';
     body.appendChild(d);
   }
 }
@@ -2243,8 +2849,7 @@ const TEL_SERIES = {
   temp:   { a:{label:"Motor winding (°C)", color:C_COL.orange}, b:{label:"Shaft RPM", color:C_COL.blue} },
   eff:    { a:{label:"Motor efficiency (%)", color:C_COL.green}, b:{label:"Thrust eff. (g/W)", color:C_COL.slate, scale:0.1} },
   alt:    { a:{label:"Altitude (m)", color:C_COL.green}, b:{label:"Total thrust (N)", color:C_COL.slate}, xtime:true },
-  hdop:   { a:{label:"GPS fix error (m)", color:C_COL.blue}, b:{label:"HDOP", color:C_COL.orange} },
-  cep:    { a:{label:"Fix radius (m)", color:C_COL.blue}, b:{label:"CEP (m)", color:C_COL.orange} },
+  hdopcep:{ a:{label:"Fix error (m)", color:C_COL.blue}, b:{label:"HDOP", color:C_COL.orange} },
   baroerr:{ a:{label:"Altitude error (m)", color:C_COL.green}, b:{label:"True altitude (m)", color:C_COL.slate} },
   nav3d:  { a:{label:"3D error radius (m)", color:C_COL.blue}, b:{label:"CEP (m)", color:C_COL.slate} }
 };
@@ -2471,34 +3076,324 @@ function cfgNavRunTelemetry(){
     return telemetryConfig(lastRun.metric, lastRun.data, lastRun.data2, 0, {mini:false});
   return null;
 }
+
+/* ── NAVIGATION analysis suite ────────────────────────────────────────────────
+   Every chart below re-solves the real model (dopSolve / baroError / ISA) for a
+   swept input, so they stay honest against whatever the student has configured
+   rather than replaying the run buffer. Sample counts are kept small — the
+   gallery instantiates all of them at once. */
+const NAV_PRESETS = ["spread","clustered","wall","line"];
+/* a fresh Rayleigh sample set for the CURRENT cep (median radius = CEP) */
+function fixSamples(n, cep){
+  const sigma = (isFinite(cep) ? cep : 60)/1.1774, out = [];
+  for(let i=0;i<n;i++){
+    const r = sigma*Math.sqrt(-2*Math.log(Math.max(Math.random(), 1e-6)));
+    const th = Math.random()*Math.PI*2;
+    out.push({ r, x:r*Math.cos(th), y:r*Math.sin(th) });
+  }
+  return out;
+}
+/* HDOP + CEP as satellites are added to the current sky pattern */
+function cfgDopVsSats(){
+  const labels=[], hd=[], cp=[];
+  for(let n=4;n<=12;n++){
+    const d = dopSolve(makePreset(state.skyPreset, n));
+    labels.push(n);
+    hd.push(d.ok ? +d.hdop.toFixed(2) : null);
+    cp.push(d.ok ? +cepFromHdop(d.hdop, navCalc().uere).toFixed(2) : null);
+  }
+  // log axes: a 4-satellite solve can be two orders of magnitude worse than an
+  // 8-satellite one, which flattens the interesting part of a linear plot
+  const o = baseXY("Satellites in view ("+state.skyPreset+" pattern)", {y:"HDOP (log)", y1:"CEP m (log)"});
+  o.scales.y.type = "logarithmic"; o.scales.y.beginAtZero = false;
+  o.scales.y1.type = "logarithmic"; o.scales.y1.beginAtZero = false;
+  return { type:"line", data:{ labels, datasets:[
+    { label:"HDOP", data:hd, borderColor:C_COL.blue, backgroundColor:C_COL.blue+"1f",
+      borderWidth:2, pointRadius:3, tension:.25, fill:true, yAxisID:"y" },
+    { label:"CEP (m)", data:cp, borderColor:C_COL.orange, borderWidth:2, pointRadius:3,
+      tension:.25, borderDash:[5,4], yAxisID:"y1" } ] },
+    options: o };
+}
+/* the four sky patterns side by side — why "more satellites" isn't the answer */
+function cfgPresetCompare(){
+  const n = state.satCount, uere = navCalc().uere;
+  const rows = NAV_PRESETS.map(p=>{ const d = dopSolve(makePreset(p, n)); return { p, d }; });
+  const v = x => +x.toFixed(2);
+  // clustered/line geometries run into the hundreds — log keeps Spread visible
+  const o = baseXY("Sky pattern · "+n+" satellites", {y:"Value (log scale)"});
+  // min below 1 so a good HDOP (~1) still draws a visible bar off the axis floor
+  o.scales.y.type = "logarithmic"; o.scales.y.beginAtZero = false; o.scales.y.min = 0.3;
+  return { type:"bar", data:{ labels:NAV_PRESETS.map(p=>p[0].toUpperCase()+p.slice(1)), datasets:[
+    { label:"HDOP", data:rows.map(r=>r.d.ok?v(r.d.hdop):null), backgroundColor:C_COL.blue, borderWidth:0 },
+    { label:"VDOP", data:rows.map(r=>r.d.ok?v(r.d.vdop):null), backgroundColor:C_COL.green, borderWidth:0 },
+    { label:"CEP (m)", data:rows.map(r=>r.d.ok?v(cepFromHdop(r.d.hdop,uere)):null),
+      backgroundColor:C_COL.orange, borderWidth:0 } ] },
+    options: o };
+}
+/* current geometry against an ideal spread constellation, all four DOP axes */
+function cfgDopRadar(){
+  const nc = navCalc(), ideal = dopSolve(makePreset("spread", 10));
+  const cap = v => +Math.min(v, 12).toFixed(2);
+  const cur = nc.dop.ok ? [nc.dop.hdop, nc.dop.vdop, nc.dop.pdop, nc.dop.gdop].map(cap) : [12,12,12,12];
+  const ref = [ideal.hdop, ideal.vdop, ideal.pdop, ideal.gdop].map(cap);
+  return { type:"radar", data:{ labels:["HDOP","VDOP","PDOP","GDOP"], datasets:[
+    { label:"This constellation", data:cur, borderColor:C_COL.orange,
+      backgroundColor:C_COL.orange+"33", borderWidth:2, pointRadius:3 },
+    { label:"Ideal spread ×10", data:ref, borderColor:C_COL.green,
+      backgroundColor:C_COL.green+"22", borderWidth:2, pointRadius:3, borderDash:[5,4] } ] },
+    options:{ responsive:true, maintainAspectRatio:false, plugins:{ legend:{position:"bottom"} },
+      scales:{ r:{ beginAtZero:true, suggestedMax:6, grid:{color:C_COL.grid},
+                   pointLabels:{ font:{ family:"'IBM Plex Mono'" } } } } } };
+}
+/* sky coverage by compass octant — an empty wedge is exactly what wrecks HDOP */
+function cfgSkyCoverage(){
+  const names = ["N","NE","E","SE","S","SW","W","NW"], bins = new Array(8).fill(0);
+  (navCalc().sats).forEach(s=>{
+    let a = (s.az*R2D) % 360; if(a<0) a += 360;
+    bins[Math.floor(((a+22.5)%360)/45)]++;
+  });
+  return { type:"polarArea", data:{ labels:names,
+    datasets:[{ data:bins, backgroundColor:MASS_PALETTE.slice(0,8).map(c=>c+"cc"), borderWidth:0 }] },
+    options:{ responsive:true, maintainAspectRatio:false,
+      plugins:{ legend:{position:"right"},
+        tooltip:{ callbacks:{ label:cx=>" "+cx.label+": "+cx.raw+" satellite"+(cx.raw===1?"":"s") } } },
+      scales:{ r:{ beginAtZero:true, ticks:{ stepSize:1, precision:0 }, grid:{color:C_COL.grid} } } } };
+}
+/* per-satellite elevation — low sats help horizontal geometry, high sats don't */
+function cfgSatElevation(){
+  const sats = navCalc().sats.map((s,i)=>({ i:i+1, el:+(s.el*R2D).toFixed(1) }));
+  const col = e => e<25 ? C_COL.green : e<60 ? C_COL.slate : C_COL.orange;
+  return { type:"bar", data:{ labels:sats.map(s=>"SV"+s.i),
+    datasets:[{ label:"Elevation (°)", data:sats.map(s=>s.el),
+      backgroundColor:sats.map(s=>col(s.el)), borderWidth:0 }] },
+    options: Object.assign(baseXY("Satellite", {y:"Elevation (°)"}),
+      { plugins:{ legend:{display:false},
+        tooltip:{ callbacks:{ label:cx=>" "+cx.raw.toFixed(1)+"° — "+
+          (cx.raw<25?"low (good for HDOP)":cx.raw<60?"mid":"high (feeds VDOP)") } } } }) };
+}
+/* the fix cloud itself: 200 draws in the local East/North plane + the CEP ring */
+function cfgFixScatter(){
+  const nc = navCalc();
+  const pts = fixSamples(200, nc.cep).map(p=>({ x:+p.x.toFixed(2), y:+p.y.toFixed(2) }));
+  const cep = isFinite(nc.cep) ? nc.cep : 60, ring=[], r95=[];
+  for(let i=0;i<=72;i++){
+    const a = i/72*Math.PI*2;
+    ring.push({ x:+(Math.cos(a)*cep).toFixed(2), y:+(Math.sin(a)*cep).toFixed(2) });
+    r95.push({ x:+(Math.cos(a)*cep*2.079).toFixed(2), y:+(Math.sin(a)*cep*2.079).toFixed(2) });
+  }
+  return { type:"scatter", data:{ datasets:[
+    { label:"GPS fixes", data:pts, backgroundColor:C_COL.slate+"aa", pointRadius:2.5 },
+    { label:"CEP (50 %)", data:ring, borderColor:C_COL.orange, borderWidth:2,
+      pointRadius:0, showLine:true, fill:false },
+    { label:"R95 (95 %)", data:r95, borderColor:C_COL.red, borderWidth:1.5, borderDash:[5,4],
+      pointRadius:0, showLine:true, fill:false } ] },
+    // square canvas + identical symmetric ranges, otherwise the CEP "circle"
+    // renders as an ellipse and the 50 % ring stops meaning what it says
+    options: Object.assign(baseXY("East error (m)", {y:"North error (m)"}),
+      { maintainAspectRatio:true, aspectRatio:1,
+        scales:{ x:{ title:{display:true,text:"East error (m)"}, grid:{color:C_COL.grid},
+                     min:-cep*2.6, max:cep*2.6 },
+                 y:{ title:{display:true,text:"North error (m)"}, grid:{color:C_COL.grid},
+                     min:-cep*2.6, max:cep*2.6 } } }) };
+}
+/* radial-error histogram — the Rayleigh shape the CEP definition rests on */
+function cfgFixHistogram(){
+  const nc = navCalc();
+  const src = (lastRun.metric==="hdopcep" && lastRun.data.length>8)
+    ? lastRun.data.slice() : fixSamples(400, nc.cep).map(p=>p.r);
+  const max = Math.max.apply(null, src) || 1, BINS = 14, w = max/BINS;
+  const counts = new Array(BINS).fill(0);
+  src.forEach(r=>{ counts[Math.min(BINS-1, Math.floor(r/w))]++; });
+  const cep = isFinite(nc.cep) ? nc.cep : 60;
+  return { type:"bar", data:{ labels:counts.map((_,i)=>((i+0.5)*w).toFixed(1)),
+    datasets:[{ label:"Fixes in bin ("+src.length+" samples)", data:counts,
+      backgroundColor:counts.map((_,i)=> (i+0.5)*w <= cep ? C_COL.blue : C_COL.slate+"aa"),
+      borderWidth:0 }] },
+    options: Object.assign(baseXY("Radial error (m) — shaded ≤ CEP "+cep.toFixed(1)+" m", {y:"Count"}),
+      { plugins:{ legend:{position:"bottom"} } }) };
+}
+/* cumulative distribution with the 50 % / 95 % guides marked */
+function cfgFixCdf(){
+  const nc = navCalc();
+  const cep = isFinite(nc.cep) ? nc.cep : 60;
+  const rows = fixSamples(500, cep).map(p=>p.r).sort((a,b)=>a-b);
+  const pts = [], step = Math.ceil(rows.length/60);
+  for(let i=0;i<rows.length;i+=step) pts.push({ x:+rows[i].toFixed(2), y:+((i+1)/rows.length*100).toFixed(1) });
+  const g = pct => [{x:0,y:pct},{x:+(cep*(pct===50?1:2.079)).toFixed(2),y:pct}];
+  return { type:"scatter", data:{ datasets:[
+    { label:"Empirical CDF", data:pts, borderColor:C_COL.blue, borderWidth:2, pointRadius:0,
+      showLine:true, tension:.2, fill:false },
+    { label:"50 % → CEP "+cep.toFixed(1)+" m", data:g(50), borderColor:C_COL.orange,
+      borderWidth:1.5, borderDash:[5,4], pointRadius:0, showLine:true, fill:false },
+    { label:"95 % → R95 "+(cep*2.079).toFixed(1)+" m", data:g(95), borderColor:C_COL.red,
+      borderWidth:1.5, borderDash:[5,4], pointRadius:0, showLine:true, fill:false } ] },
+    options: baseXY("Radial error (m)", {y:"Fixes within radius (%)"}) };
+}
+/* CEP is linear in ranging error — both scenarios marked on the same line */
+function cfgCepVsUere(){
+  const nc = navCalc();
+  const hdop = nc.dop.ok ? nc.dop.hdop : 12;
+  const pts = [], marks = [];
+  for(let u=1; u<=12; u+=0.5) pts.push({ x:u, y:+(hdop*u).toFixed(2) });
+  [["Open-sky", NAV.uere.nominal], ["Urban", NAV.uere.urban]].forEach(([n,u])=>
+    marks.push({ x:u, y:+(hdop*u).toFixed(2), n }));
+  return { type:"scatter", data:{ datasets:[
+    { label:"CEP = HDOP × UERE  (HDOP "+hdop.toFixed(2)+")", data:pts, borderColor:C_COL.blue,
+      borderWidth:2, pointRadius:0, showLine:true, fill:false },
+    { label:"Scenario points", data:marks, backgroundColor:C_COL.orange, pointRadius:6 } ] },
+    options: Object.assign(baseXY("UERE (m)", {y:"CEP (m)"}),
+      { plugins:{ legend:{position:"bottom"},
+        tooltip:{ callbacks:{ label:cx=>" "+(cx.raw.n?cx.raw.n+": ":"")+"UERE "+cx.raw.x+" m → CEP "+cx.raw.y+" m" } } } }) };
+}
+/* the ISA lookup the altimeter inverts, with its shrinking pressure gradient */
+function cfgIsaPressure(){
+  const h=[], P=[], sens=[];
+  for(let a=0;a<=3000;a+=100){
+    h.push(a); P.push(+(pressureAt(a)/100).toFixed(1)); sens.push(+(dhdP(pressureAt(a))*100).toFixed(2));
+  }
+  return { type:"line", data:{ labels:h, datasets:[
+    { label:"ISA pressure (hPa)", data:P, borderColor:C_COL.blue, backgroundColor:C_COL.blue+"1f",
+      borderWidth:2, pointRadius:0, tension:.3, fill:true, yAxisID:"y" },
+    { label:"Sensitivity dh/dP (m/hPa)", data:sens, borderColor:C_COL.orange, borderWidth:2,
+      pointRadius:0, tension:.3, borderDash:[5,4], yAxisID:"y1" } ] },
+    options: Object.assign(baseXY("True altitude (m)", {y:"Pressure (hPa)", y1:"m per hPa"}),
+      { scales:{ x:{ title:{display:true,text:"True altitude (m)"}, grid:{color:C_COL.grid} },
+                 y:{ title:{display:true,text:"Pressure (hPa)"}, grid:{color:C_COL.grid} },
+                 y1:{ position:"right", title:{display:true,text:"m per hPa"},
+                      grid:{drawOnChartArea:false}, beginAtZero:true } } }) };
+}
+/* both sensor grades, plus what a temperature inversion adds on top */
+function cfgBaroGradeCompare(){
+  const h=[], fine=[], coarse=[], inv=[];
+  for(let a=0;a<=3000;a+=150){
+    h.push(a);
+    fine.push(+baroError(a,"fine",{}).total.toFixed(2));
+    coarse.push(+baroError(a,"coarse",{}).total.toFixed(2));
+    inv.push(+baroError(a, state.baroGrade, {inversion:true}).total.toFixed(2));
+  }
+  return { type:"line", data:{ labels:h, datasets:[
+    { label:"MS5611 (fine)", data:fine, borderColor:C_COL.green, borderWidth:2, pointRadius:0, tension:.3 },
+    { label:"BMP180 (coarse)", data:coarse, borderColor:C_COL.orange, borderWidth:2, pointRadius:0, tension:.3 },
+    { label:"+ temperature inversion", data:inv, borderColor:C_COL.red, borderWidth:2, pointRadius:0,
+      tension:.3, borderDash:[5,4] } ] },
+    options: baseXY("True altitude (m)", {y:"Altitude error (m)"}) };
+}
+/* where the 3-D budget crosses over from GPS-dominated to baro-dominated */
+function cfgErrVsAltitude(){
+  const nc = navCalc();
+  const cep = isFinite(nc.cep) ? nc.cep : 60;
+  const h=[], horiz=[], vert=[], tot=[];
+  for(let a=0;a<=3000;a+=150){
+    const be = baroError(a, state.baroGrade, { inversion:state.inversion });
+    h.push(a); horiz.push(+cep.toFixed(2)); vert.push(+be.total.toFixed(2));
+    tot.push(+nav3dRadius(cep, be.total).toFixed(2));
+  }
+  return { type:"line", data:{ labels:h, datasets:[
+    { label:"3-D radius √(CEP²+h²)", data:tot, borderColor:C_COL.blue, backgroundColor:C_COL.blue+"1f",
+      borderWidth:2.5, pointRadius:0, tension:.3, fill:true },
+    { label:"Horizontal CEP", data:horiz, borderColor:C_COL.orange, borderWidth:2, pointRadius:0, borderDash:[6,4] },
+    { label:"Vertical baro error", data:vert, borderColor:C_COL.green, borderWidth:2, pointRadius:0, tension:.3 },
+    { label:"5 m safety limit", data:h.map(()=>5), borderColor:C_COL.red, borderWidth:1.5,
+      pointRadius:0, borderDash:[3,3] } ] },
+    options: baseXY("True altitude (m)", {y:"Error (m)"}) };
+}
+/* variance split, stacked, across the sky patterns — one bar per constellation */
+function cfgBudgetStack(){
+  const uere = navCalc().uere;
+  const hErr = baroError(state.altitude, state.baroGrade, { inversion:state.inversion }).total;
+  const rows = NAV_PRESETS.map(p=>{
+    const d = dopSolve(makePreset(p, state.satCount));
+    const cep = d.ok ? Math.min(cepFromHdop(d.hdop, uere), 40) : 40;
+    return { p, cep2:+(cep*cep).toFixed(1) };
+  });
+  const st = { stacked:true, grid:{color:C_COL.grid} };
+  return { type:"bar", data:{ labels:NAV_PRESETS.map(p=>p[0].toUpperCase()+p.slice(1)), datasets:[
+    { label:"Horizontal CEP² (m²)", data:rows.map(r=>r.cep2), backgroundColor:C_COL.blue, borderWidth:0 },
+    { label:"Vertical h_err² (m²)", data:rows.map(()=>+(hErr*hErr).toFixed(1)),
+      backgroundColor:C_COL.orange, borderWidth:0 } ] },
+    options:{ responsive:true, maintainAspectRatio:false, plugins:{ legend:{position:"bottom"} },
+      scales:{ x:Object.assign({ title:{display:true,text:"Sky pattern · variance contribution"} }, st),
+               y:Object.assign({ title:{display:true,text:"Error² (m²)"}, beginAtZero:true }, st) } } };
+}
+/* two-input sweep: satellite count × ranging environment, bubble area ∝ CEP */
+function cfgCepBubble(){
+  const sets = [["nominal", NAV.uere.nominal, C_COL.green], ["urban", NAV.uere.urban, C_COL.red]];
+  return { type:"bubble", data:{ datasets: sets.map(([name,u,col])=>({
+      label:"UERE "+u.toFixed(1)+" m ("+name+")",
+      data:(()=>{ const out=[];
+        for(let n=4;n<=12;n++){
+          const d = dopSolve(makePreset(state.skyPreset, n));
+          if(!d.ok) continue;
+          const cep = Math.min(cepFromHdop(d.hdop, u), 40);
+          out.push({ x:n, y:+cep.toFixed(2), r: Math.max(3, Math.min(26, 3+cep*1.4)) });
+        }
+        return out; })(),
+      backgroundColor:col+"66", borderColor:col, borderWidth:1.5 })) },
+    options: Object.assign(baseXY("Satellites in view", {y:"CEP (m)"}),
+      { plugins:{ legend:{position:"bottom"},
+        tooltip:{ callbacks:{ label:cx=>" "+cx.dataset.label+" · "+cx.raw.x+" sats → CEP "+cx.raw.y+" m" } } } }) };
+}
+/* ── output registries ──────────────────────────────────────────────────────
+   Two panels, split by what the plot IS, not by what it shows: anything drawn
+   as a curve against a swept axis belongs to the Graphs card (`graph:true`);
+   the distributions, bars, radars and clouds stay in Charts. chartDefs() and
+   graphDefs() are both filtered views of this one list. */
+function navPlotDefs(){
+  return [
+    // ── geometry ──
+    { id:"dop",     title:"Dilution of precision (HDOP/VDOP/PDOP/GDOP)", cfg:cfgDopBars },
+    { id:"doprad",  title:"DOP profile vs an ideal constellation",       cfg:cfgDopRadar },
+    { id:"skypol",  title:"Satellite sky-plot (az / zenith)",            cfg:cfgSkyPolar },
+    { id:"skycov",  title:"Sky coverage by compass octant",              cfg:cfgSkyCoverage },
+    { id:"satel",   title:"Satellite elevation profile",                 cfg:cfgSatElevation },
+    { id:"dopsats", title:"HDOP & CEP vs satellite count",               cfg:cfgDopVsSats, graph:true },
+    { id:"preset",  title:"Sky pattern comparison (HDOP / VDOP / CEP)",  cfg:cfgPresetCompare },
+    // ── horizontal accuracy ──
+    { id:"fixsc",   title:"GPS fix cloud with CEP / R95 rings",          cfg:cfgFixScatter },
+    { id:"fixhist", title:"Radial-error histogram (Rayleigh)",           cfg:cfgFixHistogram },
+    { id:"fixcdf",  title:"Cumulative error distribution (50 % / 95 %)", cfg:cfgFixCdf, graph:true },
+    { id:"cepuere", title:"CEP vs ranging error (UERE)",                 cfg:cfgCepVsUere, graph:true },
+    { id:"cepbub",  title:"CEP vs satellites × ranging environment",     cfg:cfgCepBubble },
+    // ── barometric altimetry ──
+    { id:"isaP",    title:"ISA pressure & dh/dP sensitivity",            cfg:cfgIsaPressure, graph:true },
+    { id:"baroalt", title:"Altitude error vs true altitude (ISA sweep)", cfg:cfgBaroErrAlt, graph:true },
+    { id:"barogr",  title:"Sensor grade & inversion comparison",         cfg:cfgBaroGradeCompare, graph:true },
+    // ── synthesis ──
+    { id:"budget",  title:"3-D error budget",                            cfg:cfgErrorBudget },
+    { id:"budstk",  title:"Variance split across sky patterns",          cfg:cfgBudgetStack },
+    { id:"erralt",  title:"3-D error vs altitude (GPS ↔ baro crossover)", cfg:cfgErrVsAltitude, graph:true }
+  ];
+}
+/* every line plot, live run first — drives the Graphs card gallery */
+function graphDefs(){
+  const live = { id:"navrun", title:"Last run telemetry", cfg:cfgNavRunTelemetry,
+                 empty:"Run this experiment to record telemetry.", graph:true };
+  if(!isNavScene()) return [ { id:"flightrun", title:"Active flight telemetry", cfg:cfgFlightTelemetry,
+                               empty:"Run Module 3 · Hover / Flight to record telemetry.", graph:true } ];
+  return [live].concat(navPlotDefs().filter(d=>d.graph));
+}
 /* registry of every analysis chart — drives both the gallery and single-chart view */
 function chartDefs(){
-  if(isNavScene()){
-    return [
-      { id:"dop",     title:"Dilution of precision (HDOP/VDOP/PDOP/GDOP)", cfg:cfgDopBars },
-      { id:"skypol",  title:"Satellite sky-plot (az / zenith)",            cfg:cfgSkyPolar },
-      { id:"baroalt", title:"Altitude error vs true altitude (ISA sweep)", cfg:cfgBaroErrAlt },
-      { id:"budget",  title:"3-D error budget",                            cfg:cfgErrorBudget },
-      { id:"navrun",  title:"Last run telemetry",                          cfg:cfgNavRunTelemetry, empty:"Run this experiment to record telemetry." }
-    ];
-  }
+  if(isNavScene()) return navPlotDefs().filter(d=>!d.graph);
   return [
     { id:"mass",   title:"Mass distribution",                 cfg:()=>massChartConfig(false) },
     { id:"tc",     title:"Thrust & current vs throttle",      cfg:cfgThrustCurrent },
     { id:"eff",    title:"Motor & thrust efficiency",         cfg:cfgEfficiency },
     { id:"tacho",  title:"Virtual tachometer",                cfg:cfgTacho, note:()=>{ const t=tachoData(); return "free "+Math.round(t.free).toLocaleString()+" · loaded "+Math.round(t.loaded).toLocaleString()+" · loss "+Math.round(t.lost).toLocaleString()+" rpm ("+t.lossPct.toFixed(1)+"%) @ "+Math.round(t.d*100)+"% throttle"; } },
     { id:"circ",   title:"Equivalent-circuit voltage split",  dom:renderCircuitDOM },
-    { id:"sank",   title:"Power flow · P_elec → P_mech + loss", dom:renderSankeyDOM },
+    { id:"sank",   title:"Power flow · P_elec to P_mech + loss", dom:renderSankeyDOM },
     { id:"tvi",    title:"Thrust vs current",                 cfg:cfgThrustVsCurrent },
     { id:"therm",  title:"Predicted temperature @ 85% throttle", cfg:cfgThermal },
     { id:"geom",   title:"Thrust curve vs rotor geometry",    cfg:cfgThrustGeom },
     { id:"flight", title:"Active flight telemetry",           cfg:cfgFlightTelemetry, empty:"Run Module 3 · Hover / Flight to record telemetry." }
   ];
 }
-/* single-chart floating detail — reached by clicking any chart's expand button */
-function openSingleChart(def){
-  const body = openModal(txt(def.title)+' <em>· detail</em>', "#c65d3b",
-    '<button type="button" class="modal-back" id="chartBack">‹ all charts</button>');
+/* single-chart floating detail — reached by clicking any chart's expand button.
+   `backTo` decides which gallery the ‹ back button returns to. */
+function openSingleChart(def, backTo){
+  const graph = backTo === "graphs";
+  const body = openModal(txt(def.title)+' <em>· detail</em>', graph ? "#4f6d9e" : "#c65d3b",
+    '<button type="button" class="modal-back" id="chartBack">‹ all '+(graph?"graphs":"charts")+'</button>');
   const wrap = el("div"); wrap.style.cssText = "height:62vh;min-height:340px;position:relative";
   if(def.dom){ wrap.style.height="auto"; def.dom(wrap); }
   else{ wrap.innerHTML = '<canvas id="gc_single"></canvas>'; }
@@ -2506,20 +3401,62 @@ function openSingleChart(def){
   if(def.cfg){ const c = def.cfg(); if(c) ChartHub.put("gc_single", c);
     else wrap.innerHTML = '<div class="runs-empty">'+txt(def.empty||"No data yet.")+'</div>'; }
   if(def.note) body.appendChild(el("p","chart-footnote", txt(def.note())));
-  const back = $("chartBack"); if(back) back.addEventListener("click", openChartsDetail);
+  const back = $("chartBack");
+  if(back) back.addEventListener("click", graph ? openGraphDetail : openChartsDetail);
 }
-/* live telemetry graph detail — reached by clicking the Graphs card */
+/* shared gallery body: one block per def, each with its own expand button */
+function renderPlotGallery(wrap, defs, backTo){
+  const pending = [];                              // instantiated AFTER wrap is in the DOM
+  defs.forEach(def=>{
+    const block = el("div","calc-block gchart");
+    const head = el("div","gchart-head");
+    head.innerHTML = '<h3>'+txt(def.title)+'</h3><button type="button" class="gchart-expand" title="Expand">⤢</button>';
+    head.querySelector("button").addEventListener("click", ()=>openSingleChart(def, backTo));
+    block.appendChild(head);
+    if(def.dom){
+      const host = el("div"); def.dom(host); block.appendChild(host);
+    }else{
+      const cfg = def.cfg();
+      if(cfg){ const box = el("div","chart-box-lg");
+        box.innerHTML = '<canvas id="gc_'+def.id+'"></canvas>'; block.appendChild(box);
+        pending.push({ id:"gc_"+def.id, cfg }); }
+      else block.appendChild(el("div","runs-empty", txt(def.empty||"No data yet.")));
+    }
+    if(def.note) block.appendChild(el("p","chart-footnote", txt(def.note())));
+    wrap.appendChild(block);
+  });
+  return pending;
+}
+/* Graphs gallery — the live run plus every swept LINE plot, reached by clicking
+   the Graphs card. Same block layout as the Charts gallery; the two panels split
+   the plot registry between them (see navPlotDefs). */
 function openGraphDetail(){
+  ChartHub.killPrefix("gc_");
   const { mod, exp } = currentExp();
-  const key = mod.id+":"+exp.id, metric = exp.metric;
-  const body = openModal('Live Graph <em>· '+txt(exp.name)+'</em>', "#4f6d9e");
+  const body = openModal('Graphs <em>· live run + parameter sweeps</em>', "#4f6d9e");
+  const wrap = el("div","calc-blocks");
+  const defs = graphDefs();
+
+  // the live run gets a full-width plot at the top, or a prompt when empty
+  const key = mod.id+":"+exp.id;
   let data, data2, flightT;
   if(simActive && sim.data.length>1){ data=sim.data; data2=sim.data2; flightT=sim.flightT||0; }
   else if(lastRun.key===key && lastRun.data.length>1){ data=lastRun.data; data2=lastRun.data2; flightT=lastRun.flightT; }
-  if(!data){ body.appendChild(el("div","runs-empty","No data yet for <b>"+txt(exp.name)+"</b>.<br>Press <b>▶ Run Sim</b> to plot this experiment.")); return; }
-  const wrap = el("div"); wrap.style.cssText = "height:62vh;min-height:340px;position:relative";
-  wrap.innerHTML = '<canvas id="gc_single"></canvas>'; body.appendChild(wrap);
-  ChartHub.put("gc_single", telemetryConfig(metric, data, data2, flightT, {mini:false}));
+  const live = el("div","calc-block gchart");
+  live.innerHTML = '<div class="gchart-head"><h3>Live run · '+txt(exp.name)+'</h3></div>';
+  if(data){
+    const box = el("div","chart-box-lg");
+    box.innerHTML = '<canvas id="gc_live"></canvas>'; live.appendChild(box);
+  }else{
+    live.appendChild(el("div","runs-empty",
+      "No data yet for <b>"+txt(exp.name)+"</b>.<br>Press <b>▶ Run Sim</b> to plot this experiment."));
+  }
+  wrap.appendChild(live);
+
+  const pending = renderPlotGallery(wrap, defs.filter(d=>d.id!=="navrun" && d.id!=="flightrun"), "graphs");
+  body.appendChild(wrap);
+  if(data) ChartHub.put("gc_live", telemetryConfig(exp.metric, data, data2, flightT, {mini:false}));
+  pending.forEach(p=>ChartHub.put(p.id, p.cfg));
 }
 
 /* ════════════ 10 · FLOATING WINDOWS ════════════ */
@@ -2750,25 +3687,10 @@ function openChartsDetail(){
 
   // gallery — one block per chart def; Chart.js charts get a sized chart-box,
   // DOM charts (circuit/Sankey) render inline; every block has an expand button.
-  const pending = [];                              // {id,cfg} — instantiated AFTER wrap is in the DOM
-  chartDefs().forEach(def=>{
-    const block = el("div","calc-block gchart");
-    const head = el("div","gchart-head");
-    head.innerHTML = '<h3>'+txt(def.title)+'</h3><button type="button" class="gchart-expand" title="Expand">⤢</button>';
-    head.querySelector("button").addEventListener("click", ()=>openSingleChart(def));
-    block.appendChild(head);
-    if(def.dom){                                   // circuit / Sankey — DOM
-      const host = el("div"); def.dom(host); block.appendChild(host);
-    }else{                                         // Chart.js chart
-      const cfg = def.cfg();
-      if(cfg){ const box = el("div","chart-box-lg");
-        box.innerHTML = '<canvas id="gc_'+def.id+'"></canvas>'; block.appendChild(box);
-        pending.push({ id:"gc_"+def.id, cfg }); }
-      else{ block.appendChild(el("div","runs-empty", txt(def.empty||"No data yet."))); }
-    }
-    if(def.note) block.appendChild(el("p","chart-footnote", txt(def.note())));
-    wrap.appendChild(block);
-  });
+  // Line plots are NOT here — they live in the Graphs card (see graphDefs).
+  const pending = renderPlotGallery(wrap, chartDefs(), "charts");
+  if(isNavScene()) wrap.appendChild(el("p","chart-footnote",
+    "Line plots — the parameter sweeps and the live run — are in the Graphs card."));
   body.appendChild(wrap);                          // attach first so the canvases exist…
   pending.forEach(pc=>ChartHub.put(pc.id, pc.cfg));// …then create the charts
 
@@ -2971,42 +3893,12 @@ function navSimBaseline(){
 function navSimStep(dt){
   const metric = sim.exp.metric, nc = navCalc();
 
-  if(metric === "hdop"){
-    // Constellation Geometry — GPS-fix jitter radius ∝ CEP; PASS needs HDOP<2
-    // (and a sane VDOP — a 'wall' constellation can fake a good 2-D DOP).
-    const cepM = isFinite(nc.cep) ? nc.cep : 60;
-    navSim.cepWorld = Math.min(0.15 + cepM/40, 3.06);
-    navSim.fixAmp = nc.dop.ok ? Math.min(0.3 + nc.dop.hdop*0.25, 3.0) : 2.5;
-    navSim.noFix = !nc.dop.ok;
-    const fixErr = isFinite(nc.cep) ? nc.cep*(0.4 + Math.random()*1.1) : 60;
-    sim.data.push(+fixErr.toFixed(2));
-    sim.data2.push(nc.dop.ok ? +nc.dop.hdop.toFixed(2) : 12);
-    const good = nc.dop.ok && nc.dop.hdop < 2, poor = !nc.dop.ok || nc.dop.hdop > 4;
-    updateTelemetry({ hdop:nc.dop.hdop, vdop:nc.dop.vdop, pdop:nc.dop.pdop, sats:nc.sats.length,
-      cep:nc.cep, sigma:nc.hErr, altTrue:nc.hTrue, altSensed:nc.baro.sensed,
-      phase: !nc.dop.ok ? "NO FIX" : good ? "GPS LOCK" : poor ? "GEOMETRY POOR" : "ACQUIRING",
-      phaseCls: (!nc.dop.ok || poor) ? "danger" : good ? "good" : "warn" });
-    if(sim.t >= NAV_RUN_T){
-      if(!nc.dop.ok){
-        sim.verdictOk = false; sim.verdict = "No fix — insufficient/degenerate geometry";
-      }else if(nc.dop.hdop < 2 && nc.dop.vdop > 8){
-        sim.verdictOk = false;
-        sim.verdict = "Good HDOP but VDOP "+nc.dop.vdop.toFixed(1)+" — 2D DOP hides vertical dilution";
-      }else if(nc.dop.hdop < 2){
-        sim.verdictOk = true; sim.verdict = "GPS LOCK — HDOP "+nc.dop.hdop.toFixed(2)+", good geometry";
-      }else if(nc.dop.hdop > 4){
-        sim.verdictOk = false; sim.verdict = "Poor geometry — HDOP "+nc.dop.hdop.toFixed(1)+", fix wanders";
-      }else{
-        sim.verdictOk = false; sim.verdict = "Marginal geometry — HDOP "+nc.dop.hdop.toFixed(2)+", accuracy degraded";
-      }
-      stopSim(true);
-    }
-    return;
-  }
-
-  if(metric === "cep"){
-    // Horizontal Accuracy — ~50 Rayleigh-distributed fixes around truth (median
-    // radius = CEP by construction: CEP = σ·√(ln4)); PASS needs CEP < 4 m.
+  if(metric === "hdopcep"){
+    // Constellation Geometry & Accuracy — one run covers both halves of the
+    // horizontal story: the geometry solve (HDOP/VDOP) and the distance it turns
+    // into (CEP = HDOP × UERE). Fixes are drawn Rayleigh-distributed about truth,
+    // so the median sample radius IS the CEP by construction (CEP = σ·√(ln4)).
+    // PASS needs a real fix, HDOP < 2 AND CEP < 4 m.
     const cepM = isFinite(nc.cep) ? nc.cep : 60;
     navSim.cepWorld = Math.min(0.15 + cepM/40, 3.06);
     navSim.fixAmp = nc.dop.ok ? Math.min(0.3 + nc.dop.hdop*0.25, 3.0) : 2.5;
@@ -3015,23 +3907,37 @@ function navSimStep(dt){
     while(sim.data.length < targetCount){
       const sigma = isFinite(nc.cep) ? nc.cep/1.1774 : 60;
       const r = sigma*Math.sqrt(-2*Math.log(Math.max(Math.random(), 1e-6)));
-      sim.data.push(+r.toFixed(2));
-      sim.data2.push(isFinite(nc.cep) ? +nc.cep.toFixed(2) : 60);
+      sim.data.push(+r.toFixed(2));                                   // sampled fix error
+      sim.data2.push(nc.dop.ok ? +nc.dop.hdop.toFixed(2) : 12);       // geometry behind it
     }
+    const good = nc.dop.ok && nc.dop.hdop < 2 && nc.cep < 4;
+    const poor = !nc.dop.ok || nc.dop.hdop > 4;
     updateTelemetry({ hdop:nc.dop.hdop, vdop:nc.dop.vdop, pdop:nc.dop.pdop, sats:nc.sats.length,
       cep:nc.cep, sigma:nc.hErr, altTrue:nc.hTrue, altSensed:nc.baro.sensed,
-      phase: !nc.dop.ok ? "NO FIX" : nc.cep<4 ? "FIX LOCKED" : state.uereScenario==="urban" ? "MULTIPATH" : "DEGRADED",
-      phaseCls: !nc.dop.ok ? "danger" : nc.cep<4 ? "good" : "warn" });
+      phase: !nc.dop.ok ? "NO FIX" : good ? "FIX LOCKED" : poor ? "GEOMETRY POOR"
+             : state.uereScenario==="urban" ? "MULTIPATH" : "DEGRADED",
+      phaseCls: (!nc.dop.ok || poor) ? "danger" : good ? "good" : "warn" });
     if(sim.t >= NAV_RUN_T){
       if(sim.data.length < 4){ sim.data.push(cepM); sim.data2.push(cepM); }   // guarantee a plottable run
       if(!nc.dop.ok){
         sim.verdictOk = false; sim.verdict = "No fix — insufficient/degenerate geometry";
-      }else if(nc.cep < 4){
-        sim.verdictOk = true; sim.verdict = "Fix locked — CEP "+nc.cep.toFixed(1)+" m, within spec";
-      }else if(state.uereScenario === "urban"){
-        sim.verdictOk = false; sim.verdict = "Multipath — CEP "+nc.cep.toFixed(1)+" m, position unreliable";
+      }else if(nc.dop.hdop < 2 && nc.dop.vdop > 8){
+        sim.verdictOk = false;
+        sim.verdict = "Good HDOP but VDOP "+nc.dop.vdop.toFixed(1)+" — 2D DOP hides vertical dilution";
+      }else if(nc.dop.hdop > 4){
+        sim.verdictOk = false; sim.verdict = "Poor geometry — HDOP "+nc.dop.hdop.toFixed(1)+", fix wanders";
+      }else if(nc.cep >= 4 && state.uereScenario === "urban"){
+        sim.verdictOk = false;
+        sim.verdict = "Multipath — HDOP "+nc.dop.hdop.toFixed(2)+" but CEP "+nc.cep.toFixed(1)+" m, position unreliable";
+      }else if(nc.cep >= 4){
+        sim.verdictOk = false;
+        sim.verdict = "Accuracy out of spec — HDOP "+nc.dop.hdop.toFixed(2)+", CEP "+nc.cep.toFixed(1)+" m";
+      }else if(nc.dop.hdop >= 2){
+        sim.verdictOk = false;
+        sim.verdict = "Marginal geometry — HDOP "+nc.dop.hdop.toFixed(2)+", accuracy degraded";
       }else{
-        sim.verdictOk = false; sim.verdict = "Degraded accuracy — CEP "+nc.cep.toFixed(1)+" m, exceeds spec";
+        sim.verdictOk = true;
+        sim.verdict = "GPS LOCK — HDOP "+nc.dop.hdop.toFixed(2)+", CEP "+nc.cep.toFixed(1)+" m within spec";
       }
       stopSim(true);
     }
@@ -3207,25 +4113,29 @@ function toneFallback(kind){
     else if(kind==="unlock"){ [523,659,784,1047].forEach((f,i)=>tone(f,i*.13,.22,v)); }
   }catch(e){}
 }
-/* fault / result voice-over — plays the matching real clip against the verdict text */
+/* Result voice-over — one clip per outcome navSimStep() can actually emit.
+   Written by audio_gen/gen_nav_lab.py; the match table below keys off the exact
+   verdict strings, so a new verdict needs a clip AND a line in navVoiceTag(). */
 const VOICE_FILES = {
-  overcurrent:"assets/audio/voice/fault_overcurrent.mp3",
-  esc_burnt:"assets/audio/voice/fault_esc_burnt.mp3",
-  winding_overheat:"assets/audio/voice/fault_winding_overheat.mp3",
-  motor_stall:"assets/audio/voice/fault_motor_stall.mp3",
-  thrust_deficit:"assets/audio/voice/fault_thrust_deficit.mp3",
-  critical:"assets/audio/voice/fault_critical.mp3",
-  actuator_stall:"assets/audio/voice/fault_actuator_stall.mp3",
-  hover_reached:"assets/audio/voice/done_hover_reached.mp3",
-  landed_safely:"assets/audio/voice/done_landed_safely.mp3",
-  profiling_complete:"assets/audio/voice/done_profiling_complete.mp3"
+  gps_lock:"assets/audio/voice/v_gps_lock.mp3",
+  no_fix:"assets/audio/voice/v_no_fix.mp3",
+  vdop_trap:"assets/audio/voice/v_vdop_trap.mp3",
+  poor_geometry:"assets/audio/voice/v_poor_geometry.mp3",
+  multipath:"assets/audio/voice/v_multipath.mp3",
+  cep_out_of_spec:"assets/audio/voice/v_cep_out_of_spec.mp3",
+  marginal:"assets/audio/voice/v_marginal.mp3",
+  baro_good:"assets/audio/voice/v_baro_good.mp3",
+  baro_coarse:"assets/audio/voice/v_baro_coarse.mp3",
+  baro_inversion:"assets/audio/voice/v_baro_inversion.mp3",
+  baro_high:"assets/audio/voice/v_baro_high.mp3",
+  nav_safe:"assets/audio/voice/v_nav_safe.mp3",
+  nav_unsafe:"assets/audio/voice/v_nav_unsafe.mp3"
 };
+/* keyed by module:experiment — these are the ids the nav manifest ships */
 const INTRO_FILES = {
-  "m1:assemble":"assets/audio/voice/intro_assembly.mp3",
-  "m1:thrust":"assets/audio/voice/intro_bench.mp3",
-  "m2:thermal":"assets/audio/voice/intro_kv_profiling.mp3",
-  "m2:efficiency":"assets/audio/voice/intro_kv_profiling.mp3",
-  "m3:verify":"assets/audio/voice/intro_hover.mp3"
+  "m1:geometry":"assets/audio/voice/intro_geometry.mp3",
+  "m2:profiling":"assets/audio/voice/intro_profiling.mp3",
+  "m3:budget":"assets/audio/voice/intro_budget.mp3"
 };
 // Single voice channel: only one clip plays at a time, so swiftly switching
 // tabs never overlaps. `lastVoiceUrl` lets the instructor's Replay button
@@ -3249,18 +4159,28 @@ function playVoiceFile(url){
 }
 function playIntroVoice(key){ if(INTRO_FILES[key]) playVoiceFile(INTRO_FILES[key]); }
 function currentIntroKey(){ return state.module + ":" + state.exp[state.module]; }
-function playFaultVoice(text, ok){
+/* Map a verdict string to its clip. Ordered most-specific first: several nav
+   verdicts share words ("HDOP" appears in five of them), so the distinguishing
+   phrase has to be tested before the general one. */
+function navVoiceTag(text, ok){
   const t = (text||"").toLowerCase();
-  let tag = null;
-  if(ok){ if(t.includes("hover")||t.includes("flight verified")) tag="hover_reached";
-    else if(t.includes("landed")) tag="landed_safely";
-    else if(t.includes("stable")||t.includes("efficient")||t.includes("assembly ok")) tag="profiling_complete"; }
-  else{ if(t.includes("esc burnt")) tag="esc_burnt";
-    else if(t.includes("runaway")||t.includes("overheat")) tag="winding_overheat";
-    else if(t.includes("overcurrent")) tag="overcurrent";
-    else if(t.includes("stall")) tag="motor_stall";
-    else if(t.includes("insufficient")||t.includes("underpowered")||t.includes("cannot")||t.includes("cannot fly")) tag="thrust_deficit";
-    else if(t.includes("burned")||t.includes("depleted")) tag="critical"; }
+  if(t.includes("no fix")) return "no_fix";
+  if(t.includes("vdop")) return "vdop_trap";
+  if(t.includes("multipath")) return "multipath";
+  if(t.includes("poor geometry")) return "poor_geometry";
+  if(t.includes("marginal geometry")) return "marginal";
+  if(t.includes("accuracy out of spec")) return "cep_out_of_spec";
+  if(t.includes("gps lock")) return "gps_lock";
+  if(t.includes("inversion")) return "baro_inversion";
+  if(t.includes("coarse barometer")) return "baro_coarse";
+  if(t.includes("isa profile good")) return "baro_good";
+  if(t.includes("altitude error high")) return "baro_high";
+  if(t.includes("unsafe")) return "nav_unsafe";
+  if(t.includes("safe for autonomous")) return "nav_safe";
+  return ok ? "gps_lock" : null;
+}
+function playFaultVoice(text, ok){
+  const tag = navVoiceTag(text, ok);
   if(tag && VOICE_FILES[tag]) playVoiceFile(VOICE_FILES[tag]);
 }
 /* realistic motor / propeller engine — frequency tracks RPM, level tracks thrust */
@@ -3326,6 +4246,22 @@ function playVoice(){
   if(state.voiceVol<=0) return;
   try{ [392,494,587].forEach((f,i)=>tone(f, i*.16, .2, (state.voiceVol/100)*.18, "triangle")); }catch(e){}
 }
+/* Speak the current step, but WAIT for whatever is already talking. A finished
+   run fires the verdict clip and then advances the instructor step; speaking
+   the step immediately cut the verdict off mid-sentence, so the student never
+   heard why the run passed or failed. */
+function playVoiceQueued(){
+  const step = DRONE_DB.instructor[state.instrStep];
+  const url = step && step.audio;
+  if(!url){ playVoice(); return; }
+  if(currentVoice && !currentVoice.paused){
+    const a = currentVoice;
+    a.addEventListener("ended", ()=>{ if(currentVoice===null || currentVoice===a) playVoiceFile(url); },
+                       { once:true });
+    return;
+  }
+  playVoiceFile(url);
+}
 // Replay the last clip that spoke (tab intro / fault / step). If nothing has
 // spoken yet, replay the current experiment's intro so the button always works.
 function replayVoice(){ playVoiceFile(lastVoiceUrl || INTRO_FILES[currentIntroKey()]); }
@@ -3339,10 +4275,18 @@ function instrGo(n){
   state.instrStep = Math.max(0, Math.min(n, DRONE_DB.instructor.length-1));
   saveState(); renderInstr();
 }
+/* Step 0 is the lab intro; steps 1..3 are Modules 1..3; the last step is the
+   all-complete note. A run therefore advances to the step for the module it was
+   run in — the old fixed map (run:3, runDone:4) was written for a six-step
+   panel and jumped straight to "every experiment is complete" after run one. */
+function instrStepForModule(){
+  const i = DRONE_DB.modules.findIndex(m=>m.id===state.module);
+  return Math.min(i < 0 ? 1 : i+1, DRONE_DB.instructor.length-2);
+}
 function instrEvent(evt){
-  const map = { picker:1, select:2, run:3, runDone:4 };
-  const target = map[evt];
-  if(target != null && state.instrStep < target){ instrGo(target); playVoice(); }
+  const target = (evt==="picker"||evt==="select") ? 1
+               : (evt==="run"||evt==="runDone") ? instrStepForModule() : null;
+  if(target != null && state.instrStep < target){ instrGo(target); playVoiceQueued(); }
 }
 
 /* ════════════ 14 · WIRING + BOOT ════════════ */
@@ -3358,6 +4302,15 @@ $("modalOverlay").addEventListener("click", e=>{ if(e.target === $("modalOverlay
 document.addEventListener("keydown", e=>{ if(e.key==="Escape" && !$("modalOverlay").hidden) closeModal(); });
 
 let lastT = 0, graphEvery = 0;
+/* ── propeller spin ─────────────────────────────────────────────────────────
+   True shaft speed is ω = rpm/60·2π rad/s. Drawing that literally only strobes
+   (a 2-blade prop at 9 000 rpm passes a blade every 3 ms — far under a frame),
+   so the view runs at a fixed fraction of real ω: PROP_VIS. Every rpm RATIO
+   stays exact — double the rpm, double the on-screen rate — and the result is
+   integrated against dt, so it no longer runs faster on a 120 Hz display than
+   on a 60 Hz one the way the old per-frame constant did. */
+const PROP_VIS = 1/12;
+function propSpinRate(rpm){ return Math.max(0, (rpm||0)/60*2*Math.PI*PROP_VIS); }
 function loop(t){
   requestAnimationFrame(loop);
   frameNo++;
@@ -3400,10 +4353,10 @@ function loop(t){
       }
     }
     // props are stationary when the drone is landed / powered down
-    const spin = simActive ? Math.min((sim.lastRpm||0)/3200, 3.4) + .15 : 0;
+    const spin = simActive ? propSpinRate(sim.lastRpm) : 0;
     propGroups.forEach((p,i)=>{
       const dir = p.userData.spinDir != null ? p.userData.spinDir : (i%2?1:-1);
-      p.rotation.y += spin*dir;
+      p.rotation.y += spin*dir*dt;
     });
   }
   // nav scenes drive their own animation (jitter / drift / markers)

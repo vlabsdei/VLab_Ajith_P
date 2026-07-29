@@ -1,0 +1,21 @@
+{
+  "name": "Thermal Camera 640",
+  "mass_g": 42,
+  "qty": 1,
+  "size_mm": [
+    31,
+    31,
+    38
+  ],
+  "model": "assets/attachments/thermal_cam/thermal_cam.glb",
+  "specs": {
+    "Type": "Radiometric IR",
+    "Resolution": "640×512",
+    "Range": "-20…550 °C"
+  },
+  "physics": {
+    "payload": true,
+    "mount_type": "camera",
+    "thermal": true
+  }
+}

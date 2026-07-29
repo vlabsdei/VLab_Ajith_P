@@ -1,0 +1,25 @@
+{
+  "name": "6S LiPo — 1300 mAh",
+  "mass_g": 205,
+  "qty": 1,
+  "size_mm": [
+    95,
+    34,
+    44
+  ],
+  "model": "assets/battery/_model/Battery_Drone.fbx",
+  "specs": {
+    "Voltage": "22.2 V (6S)",
+    "Capacity": "1300 mAh",
+    "Discharge": "120C burst / 75C cont.",
+    "Note": "6S race pack — high voltage, light"
+  },
+  "physics": {
+    "cells": 6,
+    "voltage_nominal_v": 22.2,
+    "capacity_mah": 1300,
+    "c_rating": 120,
+    "c_rating_cont": 75,
+    "cell_ir_mohm": 7.0
+  }
+}

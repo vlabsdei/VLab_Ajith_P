@@ -1,0 +1,24 @@
+{
+  "name": "Generic 30 A (single)",
+  "mass_g": 7,
+  "qty": 4,
+  "size_mm": [
+    28,
+    15,
+    6
+  ],
+  "model": "assets/esc/_model/esc_single.glb",
+  "specs": {
+    "Current": "30 A",
+    "Firmware": "BLHeli_32",
+    "Config": "4 × single",
+    "Note": "Mid 5\" ESC — 3–6S"
+  },
+  "physics": {
+    "current_a": 30,
+    "burst_current_a": 40,
+    "rds_on_ohm": 0.003,
+    "r_th_c_per_w": 19,
+    "max_cells": 6
+  }
+}

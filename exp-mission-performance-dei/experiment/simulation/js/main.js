@@ -83,16 +83,52 @@ async function loadCatalog(){
     const opts = (byCat[c.key] || []).sort((a,b)=>order.indexOf(a.id)-order.indexOf(b.id));
     return { key:c.key, label:c.label, multi:!!c.multi, options:opts };
   });
+  /* Reward pool. The reward names a CATEGORY and the unlock draws a random real
+     component from it. That category is not always a selectable one in this
+     experiment (exp-03 awards a propeller but never lets you pick one), so any
+     option that wasn't already loaded is fetched straight from its spec.json. */
+  const rwCfg = manifest.reward || {};
+  let rewardPool = [];
+  if(rwCfg.category){
+    const inCat = byCat[rwCfg.category] || [];
+    const wantIds = rwCfg.options || inCat.map(o=>o.id);
+    const missing = wantIds.filter(id => !inCat.some(o=>o.id===id));
+    let extra = [];
+    if(missing.length){
+      extra = (await Promise.all(missing.map(async id=>{
+        const base = "assets/" + rwCfg.category + "/" + id;
+        try{
+          const spec = await (await fetch(base + "/spec.json", {cache:"no-store"})).json();
+          let files = [];
+          if(spec.model){
+            const arr = Array.isArray(spec.model) ? spec.model : [spec.model];
+            files = arr.map(f => f.includes("/") ? f : base + "/" + f);
+          }
+          return { id, name: spec.name || id, catKey: rwCfg.category,
+                   mass: spec.mass_g || 0, qty: spec.qty || 1,
+                   size: spec.size_mm || null, view: spec.view || null,
+                   specs: Object.entries(spec.specs || {}), phys: spec.physics || {},
+                   files, mounts: null,
+                   fallback: { kind: rwCfg.fallback || "none", color: 0x5a6672, s: 1 } };
+        }catch(e){ console.warn("reward spec missing for", base); return null; }
+      }))).filter(Boolean);
+    }
+    const all = inCat.concat(extra);
+    rewardPool = wantIds.map(id => all.find(o=>o.id===id)).filter(Boolean);
+  }
   DRONE_DB = {
     categories,
     defaults: manifest.defaults || {},
     modules: manifest.modules,
     instructor: manifest.instructor,
-    reward: {
-      name: manifest.reward.name, desc: manifest.reward.desc,
-      files: manifest.reward.model ? [manifest.reward.model] : [],
-      fallback: { kind: manifest.reward.fallback || "lidar", color: 0x845b23, s: 1 }
-    }
+    /* The reward is no longer one hardcoded mesh: it names a CATEGORY, and the
+       unlock draws a random real component from it (a random motor, a random
+       airframe, …). Because the drawn option is a genuine catalogue entry it
+       carries its own catKey, so fitUnit applies the same orientation rule the
+       component uses everywhere else — the old reward object had no catKey at
+       all, which is why it rendered at an arbitrary angle. */
+        reward: { category: rwCfg.category || null, name: rwCfg.name || "", desc: rwCfg.desc || "",
+              fallback: { kind: rwCfg.fallback || "lidar", color: 0x845b23, s: 1 }, pool: rewardPool }
   };
 }
 
@@ -256,7 +292,22 @@ function cellIR(p, soc){
 }
 function motorRm(p, tempC){ return p.rm20 * (1 + ALPHA_CU*((tempC==null?20:tempC) - 20)); }
 
-/* BEMT-lite propeller aero coefficients — pitch/diameter + Reynolds + induced-flow corrected */
+/* BEMT-lite propeller aero coefficients — pitch/diameter + Reynolds + figure of merit.
+
+   Ct is a static thrust coefficient fitted to the catalogue's hand-authored
+   empirical propellers (5x4.3 tri -> 0.130, 10x4.5 bi -> 0.100).
+
+   Cq is NOT an independent fit. Hover shaft power must equal the induced power
+   divided by the rotor's figure of merit:
+
+       2*pi*Cq*rho*n^3*D^5  =  T^1.5 / (FoM * sqrt(2*rho*A)),   T = Ct*rho*n^2*D^4
+
+   which reduces to  Cq = Ct^1.5 * 0.12699 / FoM.  Deriving Cq this way keeps
+   thrust and torque thermodynamically consistent — the previous independent
+   `ct*(0.045*reFactor + 0.11*pd)` fit drifted about 30% high on torque while Ct
+   itself read ~20% low, so every build drew far more current than the same parts
+   would in reality. Bigger discs are more efficient; low Reynolds (small, slow
+   props) costs figure of merit. */
 function propAero(p, omega){
   const pd = Math.max(0.2, Math.min(1.2, p.pitchIn / Math.max(p.diaIn,1)));
   const R = p.D/2, chord = 0.1*p.D;
@@ -264,17 +315,15 @@ function propAero(p, omega){
   const rho = rhoNow();
   const Re = Math.max(rho * Vtip * chord / MU_AIR, 1000);
   const reFactor = Math.pow(150000/Re, 0.25);
-  const ctStatic = p.ctRaw!=null ? p.ctRaw : 0.115 * pd;
-  const cqBase = p.cqRaw!=null ? p.cqRaw : ctStatic * (0.045*reFactor + 0.11*pd);
-  const Ji = Math.sqrt(Math.max(2*ctStatic/Math.PI, 0));
-  const ctEff = ctStatic;                    // authored Ct is already an empirical hover measurement
-  const cqEff = cqBase * (1 + 1.5*Ji*Ji);     // induced-power penalty still raises torque/current/heat
-  return { ctEff, cqEff, rho };
+  const ctStatic = p.ctRaw!=null ? p.ctRaw : 0.067 + 0.073*pd;
+  const fom = Math.max(0.40, Math.min(0.78, 0.42 + 0.022*p.diaIn)) / Math.sqrt(Math.max(reFactor,1));
+  const cqEff = p.cqRaw!=null ? p.cqRaw : Math.pow(ctStatic,1.5)*0.12699/Math.max(fom,0.25);
+  return { ctEff: ctStatic, cqEff, rho };
 }
 /* solve steady-state motor+prop point via quadratic torque balance. returns null on stall. */
 function calcMotorPoint(duty, V, Rm, Resc){
   const p = propulsionParams();
-  if(duty <= 0 || V <= 0) return { rpm:0, omega:0, T:0, Q:0, I:p.i0*0, P:0, Pmech:0, stalled:false };
+  if(duty <= 0 || V <= 0) return { rpm:0, omega:0, T:0, Q:0, I:p.i0*0, Idc:0, P:0, Pmech:0, stalled:false };
   Rm = Rm==null ? motorRm(p,20) : Rm;
   const Reff = Rm + (Resc||0);
   const ke = 60/(2*Math.PI*p.kv), kt = ke;
@@ -290,13 +339,24 @@ function calcMotorPoint(duty, V, Rm, Resc){
     if(!isFinite(next) || next < 0){ stalled = true; omega = 0; break; }
     omega += (next - omega) * 0.6;
   }
-  if(stalled) return { rpm:0, omega:0, T:0, Q:0, I:0, P:0, Pmech:0, stalled:true };
+  if(stalled) return { rpm:0, omega:0, T:0, Q:0, I:0, Idc:0, P:0, Pmech:0, stalled:true };
   const n = omega/(2*Math.PI);
   const T = aero.ctEff * aero.rho * n*n * Math.pow(p.D,4);
   const Q = aero.cqEff * aero.rho * n*n * Math.pow(p.D,5);
   const I = Math.min(Q/kt + p.i0, p.imax*1.6);
   const Vterm = Math.max(V*duty - I*Reff, 0);
-  return { rpm: n*60, omega, T:Math.max(T,0), Q, I, P: Vterm*I + I*I*Reff, Pmech: Q*omega, stalled:false };
+  // Two different currents, and mixing them up is the classic drive-train error:
+  //   I    — PHASE current in the motor branch. Sets copper loss, motor heating
+  //          and the motor / ESC per-channel ratings.
+  //   Idc  — DC-LINK current the PACK actually supplies. The ESC is a switching
+  //          converter, so it steps V down to V·duty: power in = power out gives
+  //          V·Idc = (V·duty)·I, i.e. Idc = duty·I. The two coincide at full
+  //          throttle, but at a ~30 % hover the pack sees roughly a third of the
+  //          phase current — treating them as equal made hover draw ~3× too high
+  //          and cut every endurance figure to a third of the real value.
+  const Idc = duty * I;
+  return { rpm: n*60, omega, T:Math.max(T,0), Q, I, Idc,
+           P: Vterm*I + I*I*Reff, Pmech: Q*omega, stalled:false };
 }
 /* full quad at throttle d + state-of-charge soc (0..1), incl. pack sag under 4-motor draw */
 function solveQuad(d, soc){
@@ -305,11 +365,14 @@ function solveQuad(d, soc){
   const rIR = cellIR(p, s), Rpack = p.cells*rIR;
   let V = cellOCV(s)*p.cells, r = calcMotorPoint(d, V, motorRm(p,20), p.rdsOn);
   for(let k=0;k<6;k++){
-    V = Math.max(cellOCV(s)*p.cells - 4*r.I*Rpack, p.cells*2.8);
+    // the pack sags against what it actually delivers — the DC-link current
+    V = Math.max(cellOCV(s)*p.cells - 4*r.Idc*Rpack, p.cells*2.8);
     r = calcMotorPoint(d, V, motorRm(p,20), p.rdsOn);
   }
-  return { rpm:r.rpm, omega:r.omega, Tper:r.T, Ttot:4*r.T, Iper:r.I, Itot:4*r.I,
-           V, P:V*4*r.I, Pmech:4*r.Pmech, Q:r.Q, stalled:r.stalled };
+  return { rpm:r.rpm, omega:r.omega, Tper:r.T, Ttot:4*r.T,
+           Iper:r.I,          // phase current — motor / ESC channel ratings, heating
+           Itot:4*r.Idc,      // pack current  — C-rating, sag, coulomb count
+           V, P:4*r.P, Pmech:4*r.Pmech, Q:r.Q, stalled:r.stalled };
 }
 function marginRating(tw){
   if(tw >= 2.0) return "EXCELLENT";
@@ -506,7 +569,9 @@ function diagnostics(){
   }
   // 3 · motor over-current at full throttle
   if(mo){
-    if(c.full.Iper > p.imax){
+    // max_current_a is a short-burst (~60 s) rating, so a modest exceedance at
+    // wide-open throttle is a warning, not a dead build.
+    if(c.full.Iper > p.imax*1.15){
       items.push({ sev:"err", block:false,
         msg:"Motor over-current — draws "+c.full.Iper.toFixed(1)+" A vs "+p.imax+" A rating at full throttle.",
         fix:"Use a smaller prop, lower cell count, or a higher-current motor." });
@@ -519,10 +584,19 @@ function diagnostics(){
   // 4 · ESC current rating
   if(esc && esc.phys && esc.phys.current_a){
     const escA = esc.phys.current_a;
-    if(c.full.Iper > escA){
+    // Judge against the ESC's authored BURST rating (burst_current_a) when the
+    // spec carries one — it was present in every ESC spec.json but unused — and
+    // fall back to +25% headroom otherwise. current_a is the continuous figure,
+    // and wide-open throttle is a burst condition.
+    const escBurst = (esc.phys.burst_current_a || escA*1.25);
+    if(c.full.Iper > escBurst){
       items.push({ sev:"err", block:false,
         msg:"ESC under-rated — "+escA+" A/ch vs "+c.full.Iper.toFixed(1)+" A motor draw.",
         fix:"Choose an ESC rated above the motor's peak current." });
+    } else if(c.full.Iper > escA){
+      items.push({ sev:"warn",
+        msg:"ESC above continuous rating ("+c.full.Iper.toFixed(1)+" / "+escA+" A per channel).",
+        fix:"Survivable in bursts; it will run hot at sustained full throttle." });
     }
   }
   // 5 · battery discharge capability — burst (warn) vs continuous (error)
@@ -530,14 +604,23 @@ function diagnostics(){
     const capAh = ba.phys.capacity_mah/1000;
     const burstA = capAh * (ba.phys.c_rating||30);
     const contA  = capAh * p.cRatingCont;
-    if(c.full.Itot > contA){
+    // Full throttle is a BURST condition, not a sustained one — a pack may legally
+    // exceed its continuous rating in a punch-out and only has to survive its burst
+    // rating. The previous ordering tested continuous first, so the burst branch was
+    // unreachable and every build that merely bursted past continuous was failed
+    // outright. Sustained overdraw is judged separately, at the hover point.
+    if(c.full.Itot > burstA){
       items.push({ sev:"err", block:false, tag:"batt-crate",
-        msg:"Battery continuous C-rate exceeded — pack sustains "+contA.toFixed(0)+" A but the build pulls "+c.full.Itot.toFixed(0)+" A; cells overheat and vent.",
+        msg:"Battery burst limit exceeded — pack peaks at "+burstA.toFixed(0)+" A but full throttle pulls "+c.full.Itot.toFixed(0)+" A; cells overheat and vent.",
         fix:"Higher C-rating / capacity, or a lower-current motor & prop." });
-    } else if(c.full.Itot > burstA){
+    } else if(c.hoverI > contA){
+      items.push({ sev:"err", block:false, tag:"batt-crate",
+        msg:"Battery continuous C-rate exceeded in the hover — pack sustains "+contA.toFixed(0)+" A but hover alone needs "+c.hoverI.toFixed(0)+" A.",
+        fix:"Higher C-rating / capacity, or a more efficient motor & prop." });
+    } else if(c.full.Itot > contA){
       items.push({ sev:"warn",
-        msg:"Battery burst limit exceeded — pack "+burstA.toFixed(0)+" A vs "+c.full.Itot.toFixed(0)+" A full-throttle draw.",
-        fix:"Higher C-rating or capacity keeps voltage sag in check." });
+        msg:"Full throttle ("+c.full.Itot.toFixed(0)+" A) is above the pack's "+contA.toFixed(0)+" A continuous rating.",
+        fix:"Fine in bursts; sustained wide-open throttle will heat the cells." });
     }
   }
   // 6 · over-voltage — pack cell count above ESC / motor rating (burns the ESC on spin-up)
@@ -838,7 +921,20 @@ function seatModel(g, mode){
   else                g.position.y += (c.y - b.min.y) / s;
 }
 /* immediate placeholder group; swaps in the real oriented+fitted model on arrival */
-function modelFor(o, span, onReady){
+/* Orientation used for the small PREVIEW renders only (tiles, picker, reward
+   card). The assembled drone seats attachments with its own mount logic
+   (orientThinUp / orientCameraForward / seatModel "hang"), so this deliberately
+   does NOT touch the spec files — changing those would double-rotate the parts
+   on the rig. ORIENT has attachments:"none", which left a GPS board standing on
+   edge and a gimbal lying on its side in every preview. */
+function previewOrient(o){
+  if(!o || o.catKey !== "attachments") return undefined;
+  const mt = (o.phys && o.phys.mount_type) || "";
+  if(mt === "gps") return "flat";        // thin PCB face → horizontal
+  if(mt === "payload") return "axis";    // gimbal yoke → long axis vertical
+  return undefined;
+}
+function modelFor(o, span, onReady, orientRule){
   span = span || 1.6;
   const g = new THREE.Group();
   const fb = buildFallback((o && o.fallback) || {kind:"none",color:0xcccccc,s:1});
@@ -849,7 +945,7 @@ function modelFor(o, span, onReady){
       const parts = masters.map(m=>m.clone(true));
       parts.forEach(p=>merged.add(p));
       const oriented = o.catKey === "motor" && orientMotorCombo(merged, parts);
-      const fitted = fitUnit(merged, span, o, oriented ? "none" : undefined);
+      const fitted = fitUnit(merged, span, o, oriented ? "none" : orientRule);
       while(g.children.length) g.remove(g.children[0]);
       g.add(fitted);
       if(onReady) onReady(g);
@@ -923,23 +1019,76 @@ function detectArmTips(root, fallbackR){
 /* ════════════ 7 · PREVIEW ENGINE ════════════ */
 let previewRenderer = null;
 const previews = new Map();
+/* Supersample factor for every preview render. The canvas backing store is sized
+   to its ON-SCREEN size x this, so on a retina panel the component is rendered at
+   the display's real pixel density instead of half of it. Capped at 3 so a 4K
+   display doesn't quietly cost 16x the fill rate. */
+const PREVIEW_DPR = Math.max(2, Math.min(window.devicePixelRatio || 1, 3));
+/* A tiny sky/ground gradient, prefiltered through PMREM. Without an environment
+   map three.js MeshStandardMaterial metals have nothing to reflect and read as
+   flat grey plastic — this is what makes the motor bell and prop hub look
+   machined rather than painted. */
+let ENV_TEX = null;
+function ensureEnv(rnd){
+  if(ENV_TEX || !rnd || !THREE.PMREMGenerator) return ENV_TEX;
+  try{
+    const c = document.createElement("canvas"); c.width = 64; c.height = 32;
+    const x = c.getContext("2d"), grd = x.createLinearGradient(0,0,0,32);
+    grd.addColorStop(0,"#eef2f6"); grd.addColorStop(.45,"#b9c2cc");
+    grd.addColorStop(.58,"#6e7681"); grd.addColorStop(1,"#2b3036");
+    x.fillStyle = grd; x.fillRect(0,0,64,32);
+    const tex = new THREE.CanvasTexture(c);
+    tex.mapping = THREE.EquirectangularReflectionMapping;
+    const pm = new THREE.PMREMGenerator(rnd); pm.compileEquirectangularShader();
+    ENV_TEX = pm.fromEquirectangular(tex).texture; tex.dispose();
+  }catch(e){ ENV_TEX = null; }
+  return ENV_TEX;
+}
 function initPreviewEngine(){
-  previewRenderer = new THREE.WebGLRenderer({antialias:true, alpha:true});
-  previewRenderer.setSize(220,150);
-  previewRenderer.setPixelRatio(1);
+  previewRenderer = new THREE.WebGLRenderer({ antialias:true, alpha:true,
+                                              powerPreference:"high-performance" });
+  previewRenderer.setPixelRatio(1);          // sizes below are already device pixels
+  if(THREE.sRGBEncoding !== undefined) previewRenderer.outputEncoding = THREE.sRGBEncoding;
+  if(THREE.ACESFilmicToneMapping !== undefined){
+    previewRenderer.toneMapping = THREE.ACESFilmicToneMapping;
+    previewRenderer.toneMappingExposure = 0.82;   // calibrated against the env map below
+  }
+  previewRenderer.setSize(320,220,false);
+}
+/* The environment map is a full-strength reflection by default, which blows the
+   pale plastics out. Dial it back per material and keep a floor on roughness so
+   nothing turns into a mirror. */
+function tunePreviewMaterials(root){
+  if(!root || !root.traverse) return;
+  root.traverse(function(m){
+    if(!m.isMesh || !m.material) return;
+    (Array.isArray(m.material) ? m.material : [m.material]).forEach(function(mat){
+      if(mat.envMapIntensity !== undefined) mat.envMapIntensity = 0.38;
+      if(mat.roughness !== undefined) mat.roughness = Math.max(mat.roughness, 0.32);
+      mat.needsUpdate = true;
+    });
+  });
 }
 function registerPreview(canvas, o){
   if(!canvas || !o || !previewRenderer) return;
   const scene = new THREE.Scene();
-  scene.add(new THREE.AmbientLight(0xffffff,.85));
-  const d = new THREE.DirectionalLight(0xffffff,.9); d.position.set(2,3,2); scene.add(d);
-  const d2 = new THREE.DirectionalLight(0xdce3f2,.35); d2.position.set(-2,-1,-2); scene.add(d2);
-  const group = modelFor(o); scene.add(group);
-  const camera = new THREE.PerspectiveCamera(34, 220/150, .1, 50);
+  scene.environment = ensureEnv(previewRenderer);   // reflections for metal parts
+  // Studio 3-point rig. Ambient is dialled back from .85 because the environment
+  // map now supplies the fill — leaving it high washed every material out flat.
+  scene.add(new THREE.AmbientLight(0xffffff,.20));
+  const d = new THREE.DirectionalLight(0xffffff,.62); d.position.set(2.4,3.2,2.2); scene.add(d);
+  const d2 = new THREE.DirectionalLight(0xdce3f2,.26); d2.position.set(-2.6,-.6,-1.8); scene.add(d2);
+  const d3 = new THREE.DirectionalLight(0xffffff,.18); d3.position.set(-1.4,2.0,-2.6); scene.add(d3);
+  const group = modelFor(o, undefined, function(g){ tunePreviewMaterials(g); }, previewOrient(o));
+  tunePreviewMaterials(group);
+  scene.add(group);
+  const aspect = (canvas.width && canvas.height) ? canvas.width/canvas.height : 220/150;
+  const camera = new THREE.PerspectiveCamera(34, aspect, .1, 50);
   camera.position.set(1.9,1.35,1.9); camera.lookAt(0,0,0);
   previews.set(canvas, {scene, camera, group});
 }
 let frameNo = 0;
+let previewW = 0, previewH = 0;
 function blitPreviews(){
   if(!previewRenderer) return;
   let i = 0;
@@ -947,10 +1096,25 @@ function blitPreviews(){
     if(!cv.isConnected){ previews.delete(cv); continue; }
     if((i++ + frameNo) % 2 !== 0) continue;
     p.group.rotation.y += .022;
+    // Size the backing store to the canvas's ON-SCREEN box x PREVIEW_DPR. The
+    // markup ships a fixed width/height (280x190 for the reward card) while CSS
+    // stretches the element to fill its panel, so the old fixed buffer was both
+    // upscaled and rendered at half density on a retina display — that is what
+    // made the parts look jagged and soft.
+    const r = cv.getBoundingClientRect();
+    if(!r.width || !r.height) continue;
+    const w = Math.max(2, Math.round(r.width  * PREVIEW_DPR));
+    const h = Math.max(2, Math.round(r.height * PREVIEW_DPR));
+    if(cv.width !== w || cv.height !== h){ cv.width = w; cv.height = h; }
+    if(previewW !== w || previewH !== h){
+      previewW = w; previewH = h;
+      previewRenderer.setSize(w, h, false);
+    }
+    if(p.camera.aspect !== w/h){ p.camera.aspect = w/h; p.camera.updateProjectionMatrix(); }
     previewRenderer.render(p.scene, p.camera);
     const ctx = cv.getContext("2d");
-    ctx.clearRect(0,0,cv.width,cv.height);
-    ctx.drawImage(previewRenderer.domElement, 0,0, cv.width, cv.height);
+    ctx.clearRect(0,0,w,h);
+    ctx.drawImage(previewRenderer.domElement, 0,0, w, h);
   }
 }
 
@@ -1645,7 +1809,7 @@ function renderLog(){
     const d = el("div","log-item "+it.sev);
     d.innerHTML = '<span class="ic">'+icon(it.sev)+'</span>'+
       '<div class="body"><span class="msg">'+txt(it.msg)+'</span>'+
-      (it.fix ? '<span class="fix">→ '+txt(it.fix)+'</span>' : '')+'</div>';
+      (it.fix ? '<span class="fix">Fix: '+txt(it.fix)+'</span>' : '')+'</div>';
     list.appendChild(d);
   });
   const badge = $("logBadge"), sum = $("logSummary");
@@ -1660,22 +1824,71 @@ function renderLog(){
   else { rb.classList.remove("blocked"); }
   return dg;
 }
+/* local mass formatter — exp-04 has no fmtMass() of its own */
+function rwMass(g){
+  if(typeof fmtMass === "function") return fmtMass(g);
+  return g >= 1000 ? (g/1000).toFixed(2)+" kg" : (g<10 && g>0 ? g.toFixed(1) : Math.round(g))+" g";
+}
+/* Draw a random component from the reward category and REMEMBER the draw, so the
+   card doesn't reshuffle on every re-render. Kept in localStorage under its own
+   key (not the experiment's state schema, which differs per experiment) so a
+   fresh play-through can award a different part. */
+let _rewardPick = null;
+function rewardPick(r){
+  if(!r || !r.pool || !r.pool.length) return null;
+  if(_rewardPick && r.pool.indexOf(_rewardPick) !== -1) return _rewardPick;
+  const KEY = "dtl-reward-" + (r.category || "x");
+  let id = null; try{ id = localStorage.getItem(KEY); }catch(e){}
+  let p = id ? r.pool.filter(function(o){ return o.id === id; })[0] : null;
+  if(!p){
+    p = r.pool[Math.floor(Math.random()*r.pool.length)];
+    try{ localStorage.setItem(KEY, p.id); }catch(e){}
+  }
+  _rewardPick = p;
+  return p;
+}
 function renderReward(){
-  const body = $("rewardBody");
+  const body = $("rewardBody"); if(!body) return;
+  const DB = (typeof DRONE_DB !== "undefined" && DRONE_DB) ? DRONE_DB
+           : (typeof ESC_DB   !== "undefined" && ESC_DB)   ? ESC_DB : null;
+  const r = (DB && DB.reward) || { pool: [] };
   const unlocked = allDone();
-  $("rewardBadge").textContent = (unlocked?1:0)+" / 1";
+  const badge = $("rewardBadge");
   body.innerHTML = "";
-  if(unlocked){
-    const r = DRONE_DB.reward;
-    const d = el("div","reward-open");
-    d.innerHTML = '<div class="view"><canvas width="280" height="190"></canvas></div>'+
-      '<div class="meta"><b>★ '+txt(r.name)+'</b><p>'+txt(r.desc)+'</p></div>';
+  // capstone: the experiment IS the showdown, so there is nothing to unlock
+  if(!r.category){
+    if(badge) badge.textContent = unlocked ? "PASS" : "—";
+    const d = el("div","reward-locked"+(unlocked?" reward-final":""));
+    d.innerHTML = '<div class="lock">'+(unlocked?"🏆":"🔒")+'</div><p>'+
+      (unlocked ? "Full system verified — the build flies."
+                : txt(r.desc || "Complete every check to clear the flight test."))+'</p>';
     body.appendChild(d);
-    registerPreview(d.querySelector("canvas"), r);
+    return;
+  }
+  if(badge) badge.textContent = (unlocked?1:0)+" / 1";
+  if(unlocked){
+    const pick = rewardPick(r);
+    const d = el("div","reward-open");
+    const specs = (pick && pick.specs && pick.specs.length)
+      ? pick.specs.slice(0,3).map(function(s){ return '<span><i>'+txt(s[0])+'</i>'+txt(s[1])+'</span>'; }).join("")
+      : "";
+    d.innerHTML =
+      '<div class="view"><canvas width="280" height="190"></canvas></div>'+
+      '<div class="meta"><span class="rw-kind">'+txt(r.name)+' unlocked</span>'+
+      '<b>'+txt(pick ? pick.name : r.name)+'</b>'+
+      (specs ? '<div class="rw-specs mono">'+specs+'</div>' : '')+
+      (pick && pick.mass ? '<div class="rw-specs mono"><span><i>Mass</i>'+rwMass(pick.mass)+
+        (pick.qty>1?" × "+pick.qty:"")+'</span></div>' : '')+
+      '</div>';
+    body.appendChild(d);
+    // pick is a REAL catalogue option, so it carries catKey → fitUnit applies the
+    // same orientation rule this component uses everywhere else in the lab.
+    registerPreview(d.querySelector("canvas"), pick || { fallback:r.fallback });
   }else{
     const total = allExperiments().length;
     const d = el("div","reward-locked");
-    d.innerHTML = '<div class="lock">🔒</div><p>Complete all '+total+' experiments<br>to unlock a reward component</p>';
+    d.innerHTML = '<div class="lock">🔒</div><p>Complete all '+total+' experiments<br>to unlock a '+
+      txt((r.name||"reward component").toLowerCase())+'</p>';
     body.appendChild(d);
   }
 }
@@ -1861,7 +2074,7 @@ function drawLiveGraph(){
 }
 function drawMassChart(){ const c = ChartHub.put("massChart", rangePayloadEnvelopeConfig(true)); if(c) c._metric = "range"; }
 /* registry of every analysis chart — drives the modal gallery + single-chart view */
-function chartDefs(){
+function plotDefsAll(){
   return [
     { id:"range",  title:"Range–Payload envelope", cfg:()=>rangePayloadEnvelopeConfig(false) },
     { id:"ucurve", title:"Cruise-power U-curve",    cfg:()=>uCurveConfig(sweepPcruise(missionMassKg()),
@@ -1871,29 +2084,81 @@ function chartDefs(){
   ];
 }
 /* single-chart floating detail — reached by clicking any chart's expand button */
-function openSingleChart(def){
+/* ── Graphs vs Charts split ───────────────────────────────────────────────────
+   A plot belongs on the Graphs card when it is drawn as a CURVE — a line chart,
+   or a scatter with showLine (the sweep / CDF style). Everything else — bars,
+   radars, doughnuts, clouds, histograms — stays in Charts. The kind is read off
+   the built config, so a new plot lands in the right panel without a flag. A def
+   with an `empty` fallback is a recorded-run plot: it is a line too, and the
+   Graphs modal shows it as the full-width live block instead of a tile. */
+function plotIsLine(def){
+  if(def.dom) return false;
+  if(def.empty) return true;
+  try{
+    const c = def.cfg();
+    if(!c) return true;
+    if(c.type === "line") return true;
+    return c.type === "scatter" && (c.data.datasets||[]).some(d=>d.showLine);
+  }catch(e){ return false; }
+}
+function graphDefs(){ return plotDefsAll().filter(plotIsLine); }
+function chartDefs(){
+  const out = plotDefsAll().filter(d=>!plotIsLine(d));
+  // Some experiments plot nothing but curves — say so instead of an empty panel.
+  return out.length ? out : [{ id:"nocharts", title:"No non-line charts in this experiment",
+    cfg:()=>null, empty:"Every plot here is a curve — they are all on the Graphs card." }];
+}
+/* gallery body shared by the Graphs modal: one block per def + expand button */
+function renderGraphBlocks(wrap, defs){
+  const pending = [];
+  defs.forEach(def=>{
+    const block = el("div","calc-block gchart");
+    const head = el("div","gchart-head");
+    head.innerHTML = '<h3>'+txt(def.title)+'</h3><button type="button" class="gchart-expand" title="Expand">⤢</button>';
+    head.querySelector("button").addEventListener("click", ()=>openSingleChart(def, "graphs"));
+    block.appendChild(head);
+    const cfg = def.cfg();
+    if(cfg){ const box = el("div","chart-box-lg");
+      box.innerHTML = '<canvas id="gc_'+def.id+'"></canvas>'; block.appendChild(box);
+      pending.push({ id:"gc_"+def.id, cfg }); }
+    else block.appendChild(el("div","runs-empty", txt(def.empty||"No data yet.")));
+    if(def.note) block.appendChild(el("p","chart-footnote", txt(def.note())));
+    wrap.appendChild(block);
+  });
+  return pending;
+}
+function openSingleChart(def, backTo){
   const body = openModal(txt(def.title)+' <em>· detail</em>', "#c65d3b",
-    '<button type="button" class="modal-back" id="chartBack">‹ all charts</button>');
+    '<button type="button" class="modal-back" id="chartBack">‹ all '+(backTo==="graphs"?"graphs":"charts")+'</button>');
   const wrap = el("div"); wrap.style.cssText = "height:62vh;min-height:340px;position:relative";
   wrap.innerHTML = '<canvas id="gc_single"></canvas>';
   body.appendChild(wrap);
   const c = def.cfg(); if(c) ChartHub.put("gc_single", c);
   else wrap.innerHTML = '<div class="runs-empty">'+txt(def.empty||"No data yet.")+'</div>';
   if(def.note) body.appendChild(el("p","chart-footnote", txt(def.note())));
-  const back = $("chartBack"); if(back) back.addEventListener("click", openChartsDetail);
+  const back = $("chartBack"); if(back) back.addEventListener("click", backTo==="graphs"?openGraphDetail:openChartsDetail);
 }
 /* live telemetry graph detail — reached by clicking the Graphs card */
 function openGraphDetail(){
+  ChartHub.killPrefix("gc_");
   const { mod, exp } = currentExp();
-  const key = mod.id+":"+exp.id, metric = exp.metric;
-  const body = openModal('Live Graph <em>· '+txt(exp.name)+'</em>', "#4f6d9e");
-  const live = simActive && sim.key === key;
-  const src = live ? sim : (lastRun.key === key ? lastRun : null);
-  if(!src){ body.appendChild(el("div","runs-empty","No data yet for <b>"+txt(exp.name)+"</b>.<br>Press <b>▶ Run Sim</b> to plot this experiment.")); return; }
-  const wrap = el("div"); wrap.style.cssText = "height:62vh;min-height:340px;position:relative";
-  wrap.innerHTML = '<canvas id="gc_single"></canvas>'; body.appendChild(wrap);
-  const cfg = buildMissionChart(metric, src, false);
-  if(cfg) ChartHub.put("gc_single", cfg);
+  const key = mod.id+":"+exp.id;
+  const body = openModal('Graphs <em>· live run + parameter sweeps</em>', "#4f6d9e");
+  const wrap = el("div","calc-blocks");
+  let data, data2, flightT;
+  if(simActive && sim.data.length>1){ data=sim.data; data2=sim.data2; flightT=sim.flightT||0; }
+  else if(lastRun.key===key && lastRun.data.length>1){ data=lastRun.data; data2=lastRun.data2; flightT=lastRun.flightT; }
+  const live = el("div","calc-block gchart");
+  live.innerHTML = '<div class="gchart-head"><h3>Live run · '+txt(exp.name)+'</h3></div>';
+  if(data){ const box = el("div","chart-box-lg");
+    box.innerHTML = '<canvas id="gc_live"></canvas>'; live.appendChild(box); }
+  else live.appendChild(el("div","runs-empty",
+    "No data yet for <b>"+txt(exp.name)+"</b>.<br>Press <b>▶ Run Sim</b> to plot this experiment."));
+  wrap.appendChild(live);
+  const pending = renderGraphBlocks(wrap, graphDefs().filter(d=>!d.empty));
+  body.appendChild(wrap);
+  if(data) ChartHub.put("gc_live", telemetryConfig(exp.metric, data, data2, flightT, {mini:false}));
+  pending.forEach(p=>ChartHub.put(p.id, p.cfg));
 }
 
 /* ════════════ 10 · FLOATING WINDOWS ════════════ */
@@ -2482,6 +2747,15 @@ $("modalOverlay").addEventListener("click", e=>{ if(e.target === $("modalOverlay
 document.addEventListener("keydown", e=>{ if(e.key==="Escape" && !$("modalOverlay").hidden) closeModal(); });
 
 let lastT = 0, graphEvery = 0;
+/* ── propeller spin ─────────────────────────────────────────────────────────
+   True shaft speed is ω = rpm/60·2π rad/s. Drawing that literally only strobes
+   (a 2-blade prop at 9 000 rpm passes a blade every 3 ms — far under a frame),
+   so the view runs at a fixed fraction of real ω: PROP_VIS. Every rpm RATIO
+   stays exact — double the rpm, double the on-screen rate — and the result is
+   integrated against dt, so it no longer runs faster on a 120 Hz display than
+   on a 60 Hz one the way the old per-frame constant did. */
+const PROP_VIS = 1/12;
+function propSpinRate(rpm){ return Math.max(0, (rpm||0)/60*2*Math.PI*PROP_VIS); }
 function loop(t){
   requestAnimationFrame(loop);
   frameNo++;
@@ -2523,10 +2797,10 @@ function loop(t){
       rig.position.set(0, rigGroundY + 1.15*rigLift + Math.sin(hoverPhase)*.03*rigLift, 0);
     }
     // props are stationary when the drone is landed / powered down
-    const spin = simActive ? Math.min((sim.lastRpm||0)/3200, 3.4) + .15 : 0;
+    const spin = simActive ? propSpinRate(sim.lastRpm) : 0;
     propGroups.forEach((p,i)=>{
       const dir = p.userData.spinDir != null ? p.userData.spinDir : (i%2?1:-1);
-      p.rotation.y += spin*dir;
+      p.rotation.y += spin*dir*dt;
     });
   }
   if(simActive){

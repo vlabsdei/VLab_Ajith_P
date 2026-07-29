@@ -1,0 +1,21 @@
+{
+  "name": "7\" Bi-blade  (3.5 pitch)",
+  "mass_g": 7.0,
+  "qty": 4,
+  "size_mm": [
+    177.8,
+    10.7,
+    177.8
+  ],
+  "model": "7inch_bi.glb",
+  "specs": {
+    "Diameter": "7 in",
+    "Pitch": "3.5 in",
+    "Blades": "2"
+  },
+  "physics": {
+    "diameter_in": 7.0,
+    "pitch_in": 3.5,
+    "blades": 2
+  }
+}

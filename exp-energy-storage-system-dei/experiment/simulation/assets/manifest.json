@@ -21,6 +21,9 @@
         "2.7in_tri",
         "3in_tri",
         "5in_tri",
+        "6in_bi",
+        "6in_tri",
+        "7in_bi",
         "8in_bi",
         "9in_bi",
         "10in_bi",
@@ -57,7 +60,12 @@
         "esc_65a",
         "Dakefpv_120A",
         "UH300",
-        "esc_4in1_50a"
+        "esc_4in1_50a",
+        "esc_20a",
+        "esc_30a",
+        "esc_80a",
+        "esc_40a_4in1",
+        "esc_100a_4in1"
       ]
     },
     {
@@ -71,7 +79,12 @@
         "6s_4000",
         "6s_5000",
         "4s_1300_lowc",
-        "4s_1500_highc"
+        "4s_1500_highc",
+        "3s_1300",
+        "4s_2200",
+        "6s_1300",
+        "6s_3000",
+        "4s_5200"
       ]
     },
     {
@@ -102,19 +115,27 @@
       "fallback": "gimbal",
       "multi": true,
       "options": [
-        "gimbal",
-        "camera",
-        "gps",
-        "thermal_cam"
+        "gps_m8n",
+        "gps_m10",
+        "gps_rtk",
+        "gimbal_nano",
+        "gimbal_2axis",
+        "gimbal_3axis",
+        "cam_fpv",
+        "cam_hd",
+        "cam_4k",
+        "cam_cinema",
+        "thermal_256",
+        "thermal_640"
       ]
     }
   ],
   "defaults": {
     "chasis": "fpv5",
     "propeller": "5in_tri",
-    "motor": "1806",
-    "esc": "Cyclone_35A",
-    "battery": "4s_3300",
+    "motor": "2806",
+    "esc": "esc_45a",
+    "battery": "4s_5200",
     "controller": "PiHawk",
     "reciever": "CM703",
     "attachments": []
@@ -126,17 +147,10 @@
       "sub": "Pack Under Load",
       "experiments": [
         {
-          "id": "crate",
-          "name": "C-Rating Safety Check",
-          "unit": "A",
-          "metric": "crate",
-          "type": "bench"
-        },
-        {
-          "id": "sag",
-          "name": "Voltage Sag Under Load",
-          "unit": "V",
-          "metric": "sag",
+          "id": "load",
+          "name": "Pack Under Load — C-Rating & Sag",
+          "unit": "A / V",
+          "metric": "load",
           "type": "bench"
         }
       ]
@@ -165,34 +179,34 @@
   ],
   "instructor": [
     {
-      "text": "Welcome to the Energy Storage System Lab. We will load a real LiPo pack on the bench to find its safe current limits, then fly it to see how capacity trades off against endurance.",
-      "audio": null
+      "text": "This is the energy-storage bench. The pack under test is wired through a shunt-based power analyzer into a resistive load bank: the analyzer measures pack voltage and current, and the load bank sinks exactly the current the drone's four motors would draw at that throttle. Every number this lab reports comes off that chain.",
+      "audio": "assets/audio/voice/instr_1.mp3"
     },
     {
-      "text": "Start in Input Parameters — tap the Battery tile to open its option library. Pick a low-C undersized pack to explore the fault paths, or a high-C pack to see everything pass safely.",
-      "audio": null
+      "text": "Start at Input Parameters and tap the Battery tile. Cell count sets pack voltage at 3.7 volts nominal per cell, capacity sets the stored charge, and capacity times the continuous C-rating is the highest current the pack may deliver without damage. Choose an undersized low-C pack to walk into the failure modes, or a race-grade pack to clear every test.",
+      "audio": "assets/audio/voice/instr_2.mp3"
     },
     {
-      "text": "Module 1 · Pack Under Load puts the battery on the analyzer bench. C-Rating Safety Check ramps the full 4-motor draw and watches it against the pack's continuous rating; Voltage Sag Under Load traces loaded pack voltage down to a possible ESC brownout.",
-      "audio": null
+      "text": "Module 1, Pack Under Load. The load bank ramps from zero to the full four-motor demand over eight seconds, and the analyzer logs both quantities the pack is judged on at once: current, and loaded voltage. It is one sweep because on a real bench it is one sweep.",
+      "audio": "assets/audio/voice/instr_3.mp3"
     },
     {
-      "text": "Module 2 · Energy & Endurance reuses the real assembled-drone hover flight sim: Endurance & Diminishing Returns flies the pack down to its cutoff and shows why a bigger battery brings sub-linear gains — and can even stop the drone from hovering at all.",
-      "audio": null
+      "text": "Two limits, read off that single ramp. Current must stay under capacity times the continuous C-rating, or the cells overheat and vent. Loaded voltage must stay above 3.3 volts per cell, or the flight controller browns out — and that limit is set by internal resistance, since every ampere costs you a few tens of millivolts per cell.",
+      "audio": "assets/audio/voice/instr_4.mp3"
     },
     {
-      "text": "SoC Discharge Mapping drains the pack on a discharge rig, tracing true coulomb-counted SoC against cell voltage and comparing it with a naive voltage-only estimate. An experiment only completes on a PASS — a fault run plays out fully but won't tick the progress bar.",
-      "audio": null
+      "text": "Module 2 takes the same pack off the bench. Endurance and Diminishing Returns flies a real hover to the cutoff, so you can see a heavier pack buy less flight time than its extra capacity promises. SoC Discharge Mapping puts it on the discharge rig at constant current, reading each cell through the balance port and coulomb-counting against the Peukert-derated real capacity instead of the nameplate. Only a pass completes an experiment.",
+      "audio": "assets/audio/voice/instr_5.mp3"
     },
     {
-      "text": "Outstanding — every experiment is complete. Your reward component is now unlocked in the Outputs panel.",
-      "audio": null
+      "text": "Every experiment on this bench is complete and the results hold up. Your reward component is unlocked in the Outputs panel.",
+      "audio": "assets/audio/voice/instr_6.mp3"
     }
   ],
   "reward": {
+    "category": "battery",
     "name": "Battery Pack",
-    "desc": "Unlocked build reward — a certified high-C LiPo pack, drop reward.glb in assets/reward/ to display it here.",
-    "fallback": "battery",
-    "model": "assets/reward/reward.glb"
+    "desc": "A characterised LiPo pack, drawn at random from the catalogue.",
+    "fallback": "batt"
   }
 }

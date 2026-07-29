@@ -26,7 +26,6 @@
 
 /* ════════════ 1 · CATALOG LOADER ════════════ */
 let ESC_DB = null;
-const STAND_MODEL = "assets/stand/motor_holder.glb";
 
 function bootProgress(txt, frac){
   const s = document.getElementById("bootSub"), f = document.getElementById("bootFill");
@@ -75,6 +74,39 @@ async function loadCatalog(){
     const opts = (byCat[c.key] || []).sort((a,b)=>order.indexOf(a.id)-order.indexOf(b.id));
     return { key:c.key, label:c.label, options:opts };
   });
+  /* Reward pool. The reward names a CATEGORY and the unlock draws a random real
+     component from it. That category is not always a selectable one in this
+     experiment (exp-03 awards a propeller but never lets you pick one), so any
+     option that wasn't already loaded is fetched straight from its spec.json. */
+  const rwCfg = manifest.reward || {};
+  let rewardPool = [];
+  if(rwCfg.category){
+    const inCat = byCat[rwCfg.category] || [];
+    const wantIds = rwCfg.options || inCat.map(o=>o.id);
+    const missing = wantIds.filter(id => !inCat.some(o=>o.id===id));
+    let extra = [];
+    if(missing.length){
+      extra = (await Promise.all(missing.map(async id=>{
+        const base = "assets/" + rwCfg.category + "/" + id;
+        try{
+          const spec = await (await fetch(base + "/spec.json", {cache:"no-store"})).json();
+          let files = [];
+          if(spec.model){
+            const arr = Array.isArray(spec.model) ? spec.model : [spec.model];
+            files = arr.map(f => f.includes("/") ? f : base + "/" + f);
+          }
+          return { id, name: spec.name || id, catKey: rwCfg.category,
+                   mass: spec.mass_g || 0, qty: spec.qty || 1,
+                   size: spec.size_mm || null, view: spec.view || null,
+                   specs: Object.entries(spec.specs || {}), phys: spec.physics || {},
+                   files, mounts: null,
+                   fallback: { kind: rwCfg.fallback || "none", color: 0x5a6672, s: 1 } };
+        }catch(e){ console.warn("reward spec missing for", base); return null; }
+      }))).filter(Boolean);
+    }
+    const all = inCat.concat(extra);
+    rewardPool = wantIds.map(id => all.find(o=>o.id===id)).filter(Boolean);
+  }
   ESC_DB = {
     categories,
     defaults: manifest.defaults || {},
@@ -86,11 +118,8 @@ async function loadCatalog(){
     thermal: manifest.thermal || {},
     supply: (supply && supply.physics) || { v_max:30, i_max:40, lead_r_ohm:0.004 },
     supplyName: (supply && supply.name) || "Bench DC Supply",
-    reward: {
-      name: manifest.reward.name, desc: manifest.reward.desc,
-      files: manifest.reward.model ? [manifest.reward.model] : [],
-      fallback: { kind: manifest.reward.fallback || "heatsink", color: 0x9aa5b1, s: 1 }
-    }
+        reward: { category: rwCfg.category || null, name: rwCfg.name || "", desc: rwCfg.desc || "",
+              fallback: { kind: rwCfg.fallback || "heatsink", color: 0x845b23, s: 1 }, pool: rewardPool }
   };
 }
 
@@ -201,10 +230,12 @@ function propAero(p, omega){
   const Vtip = Math.max(omega*R, 0.5);
   const Re = Math.max(RHO * Vtip * chord / MU_AIR, 1000);
   const reFactor = Math.pow(150000/Re, 0.25);
-  const ctStatic = 0.115 * pd;
-  const cqBase = ctStatic * (0.045*reFactor + 0.11*pd);
-  const Ji = Math.sqrt(Math.max(2*ctStatic/Math.PI, 0));
-  return { ctEff: ctStatic, cqEff: cqBase*(1 + 1.5*Ji*Ji) };
+  // Ct fitted to the catalogue's empirical propellers; Cq derived from Ct via the
+  // rotor figure of merit so thrust and torque stay consistent (see exp-1 notes):
+  //   Cq = Ct^1.5 * 0.12699 / FoM
+  const ctStatic = 0.067 + 0.073*pd;
+  const fom = Math.max(0.40, Math.min(0.78, 0.42 + 0.022*p.diaIn)) / Math.sqrt(Math.max(reFactor,1));
+  return { ctEff: ctStatic, cqEff: Math.pow(ctStatic,1.5)*0.12699/Math.max(fom,0.25) };
 }
 /* steady-state motor+prop point via quadratic torque balance. returns stalled flag. */
 function calcMotorPoint(duty, V, Rm, Resc){
@@ -392,7 +423,32 @@ function diagnostics(){
 
 /* ════════════ 6 · 3D MODELS + PROCEDURAL BUILDERS ════════════ */
 function mat(color, opts){ return new THREE.MeshStandardMaterial(Object.assign({color, roughness:.55, metalness:.35}, opts||{})); }
-function roundedBoard(w, d, h, r, m){
+function metalMat(c, r, m){ return mat(c, {roughness:r==null?.3:r, metalness:m==null?.9:m}); }
+/* Metals (gold pads, silver FET cans, the aluminium deck) render near-black
+   under lights alone — they need something to reflect. One small PMREM-filtered
+   studio gradient serves every scene, main viewport and tile previews alike. */
+let ENV_TEX = null;
+function ensureEnv(rnd){
+  if(ENV_TEX || !rnd || !THREE.PMREMGenerator) return ENV_TEX;
+  const c=document.createElement("canvas"); c.width=64; c.height=32;
+  const x=c.getContext("2d"), grd=x.createLinearGradient(0,0,0,32);
+  grd.addColorStop(0,"#c2c9d1"); grd.addColorStop(.42,"#7f8891");
+  grd.addColorStop(.56,"#4c545c"); grd.addColorStop(1,"#1c2024");
+  x.fillStyle=grd; x.fillRect(0,0,64,32);
+  const tex=new THREE.CanvasTexture(c); tex.mapping=THREE.EquirectangularReflectionMapping;
+  const pm=new THREE.PMREMGenerator(rnd); pm.compileEquirectangularShader();
+  ENV_TEX=pm.fromEquirectangular(tex).texture; tex.dispose();
+  return ENV_TEX;
+}
+/* PCB palette matched to the reference hardware photos (blue 4-in-1, black single) */
+const PCB = {
+  blue:0x123f6d, blueDeep:0x0d3358, black:0x131619, blackDeep:0x0a0c0e,
+  gold:0xb8912a, goldLit:0xcfae4b, silver:0xb6bdc4, tin:0x9aa2aa,
+  fet:0x17191d, ic:0x0e1013, capTan:0x8a5426, capCan:0x8d959c
+};
+/* rounded-corner board. `holes` = [[x,z,r],…] are drilled clean through the
+   extrusion — shape-space y maps to world −z after the rotate below. */
+function roundedBoard(w, d, h, r, m, holes){
   const shape = new THREE.Shape();
   const x=-w/2, y=-d/2;
   shape.moveTo(x+r, y);
@@ -400,6 +456,11 @@ function roundedBoard(w, d, h, r, m){
   shape.lineTo(x+w, y+d-r); shape.quadraticCurveTo(x+w, y+d, x+w-r, y+d);
   shape.lineTo(x+r, y+d); shape.quadraticCurveTo(x, y+d, x, y+d-r);
   shape.lineTo(x, y+r); shape.quadraticCurveTo(x, y, x+r, y);
+  (holes||[]).forEach(hl=>{
+    const pth = new THREE.Path();
+    pth.absarc(hl[0], -hl[1], hl[2], 0, Math.PI*2, true);
+    shape.holes.push(pth);
+  });
   const g = new THREE.ExtrudeGeometry(shape, { depth:h, bevelEnabled:true, bevelThickness:h*0.14, bevelSize:h*0.12, bevelSegments:2, steps:1 });
   g.rotateX(-Math.PI/2);
   return new THREE.Mesh(g, m);
@@ -425,84 +486,229 @@ function buildEscBoard(o, opts){
   opts = opts || {};
   const p = (o && o.phys) || {}, four = p.form_factor === "4in1";
   const board = (o && o.size) || (four ? [46,46,6] : [27,14,4]);
-  const W = board[0]/1000, D = board[1]/1000, H = board[2]/1000 * 0.42;
+  const W = board[0]/1000, D = board[1]/1000, H = board[2]/1000 * 0.30;
   const g = new THREE.Group();
   g.userData.nodes = []; g.userData.mosfets = []; g.userData.parts = {};
   const addPart = (name, mesh)=>{ mesh.userData.part = name; (g.userData.parts[name]=g.userData.parts[name]||[]).push(mesh); g.add(mesh); return mesh; };
-  const soldermask = four ? 0x141414 : 0x0d3b26;
-  const plate = roundedBoard(W, D, H, Math.min(W,D)*0.10, mat(soldermask,{roughness:.6, metalness:.15}));
+  const mn = Math.min(W,D);
+  const maskCol = four ? PCB.blue : PCB.black;
+  const holeR = 0.0019;                       // M3 clearance + grommet, in metres
+  const holes = four ? [[-1,-1],[-1,1],[1,-1],[1,1]].map(c=>[c[0]*W*0.385, c[1]*D*0.385, holeR]) : [];
+
+  // ── substrate: FR4 + solder-mask, with real drilled corner holes on the 4-in-1
+  const plate = roundedBoard(W, D, H, mn*0.09, mat(maskCol,{roughness:.52, metalness:.12}), holes);
   addPart("substrate", plate);
-  const pour = roundedBoard(W*0.94, D*0.94, H*0.25, Math.min(W,D)*0.08, mat(four?0x1c1c1c:0x114a30,{roughness:.7}));
+  const pour = roundedBoard(W*0.95, D*0.95, H*0.22, mn*0.075, mat(four?PCB.blueDeep:PCB.blackDeep,{roughness:.66, metalness:.2}), holes);
   pour.position.y = H; addPart("substrate", pour);
-  const topY = H*1.25, mn = Math.min(W,D);
-  const mkNode = (id,x,z,color)=>{
-    const post = new THREE.Mesh(new THREE.CylinderGeometry(mn*0.05, mn*0.055, H*1.4, 16), mat(color,{metalness:.85,roughness:.3,emissive:color,emissiveIntensity:.12}));
-    post.position.set(x, topY+H*0.6, z); post.userData.node=id; post.userData.baseColor=color;
+  const topY = H*1.22;
+
+  // ── part factories ──────────────────────────────────────────────────────
+  const mkNode = (id,x,z,color,r)=>{
+    r = r || mn*0.05;
+    const post = new THREE.Mesh(new THREE.CylinderGeometry(r*0.9, r, H*1.5, 20), mat(color,{metalness:.85,roughness:.3,emissive:color,emissiveIntensity:.12}));
+    post.position.set(x, topY+H*0.65, z); post.userData.node=id; post.userData.baseColor=color;
     g.add(post); g.userData.nodes.push(post); return post;
   };
-  const mkMosfet = (x,z,s)=>{
-    s = s || mn*0.13;
-    const body = new THREE.Mesh(new THREE.BoxGeometry(s, H*1.2, s*0.72), mat(0x1a1d22,{roughness:.42,metalness:.3}));
-    body.position.set(x, topY+H*0.6, z);
-    const dimple = new THREE.Mesh(new THREE.CylinderGeometry(s*0.08,s*0.08,H*0.1,10), mat(0x2c3138)); dimple.position.set(x-s*0.28, topY+H*1.2, z-s*0.22);
-    const tab = new THREE.Mesh(new THREE.BoxGeometry(s*0.92, H*0.3, s*0.2), mat(0xc0c8cf,{metalness:.92,roughness:.26}));
-    tab.position.set(x, topY+H*0.55, z+s*0.42);
-    for(let k=-1;k<=1;k++){ const pin=new THREE.Mesh(new THREE.BoxGeometry(s*0.15,H*0.16,s*0.16), mat(0x9aa5b1,{metalness:.9,roughness:.3})); pin.position.set(x+k*s*0.28, topY+H*0.08, z-s*0.42); addPart("mosfet",pin); }
-    body.userData.baseColor = 0x1a1d22; g.userData.mosfets.push(body);
-    addPart("mosfet", body); addPart("mosfet", dimple); addPart("mosfet", tab); return body;
+  /* black power DFN with exposed drain tab — the 4-in-1's 24 FETs */
+  const mkFetDfn = (x,z,s,vert)=>{
+    const bw = vert ? s*0.78 : s, bd = vert ? s : s*0.78;
+    const body = new THREE.Mesh(new THREE.BoxGeometry(bw, H*1.15, bd), mat(PCB.fet,{roughness:.38,metalness:.28}));
+    body.position.set(x, topY+H*0.575, z);
+    body.userData.baseColor = PCB.fet; g.userData.mosfets.push(body); addPart("mosfet", body);
+    const lid = new THREE.Mesh(new THREE.BoxGeometry(bw*0.74, H*0.12, bd*0.74), metalMat(PCB.tin,.32,.85));
+    lid.position.set(x, topY+H*1.16, z); addPart("mosfet", lid);
+    const dot = new THREE.Mesh(new THREE.CylinderGeometry(s*0.06,s*0.06,H*0.12,10), mat(0x343a41));
+    dot.position.set(x-bw*0.3, topY+H*1.15, z-bd*0.3); addPart("mosfet", dot);
+    const pinGeo = new THREE.BoxGeometry(vert?s*0.14:s*0.2, H*0.14, vert?s*0.2:s*0.14);
+    for(let k=-1;k<=1;k+=2) for(let i=-1;i<=1;i++){
+      const pin=new THREE.Mesh(pinGeo, metalMat(PCB.tin,.3,.9));
+      pin.position.set(x + (vert? k*bw*0.52 : i*bw*0.3), topY+H*0.07, z + (vert? i*bd*0.3 : k*bd*0.52));
+      addPart("mosfet",pin);
+    }
+    return body;
   };
-  const mkCap = (x,z,r,h)=>{
-    const can = new THREE.Mesh(new THREE.CylinderGeometry(r,r,h,28), mat(0x1a1f26,{metalness:.7,roughness:.3}));
+  /* silver metal-can FET — the big shiny packages on the single 70 A board */
+  const mkFetCan = (x,z,s)=>{
+    const seat = new THREE.Mesh(new THREE.BoxGeometry(s*0.98, H*0.5, s*0.9), mat(PCB.fet,{roughness:.5,metalness:.2}));
+    seat.position.set(x, topY+H*0.25, z); addPart("mosfet", seat);
+    const lid = roundedBoard(s*0.94, s*0.86, H*0.5, s*0.06, metalMat(PCB.silver,.26,.88));
+    lid.position.set(x, topY+H*0.46, z);
+    lid.userData.baseColor = PCB.silver; g.userData.mosfets.push(lid); addPart("mosfet", lid);
+    const pinGeo = new THREE.BoxGeometry(s*0.18, H*0.16, s*0.14);
+    for(let i=-1;i<=1;i++){ const pin=new THREE.Mesh(pinGeo, metalMat(PCB.tin,.3,.9));
+      pin.position.set(x+i*s*0.3, topY+H*0.08, z-s*0.52); addPart("mosfet",pin); }
+    return lid;
+  };
+  const mkCapCan = (x,z,r,h)=>{
+    const can = new THREE.Mesh(new THREE.CylinderGeometry(r,r,h,28), metalMat(0x2a2f36,.34,.72));
     can.position.set(x, topY+h/2, z);
-    const top = new THREE.Mesh(new THREE.CylinderGeometry(r*0.96,r*0.96,h*0.04,28), mat(0xbcc3cb,{metalness:.85,roughness:.3}));
-    top.position.set(x, topY+h, z); addPart("cap", can); addPart("cap", top); return can;
+    const top = new THREE.Mesh(new THREE.CylinderGeometry(r*0.97,r*0.97,h*0.05,28), metalMat(PCB.capCan,.28,.88));
+    top.position.set(x, topY+h*0.98, z);
+    const score = new THREE.Mesh(new THREE.BoxGeometry(r*1.7,h*0.02,r*0.12), mat(0x6d757c));
+    score.position.set(x, topY+h*1.01, z);
+    addPart("cap",can); addPart("cap",top); addPart("cap",score); return can;
   };
-  const mkIC = (x,z,s)=>{ const ic=new THREE.Mesh(new THREE.BoxGeometry(s,H*0.9,s), mat(0x101216,{roughness:.4})); ic.position.set(x,topY+H*0.45,z); const dot=new THREE.Mesh(new THREE.CylinderGeometry(s*0.09,s*0.09,H*0.2,10), mat(0x3a3f46)); dot.position.set(x-s*0.28,topY+H*0.9,z-s*0.28); addPart("mcu",ic); addPart("mcu",dot); return ic; };
-  const mkPassives = (x0,z0,nx,nz,sp)=>{ for(let i=0;i<nx;i++) for(let j=0;j<nz;j++){ const r=new THREE.Mesh(new THREE.BoxGeometry(sp*0.5,H*0.4,sp*0.28), mat((i+j)%2?0x2b2f35:0x8a6a3a,{roughness:.5})); r.position.set(x0+i*sp,topY+H*0.2,z0+j*sp); addPart("passive",r); } };
-
-  // castellated edge pads (gold half-cylinders along the two long edges)
-  const castellate = (n)=>{ for(let i=0;i<n;i++){ const t=(i/(n-1)-0.5)*W*0.86; [-1,1].forEach(sz=>{ const c=new THREE.Mesh(new THREE.CylinderGeometry(mn*0.03,mn*0.03,H*0.9,8,1,false,0,Math.PI), mat(0xcaa63a,{metalness:.85,roughness:.35})); c.rotation.x=Math.PI/2; c.position.set(t, topY-H*0.1, sz*D*0.5); addPart("substrate",c); }); } };
+  /* SMD alu-polymer bulk cap — the grey "330" block on the 4-in-1 */
+  const mkCapSmd = (x,z,w,d,h,mark)=>{
+    const base = new THREE.Mesh(new THREE.BoxGeometry(w*1.05,H*0.18,d*1.05), mat(0x2b3036));
+    base.position.set(x, topY+H*0.09, z); addPart("cap", base);
+    const body = roundedBoard(w,d,h, Math.min(w,d)*0.15, mat(0x767d84,{roughness:.44,metalness:.4}));
+    body.position.set(x, topY+H*0.18, z); addPart("cap", body);
+    if(mark){ const l=silkLabel(mark, Math.min(w,d)*0.92, Math.min(w,d)*0.92, "#2c3239");
+      l.position.set(x, topY+H*0.18+h+H*0.02, z); addPart("cap", l); }
+    return body;
+  };
+  /* brown tantalum/poly cap — the row on the single board */
+  const mkCapTan = (x,z,w,d,h)=>{
+    const body = roundedBoard(w,d,h, Math.min(w,d)*0.28, mat(PCB.capTan,{roughness:.45,metalness:.25}));
+    body.position.set(x, topY, z); addPart("cap", body);
+    const band = new THREE.Mesh(new THREE.BoxGeometry(w*0.16,h*1.04,d*1.02), metalMat(PCB.tin,.32,.85));
+    band.position.set(x-w*0.42, topY+h*0.5, z); addPart("cap", band);
+    return body;
+  };
+  const mkIC = (x,z,s,tall)=>{
+    const ic = roundedBoard(s, s, H*(tall?0.95:0.62), s*0.06, mat(PCB.ic,{roughness:.34,metalness:.22}));
+    ic.position.set(x, topY, z); addPart("mcu", ic);
+    const dot = new THREE.Mesh(new THREE.CylinderGeometry(s*0.08,s*0.08,H*0.12,12), mat(0x3d444c));
+    dot.position.set(x-s*0.32, topY+H*(tall?0.98:0.66), z-s*0.32); addPart("mcu", dot);
+    const geoH = new THREE.BoxGeometry(s*0.08,H*0.1,s*0.06), geoV = new THREE.BoxGeometry(s*0.06,H*0.1,s*0.08);
+    for(let side=0;side<4;side++){
+      const horiz = side<2;
+      for(let i=-2;i<=2;i++){
+        const lead = new THREE.Mesh(horiz?geoH:geoV, metalMat(PCB.tin,.3,.9));
+        const t = i*s*0.17;
+        if(horiz) lead.position.set(x+t, topY+H*0.05, z+(side?1:-1)*s*0.5);
+        else      lead.position.set(x+(side===2?-1:1)*s*0.5, topY+H*0.05, z+t);
+        addPart("mcu", lead);
+      }
+    }
+    return ic;
+  };
+  const mkPassives = (x0,z0,nx,nz,sp,vert)=>{
+    for(let i=0;i<nx;i++) for(let j=0;j<nz;j++){
+      const w = vert? sp*0.3 : sp*0.52, d = vert? sp*0.52 : sp*0.3;
+      const bodyC = (i+j)%3===0 ? 0x8a6a3a : ((i+j)%3===1 ? 0x24282e : 0xb9a06a);
+      const r = new THREE.Mesh(new THREE.BoxGeometry(w,H*0.34,d), mat(bodyC,{roughness:.5}));
+      r.position.set(x0+i*sp, topY+H*0.17, z0+j*sp); addPart("passive", r);
+      for(let k=-1;k<=1;k+=2){
+        const cp = new THREE.Mesh(new THREE.BoxGeometry(vert?w*1.06:w*0.22, H*0.36, vert?d*0.22:d*1.06), metalMat(PCB.tin,.3,.9));
+        cp.position.set(x0+i*sp+(vert?0:k*w*0.42), topY+H*0.17, z0+j*sp+(vert?k*d*0.42:0));
+        addPart("passive", cp);
+      }
+    }
+  };
+  const mkPad = (x,z,w,d,part)=>{
+    const pd = roundedBoard(w, d, H*0.13, Math.min(w,d)*0.2, mat(PCB.gold,{metalness:.88,roughness:.28}));
+    pd.position.set(x, topY, z); addPart(part||"substrate", pd); return pd;
+  };
+  /* plated-through pad cluster — the 6-hole phase pads on the single board */
+  const mkPadHoles = (x,z,w,d,cols,rows)=>{
+    mkPad(x,z,w,d);
+    const hr = Math.min(w/cols, d/rows)*0.2;
+    const hg = new THREE.CylinderGeometry(hr,hr,H*0.4,10);
+    for(let i=0;i<cols;i++) for(let j=0;j<rows;j++){
+      const hm = new THREE.Mesh(hg, mat(0x14171a,{roughness:.7,metalness:.3}));
+      hm.position.set(x+(i-(cols-1)/2)*(w/cols)*0.82, topY+H*0.13, z+(j-(rows-1)/2)*(d/rows)*0.82);
+      addPart("substrate", hm);
+    }
+  };
+  // castellated edge pads (gold half-cylinders along an edge pair)
+  const castellate = (n, along)=>{
+    // vertical plated half-barrels sunk into the board edge (not fins sticking out)
+    const cr = 0.0005;                        // 0.5 mm plated half-barrel, in metres
+    const cg = new THREE.CylinderGeometry(cr, cr, H*1.55, 10, 1, false, 0, Math.PI);
+    for(let i=0;i<n;i++){ const t=(i/(n-1)-0.5)*(along==="x"?W:D)*0.84;
+      [-1,1].forEach(s=>{
+        const c = new THREE.Mesh(cg, mat(PCB.gold,{metalness:.8,roughness:.35}));
+        if(along==="x"){ c.position.set(t, topY-H*0.62, s*D*0.5); c.rotation.y = s>0 ? 0 : Math.PI; }
+        else           { c.position.set(s*W*0.5, topY-H*0.62, t); c.rotation.y = s>0 ? -Math.PI/2 : Math.PI/2; }
+        addPart("substrate", c);
+      });
+    }
+  };
   // silkscreen decal on the board top (label per pad group)
-  const label = (t,x,z,w,col)=>{ const m=silkLabel(t, w||mn*0.28, w||mn*0.28, col); m.position.set(x, topY+H*0.27, z); addPart("substrate", m); };
+  const label = (t,x,z,w,col)=>{ const m=silkLabel(t, w||mn*0.28, w||mn*0.28, col); m.position.set(x, topY+H*0.3, z); addPart("substrate", m); };
 
   if(!four){
-    for(let i=0;i<3;i++){ mkMosfet(-W*0.30+i*W*0.22, -D*0.20); mkMosfet(-W*0.30+i*W*0.22, D*0.14); }
-    mkIC(W*0.30, -D*0.12, mn*0.16);
-    mkCap(W*0.34, D*0.16, mn*0.13, H*3.2);
-    mkPassives(-W*0.04, D*0.30, 4, 1, mn*0.09);
-    const jst = new THREE.Mesh(new THREE.BoxGeometry(W*0.16,H*1.1,D*0.3), mat(0xe8ecef,{roughness:.6,metalness:.05})); jst.position.set(W*0.40, topY+H*0.55, -D*0.02); addPart("signal", jst);
-    mkNode("escP+", -W*0.42, -D*0.30, 0xc23b2e);
-    mkNode("escP-", -W*0.42, D*0.30, 0x22262b);
-    mkNode("escA", W*0.44, -D*0.28, 0xd8b93c);
-    mkNode("escB", W*0.44, 0, 0xd8b93c);
-    mkNode("escC", W*0.44, D*0.28, 0xd8b93c);
-    castellate(9);
-    label("+", -W*0.42, -D*0.30, mn*0.34, "#e08a72"); label("−", -W*0.42, D*0.30, mn*0.34, "#c9d4cf");
-    label("A", W*0.44, -D*0.28, mn*0.26, "#e6cf7a"); label("B", W*0.44, 0, mn*0.26, "#e6cf7a"); label("C", W*0.44, D*0.28, mn*0.26, "#e6cf7a");
+    // ───────── single ESC: black board, 8 silver can FETs, tantalum row ─────────
+    for(let i=0;i<4;i++) for(let k=-1;k<=1;k+=2) mkFetCan(W*0.08 + (i-1.5)*W*0.15, k*D*0.21, mn*0.26);
+    for(let i=0;i<4;i++) mkCapTan(-W*0.30, (i-1.5)*D*0.20, mn*0.15, mn*0.12, H*0.95);
+    mkIC(-W*0.17, D*0.28, mn*0.26);
+    mkCapCan(-W*0.17, -D*0.28, mn*0.09, H*1.5);
+    mkPassives(-W*0.04, -D*0.36, 3, 1, mn*0.11);
+    // fat battery pads on the −X edge
+    mkPad(-W*0.43, -D*0.26, W*0.12, D*0.30);
+    mkPad(-W*0.43,  D*0.26, W*0.12, D*0.30);
+    // three plated phase-pad clusters on the +X edge
+    [-1,0,1].forEach(k=> mkPadHoles(W*0.43, k*D*0.30, W*0.085, D*0.26, 2, 3));
+    const jst = new THREE.Mesh(new THREE.BoxGeometry(W*0.075,H*0.8,D*0.17), mat(0xe8ecef,{roughness:.6,metalness:.05}));
+    jst.position.set(W*0.24, topY+H*0.4, -D*0.38); addPart("signal", jst);
+    mkNode("escP+", -W*0.43, -D*0.26, 0xc23b2e, mn*0.055);
+    mkNode("escP-", -W*0.43,  D*0.26, 0x22262b, mn*0.055);
+    mkNode("escA",  W*0.43, -D*0.30, 0xd8b93c, mn*0.05);
+    mkNode("escB",  W*0.43,        0, 0xd8b93c, mn*0.05);
+    mkNode("escC",  W*0.43,  D*0.30, 0xd8b93c, mn*0.05);
+    castellate(7, "x");
+    label("+", -W*0.43, -D*0.26, mn*0.30, "#e08a72"); label("−", -W*0.43, D*0.26, mn*0.30, "#c9d4cf");
+    label("A", W*0.43, -D*0.30, mn*0.24, "#e6cf7a"); label("B", W*0.43, 0, mn*0.24, "#e6cf7a"); label("C", W*0.43, D*0.30, mn*0.24, "#e6cf7a");
     // fat red/black supply pigtails off the power pads
-    addPart("signal", pigtail(-W*0.42,topY+H*0.6,-D*0.30, -W*0.62,topY+H*0.2,-D*0.30, mn*0.05, 0xc23b2e));
-    addPart("signal", pigtail(-W*0.42,topY+H*0.6, D*0.30, -W*0.62,topY+H*0.2, D*0.30, mn*0.05, 0x1a1d22));
+    addPart("signal", pigtail(-W*0.43,topY+H*0.6,-D*0.26, -W*0.66,topY+H*0.2,-D*0.26, mn*0.05, 0xc23b2e));
+    addPart("signal", pigtail(-W*0.43,topY+H*0.6, D*0.26, -W*0.66,topY+H*0.2, D*0.26, mn*0.05, 0x1a1d22));
   }else{
+    // ───────── 4-in-1 stack: blue board, 4 FET banks, drilled corners ─────────
     [-1,1].forEach(sx=>[-1,1].forEach(sz=>{
-      for(let i=0;i<3;i++){ mkMosfet(sx*(W*0.20+i*W*0.05), sz*D*0.34, mn*0.075); mkMosfet(sx*(W*0.34), sz*(D*0.16+i*D*0.06), mn*0.075); }
+      for(let i=0;i<3;i++){
+        mkFetDfn(sx*(W*0.10+i*W*0.075), sz*D*0.30, mn*0.068, false);
+        mkFetDfn(sx*W*0.30, sz*(D*0.09+i*D*0.075), mn*0.068, true);
+      }
     }));
-    // central FC stack pin headers (2×4)
-    for(let r=0;r<2;r++) for(let cix=0;cix<4;cix++){ const pin=new THREE.Mesh(new THREE.BoxGeometry(W*0.012,H*1.7,W*0.012), mat(0xcaa63a,{metalness:.85,roughness:.35})); pin.position.set((r?W*0.05:-W*0.05), topY+H*0.85, (cix-1.5)*W*0.05); addPart("signal",pin); }
-    const hdrBlk=new THREE.Mesh(new THREE.BoxGeometry(W*0.14,H*0.6,D*0.28), mat(0x101216)); hdrBlk.position.set(0,topY+H*0.3,0); addPart("signal",hdrBlk);
-    for(let i=0;i<3;i++) mkCap((i-1)*W*0.14, D*0.02, mn*0.06, H*2.6);
-    mkPassives(-W*0.10, -D*0.08, 3, 1, mn*0.06);
-    // XT60-style input connector body on the −X edge
-    const xt=new THREE.Mesh(new THREE.BoxGeometry(W*0.10,H*2.0,D*0.22), mat(0xe0b400,{roughness:.5,metalness:.15})); xt.position.set(-W*0.46,topY+H*1.0,0); addPart("signal",xt);
-    mkNode("escP+", -W*0.44, -D*0.14, 0xc23b2e);
-    mkNode("escP-", -W*0.44, D*0.14, 0x22262b);
-    mkNode("escA", W*0.44, -D*0.24, 0xd8b93c);
-    mkNode("escB", W*0.44, 0, 0xd8b93c);
-    mkNode("escC", W*0.44, D*0.24, 0xd8b93c);
-    [[-1,-1],[-1,1],[1,-1],[1,1]].forEach((cc,i)=>{ const gr=new THREE.Mesh(new THREE.CylinderGeometry(mn*0.05,mn*0.05,H*1.3,14), mat(0x0d1013,{metalness:.4})); gr.position.set(cc[0]*W*0.42,topY+H*0.3,cc[1]*D*0.42); addPart("mount",gr);
-      label("M"+(i+1), cc[0]*W*0.30, cc[1]*D*0.30, mn*0.16, "#8fa0aa"); });
-    castellate(11);
-    label("+", -W*0.42, -D*0.14, mn*0.22, "#e08a72"); label("−", -W*0.42, D*0.14, mn*0.22, "#c9d4cf");
-    label("A", W*0.44, -D*0.24, mn*0.16, "#e6cf7a"); label("B", W*0.44, 0, mn*0.16, "#e6cf7a"); label("C", W*0.44, D*0.24, mn*0.16, "#e6cf7a");
+    mkIC(-W*0.075, -D*0.055, mn*0.13, true);
+    mkIC( W*0.075,  D*0.055, mn*0.13, true);
+    mkIC( W*0.085, -D*0.105, mn*0.085);
+    mkIC(-W*0.085,  D*0.105, mn*0.085);
+    mkCapSmd(-W*0.17, D*0.20, mn*0.17, mn*0.145, H*1.5, "330");
+    for(let i=0;i<2;i++) mkCapCan(W*0.05+i*W*0.11, -D*0.19, mn*0.05, H*1.5);
+    mkPassives(-W*0.02, -D*0.02, 3, 2, mn*0.055);
+    mkPassives(W*0.16, D*0.18, 2, 1, mn*0.055, true);
+    // gold phase pads — one motor per edge, three phases each (M1…M4 × A/B/C)
+    [[0,-1],[0,1],[-1,0],[1,0]].forEach(ed=>{
+      const ax=ed[0], az=ed[1];
+      for(let i=0;i<3;i++){
+        const t=(i-1)*W*0.145;
+        mkPad(ax?ax*W*0.452:t, az?az*D*0.452:t, ax?W*0.05:W*0.085, ax?D*0.085:D*0.05);
+      }
+    });
+    // battery tab sticking off the −X edge with the two fat gold pads
+    const tabW=W*0.15, tabD=D*0.36;
+    const tab = roundedBoard(tabW, tabD, H*0.95, mn*0.02, mat(maskCol,{roughness:.52,metalness:.12}));
+    tab.position.set(-W*0.545, 0, D*0.27); addPart("substrate", tab);
+    mkPad(-W*0.545, D*0.27-tabD*0.24, tabW*0.66, tabD*0.34);
+    mkPad(-W*0.545, D*0.27+tabD*0.24, tabW*0.66, tabD*0.34);
+    // FC stack header field in the centre
+    const hdrBlk = new THREE.Mesh(new THREE.BoxGeometry(W*0.13,H*0.5,D*0.24), mat(0x101216));
+    hdrBlk.position.set(0, topY+H*0.25, 0); addPart("signal", hdrBlk);
+    const pinGeo = new THREE.BoxGeometry(W*0.013,H*1.7,W*0.013);
+    for(let r=0;r<2;r++) for(let c=0;c<4;c++){
+      const pin=new THREE.Mesh(pinGeo, metalMat(PCB.gold,.35,.85));
+      pin.position.set((r?W*0.04:-W*0.04), topY+H*0.85, (c-1.5)*W*0.05); addPart("signal", pin);
+    }
+    // plated barrels + gold rings in the drilled corner holes
+    holes.forEach(hl=>{
+      const barrel = new THREE.Mesh(new THREE.CylinderGeometry(hl[2],hl[2],H*1.5,24,1,true), metalMat(PCB.goldLit,.35,.85));
+      barrel.material.side = THREE.DoubleSide;
+      barrel.position.set(hl[0], topY-H*0.6, hl[1]); addPart("mount", barrel);
+      const ring = new THREE.Mesh(new THREE.RingGeometry(hl[2]*1.02, hl[2]*1.34, 28), metalMat(PCB.goldLit,.32,.85));
+      ring.rotation.x = -Math.PI/2; ring.position.set(hl[0], topY+H*0.04, hl[1]); addPart("mount", ring);
+    });
+    mkNode("escP+", -W*0.545, D*0.27-tabD*0.24, 0xc23b2e, mn*0.045);
+    mkNode("escP-", -W*0.545, D*0.27+tabD*0.24, 0x22262b, mn*0.045);
+    mkNode("escA",  W*0.452, -D*0.145, 0xd8b93c, mn*0.04);
+    mkNode("escB",  W*0.452,        0, 0xd8b93c, mn*0.04);
+    mkNode("escC",  W*0.452,  D*0.145, 0xd8b93c, mn*0.04);
+    castellate(9, "x"); castellate(9, "z");
+    [[-1,-1,"M3"],[-1,1,"M4"],[1,-1,"M2"],[1,1,"M1"]].forEach(c=> label(c[2], c[0]*W*0.27, c[1]*D*0.27, mn*0.15, "#9fb2bd"));
+    label("+", -W*0.545, D*0.27-tabD*0.24, mn*0.13, "#e08a72"); label("−", -W*0.545, D*0.27+tabD*0.24, mn*0.13, "#c9d4cf");
+    label("A", W*0.452, -D*0.145, mn*0.10, "#e6cf7a"); label("B", W*0.452, 0, mn*0.10, "#e6cf7a"); label("C", W*0.452, D*0.145, mn*0.10, "#e6cf7a");
   }
   applyExplode(g, opts.explode != null ? opts.explode : 100);
   return g;
@@ -660,6 +866,24 @@ function fitUnit(obj, span, o, orientOverride){
   outer.scale.setScalar((span||1.6)/maxDim);
   return outer;
 }
+/* Motors ship as stator.glb + rotar.glb. Reparent the rotor under a pivot placed
+   on the motor axis so the bell can spin while the stator stays put. Must run
+   while `combo` is still untransformed, so local space == world space. */
+function makeRotorPivot(combo, parts){
+  if(!parts || parts.length < 2) return null;
+  combo.updateMatrixWorld(true);
+  const cen = pp => new THREE.Box3().setFromObject(pp).getCenter(new THREE.Vector3());
+  const sep = cen(parts[parts.length-1]).clone().sub(cen(parts[0]));
+  if(sep.length() <= 1e-6) return null;
+  const a=[Math.abs(sep.x),Math.abs(sep.y),Math.abs(sep.z)], ax=a.indexOf(Math.max(a[0],a[1],a[2]));
+  const rotor = parts[parts.length-1], c = cen(rotor);
+  const pivot = new THREE.Group();
+  pivot.position.copy(c);
+  combo.remove(rotor); rotor.position.sub(c); pivot.add(rotor); combo.add(pivot);
+  pivot.userData.spinAxis = new THREE.Vector3(ax===0?1:0, ax===1?1:0, ax===2?1:0);
+  combo.updateMatrixWorld(true);
+  return pivot;
+}
 function orientMotorCombo(combo, parts){
   if(!parts||parts.length<2) return false;
   const cen=pp=>new THREE.Box3().setFromObject(pp).getCenter(new THREE.Vector3());
@@ -684,18 +908,13 @@ function modelFor(o, span, onReady){
   if(o && o.files && o.files.length){
     Promise.all(o.files.map(loadModelFile)).then(masters=>{
       const merged=new THREE.Group(); const parts=masters.map(m=>m.clone(true)); parts.forEach(pp=>merged.add(pp));
+      const rotorPivot = o.catKey==="motor" ? makeRotorPivot(merged, parts) : null;
       const oriented=o.catKey==="motor" && orientMotorCombo(merged,parts);
       const fitted=fitUnit(merged, span, o, oriented?"none":undefined);
       while(g.children.length) g.remove(g.children[0]);
-      g.add(fitted); if(onReady) onReady(g);
+      g.add(fitted); g.userData.rotor = rotorPivot; if(onReady) onReady(g);
     }).catch(err=>console.warn("model load failed", o&&o.id, err.message||err));
   }
-  return g;
-}
-function standModel(span, onReady){
-  const g=new THREE.Group();
-  g.add(fitUnit(buildFallback({kind:"stand",color:0x9aa5b1,s:1}), span, null));
-  loadModelFile(STAND_MODEL).then(m=>{ const fitted=fitUnit(m.clone(true),span,null); while(g.children.length) g.remove(g.children[0]); g.add(fitted); if(onReady) onReady(g); }).catch(()=>{});
   return g;
 }
 function measuredHeight(group){ const box=new THREE.Box3().setFromObject(group); return { min:box.min.y, max:box.max.y, h:box.max.y-box.min.y }; }
@@ -708,35 +927,70 @@ function scaleToSpan(g, span){
 /* ════════════ 7 · PREVIEW ENGINE ════════════ */
 let previewRenderer = null;
 const previews = new Map();
+/* Supersample factor for previews — the canvas backing store is sized to its
+   ON-SCREEN box x this, so retina panels render at real pixel density. */
+const PREVIEW_DPR = Math.max(2, Math.min(window.devicePixelRatio || 1, 3));
 function initPreviewEngine(){
-  previewRenderer = new THREE.WebGLRenderer({antialias:true, alpha:true});
-  previewRenderer.setSize(220,150); previewRenderer.setPixelRatio(1);
+  previewRenderer = new THREE.WebGLRenderer({ antialias:true, alpha:true,
+                                              powerPreference:"high-performance" });
+  previewRenderer.setPixelRatio(1);          // sizes below are already device pixels
+  if(THREE.sRGBEncoding !== undefined) previewRenderer.outputEncoding = THREE.sRGBEncoding;
+  if(THREE.ACESFilmicToneMapping !== undefined){
+    previewRenderer.toneMapping = THREE.ACESFilmicToneMapping;
+    previewRenderer.toneMappingExposure = 0.82;   // calibrated against the env map below
+  }
+  previewRenderer.setSize(320,220,false);
 }
 function previewModel(o){
   if(o && o.catKey === "esc"){ const g = buildEscBoard(o, {explode:0}); scaleToSpan(g, 1.7); return g; }
   return modelFor(o, 1.6);
 }
+/* The environment map is a full-strength reflection by default, which blows the
+   pale plastics out. Dial it back per material and keep a floor on roughness so
+   nothing turns into a mirror. */
+function tunePreviewMaterials(root){
+  if(!root || !root.traverse) return;
+  root.traverse(function(m){
+    if(!m.isMesh || !m.material) return;
+    (Array.isArray(m.material) ? m.material : [m.material]).forEach(function(mat){
+      if(mat.envMapIntensity !== undefined) mat.envMapIntensity = 0.38;
+      if(mat.roughness !== undefined) mat.roughness = Math.max(mat.roughness, 0.32);
+      mat.needsUpdate = true;
+    });
+  });
+}
 function registerPreview(canvas, o){
   if(!canvas || !o || !previewRenderer) return;
   const scene = new THREE.Scene();
-  scene.add(new THREE.AmbientLight(0xffffff,.9));
-  const d = new THREE.DirectionalLight(0xffffff,.9); d.position.set(2,3,2); scene.add(d);
-  const d2 = new THREE.DirectionalLight(0xdce3f2,.35); d2.position.set(-2,-1,-2); scene.add(d2);
+  scene.environment = ensureEnv(previewRenderer);
+  scene.add(new THREE.AmbientLight(0xffffff,.45));
+  const d = new THREE.DirectionalLight(0xffffff,.7); d.position.set(2,3,2); scene.add(d);
+  const d2 = new THREE.DirectionalLight(0xdce3f2,.2); d2.position.set(-2,-1,-2); scene.add(d2);
   const group = previewModel(o); scene.add(group);
-  const camera = new THREE.PerspectiveCamera(34, 220/150, .1, 50);
+  const aspect = (canvas.width && canvas.height) ? canvas.width/canvas.height : 220/150;
+  const camera = new THREE.PerspectiveCamera(34, aspect, .1, 50);
   camera.position.set(1.9,1.5,1.9); camera.lookAt(0,0,0);
   previews.set(canvas, {scene, camera, group});
 }
 let frameNo = 0;
+let previewW = 0, previewH = 0;
 function blitPreviews(){
   if(!previewRenderer) return; let i=0;
   for(const [cv,p] of previews){
     if(!cv.isConnected){ previews.delete(cv); continue; }
     if((i++ + frameNo) % 2 !== 0) continue;
     p.group.rotation.y += .022;
+    // Backing store = on-screen box x PREVIEW_DPR (see the other experiments).
+    const r = cv.getBoundingClientRect();
+    if(!r.width || !r.height) continue;
+    const w = Math.max(2, Math.round(r.width  * PREVIEW_DPR));
+    const h = Math.max(2, Math.round(r.height * PREVIEW_DPR));
+    if(cv.width !== w || cv.height !== h){ cv.width = w; cv.height = h; }
+    if(previewW !== w || previewH !== h){ previewW=w; previewH=h; previewRenderer.setSize(w,h,false); }
+    if(p.camera.aspect !== w/h){ p.camera.aspect = w/h; p.camera.updateProjectionMatrix(); }
     previewRenderer.render(p.scene, p.camera);
-    const ctx = cv.getContext("2d"); ctx.clearRect(0,0,cv.width,cv.height);
-    ctx.drawImage(previewRenderer.domElement, 0,0, cv.width, cv.height);
+    const ctx = cv.getContext("2d"); ctx.clearRect(0,0,w,h);
+    ctx.drawImage(previewRenderer.domElement, 0,0, w, h);
   }
 }
 
@@ -783,9 +1037,11 @@ function initViewport(){
   renderer.setSize(w,h); renderer.setPixelRatio(Math.min(devicePixelRatio,2));
   host.appendChild(renderer.domElement);
   scene=new THREE.Scene();
-  scene.add(new THREE.AmbientLight(0xffffff,.7));
-  const key=new THREE.DirectionalLight(0xffffff,.95); key.position.set(4,6,3); scene.add(key);
-  const fill=new THREE.DirectionalLight(0xdde5f0,.4); fill.position.set(-4,2,-4); scene.add(fill);
+  scene.environment = ensureEnv(renderer);
+  // env map already supplies broad fill — keep the lamps low or mask colours blow out
+  scene.add(new THREE.AmbientLight(0xffffff,.30));
+  const key=new THREE.DirectionalLight(0xffffff,.68); key.position.set(4,6,3); scene.add(key);
+  const fill=new THREE.DirectionalLight(0xdde5f0,.22); fill.position.set(-4,2,-4); scene.add(fill);
   scene.add(new THREE.GridHelper(16,32,0xc4d1cc,0xe1e9e6));
   FX.init(scene);
   camera=new THREE.PerspectiveCamera(38, w/h, .1, 200);
@@ -812,22 +1068,78 @@ function buildAnatomy(){
   benchNodes=(escGroup.userData.nodes||[]).slice();
   FX.setEmitter("esc", escGroup, "esc");
 }
+/* procedural test-bench deck — anodised aluminium breadboard plate with a
+   drilled M6 grid, machined edge rails and rubber feet. Everything on the
+   bench sits on this. userData.topY = the working surface height. */
+function buildBenchPlatform(){
+  const g=new THREE.Group();
+  const Wp=6.6, Dp=3.3, T=0.16;
+  g.add(roundedBoard(Wp, Dp, T, .10, mat(0x51585f,{roughness:.38,metalness:.82})));
+  const field=roundedBoard(Wp*0.965, Dp*0.92, T*0.14, .07, mat(0x454c53,{roughness:.5,metalness:.7}));
+  field.position.y=T; g.add(field);
+  [-1,1].forEach(s=>{
+    const rail=roundedBoard(Wp, Dp*0.05, T*0.5, .02, mat(0x6b747c,{roughness:.3,metalness:.9}));
+    rail.position.set(0, T, s*Dp*0.468); g.add(rail);
+  });
+  // drilled M6 grid — instanced so a few hundred holes stay cheap
+  const cols=26, rows=12, pitch=.24;
+  const holeMesh=new THREE.InstancedMesh(new THREE.CylinderGeometry(.032,.032,T*0.5,10),
+    mat(0x22272c,{roughness:.8,metalness:.3}), cols*rows);
+  const m4=new THREE.Matrix4(); let n=0;
+  for(let i=0;i<cols;i++) for(let j=0;j<rows;j++){
+    m4.makeTranslation((i-(cols-1)/2)*pitch, T*1.02, (j-(rows-1)/2)*pitch);
+    holeMesh.setMatrixAt(n++, m4);
+  }
+  holeMesh.instanceMatrix.needsUpdate=true; g.add(holeMesh);
+  [[-1,-1],[-1,1],[1,-1],[1,1]].forEach(c=>{
+    const foot=new THREE.Mesh(new THREE.CylinderGeometry(.13,.15,.1,18), mat(0x1b1e22,{roughness:.9,metalness:.05}));
+    foot.position.set(c[0]*Wp*0.44, -.05, c[1]*Dp*0.40); g.add(foot);
+  });
+  g.userData.topY = T*1.06;
+  return g;
+}
+/* procedural machined motor mount — base, two slotted uprights, clamp ring.
+   userData.topY = motor seating height above the mount's own origin. */
+function buildMotorMount(h){
+  const g=new THREE.Group();
+  g.add(roundedBoard(.92,.92,.07,.06, mat(0x3d444b,{roughness:.42,metalness:.78})));
+  [[-1,-1],[-1,1],[1,-1],[1,1]].forEach(c=>{
+    const bolt=new THREE.Mesh(new THREE.CylinderGeometry(.045,.045,.03,12), metalMat(0x9aa5b1,.28,.92));
+    bolt.position.set(c[0]*.34,.075,c[1]*.34); g.add(bolt);
+  });
+  const ph=h-.14;
+  [-1,1].forEach(s=>{
+    const post=roundedBoard(.16,.5,ph,.05, mat(0x8e979f,{roughness:.3,metalness:.88}));
+    post.position.set(s*.3,.07,0); g.add(post);
+    const slot=new THREE.Mesh(new THREE.BoxGeometry(.18,ph*.5,.24), mat(0x333a40,{roughness:.6}));
+    slot.position.set(s*.3,.07+ph*.5,0); g.add(slot);
+  });
+  const shelf=roundedBoard(.74,.62,.05,.06, mat(0x8e979f,{roughness:.3,metalness:.88}));
+  shelf.position.y=h-.05; g.add(shelf);
+  const ring=new THREE.Mesh(new THREE.TorusGeometry(.30,.045,14,36), metalMat(0xa7b0b8,.28,.9));
+  ring.rotation.x=Math.PI/2; ring.position.y=h; g.add(ring);
+  g.userData.topY=h+.02;
+  return g;
+}
 function buildBench(){
   rig=new THREE.Group(); scene.add(rig);
+  // everything is bolted to one procedural deck — no imported stand
+  const deck=buildBenchPlatform(); rig.add(deck);
+  const DY=deck.userData.topY;
   // DC supply
-  supplyGroup=buildDcSupply(); supplyGroup.position.set(-2.0,0,-.2); rig.add(supplyGroup);
+  supplyGroup=buildDcSupply(); supplyGroup.position.set(-2.0,DY,-.2); rig.add(supplyGroup);
   FX.setEmitter("supply", supplyGroup, "supply");
-  // ESC on a small mat
-  const mat0=new THREE.Mesh(new THREE.BoxGeometry(1.7,.06,1.1), mat(0x2a3138,{roughness:.6})); mat0.position.set(0,.03,.1); rig.add(mat0);
+  // ESC on an ESD mat inlay
+  const mat0=roundedBoard(1.7,1.1,.05,.05, mat(0x2a3138,{roughness:.72,metalness:.08}));
+  mat0.position.set(0,DY,.1); rig.add(mat0);
   escGroup=buildEscBoard(opt("esc"), {explode:0}); scaleToSpan(escGroup, 1.5);
-  escGroup.position.set(0,.09,.1); rig.add(escGroup);
+  escGroup.position.set(0,DY+.05,.1); rig.add(escGroup);
   if(state.escDead) tintBurnt();
   FX.setEmitter("esc", escGroup, "esc");
-  // Motor stand + motor + prop on the right
+  // procedural motor mount + motor + prop on the right
   const mo=opt("motor"), pr=opt("propeller");
-  const stand=standModel(1.9, s=>{ const hm=measuredHeight(s); s.position.y=-hm.min; placeMotor(hm.max-hm.min); });
-  stand.position.set(2.0,0,0); rig.add(stand);
-  placeMotor(1.5);
+  const mount=buildMotorMount(1.15); mount.position.set(2.0,DY,0); rig.add(mount);
+  placeMotor(DY+mount.userData.topY);
   function placeMotor(standTop){
     if(motorGroup){ rig.remove(motorGroup); }
     if(propSpinner){ rig.remove(propSpinner); }
@@ -938,9 +1250,11 @@ function killEsc(kind){
   renderLog(); syncRunControls(); saveState();
 }
 function pickComponent(rc){
-  const meshes=[]; if(escGroup) escGroup.traverse(o=>{ if(o.isMesh && o.userData.part) meshes.push(o); });
+  // terminal posts carry userData.node (not .part) — COMPONENTS maps those ids too,
+  // so they must be in the pick set or the power/phase pads are unclickable.
+  const meshes=[]; if(escGroup) escGroup.traverse(o=>{ if(o.isMesh && (o.userData.part || o.userData.node)) meshes.push(o); });
   const hit=rc.intersectObjects(meshes,false)[0];
-  if(hit){ selectComponent(hit.object.userData.part); }
+  if(hit){ selectComponent(hit.object.userData.node || hit.object.userData.part); }
 }
 
 /* ════════════ 9 · UI RENDERING ════════════ */
@@ -1002,7 +1316,12 @@ function selectComponent(partOrId){
   ds.innerHTML='<h4>'+txt(c.name)+'</h4><span class="role">'+txt(c.role)+'</span><span class="note">'+txt(c.note)+'</span>';
   // highlight in 3D
   if(escGroup){
-    escGroup.traverse(o=>{ if(o.isMesh&&o.material&&o.material.emissive){ if(o.userData.baseColor!=null) o.material.emissive.setHex(o.userData.baseColor).multiplyScalar? o.material.emissive.setHex(0x000000):o.material.emissive.setHex(0x000000); } });
+    // clear the previous highlight everywhere, then restore the terminals' idle glow
+    escGroup.traverse(o=>{
+      if(!(o.isMesh && o.material && o.material.emissive)) return;
+      if(o.userData.node!=null && o.userData.baseColor!=null){ o.material.emissive.setHex(o.userData.baseColor); o.material.emissiveIntensity=.12; }
+      else { o.material.emissive.setHex(0x000000); o.material.emissiveIntensity=1; }
+    });
     (c.parts||[]).forEach(pn=>{ (escGroup.userData.parts[pn]||[]).forEach(m=>{ if(m.material&&m.material.emissive){ m.material.emissive.setHex(0x37e0a0); m.material.emissiveIntensity=.35; } }); });
     (c.nodes||[]).forEach(nn=>{ const node=(escGroup.userData.nodes||[]).find(x=>x.userData.node===nn); if(node) highlightNode(node,true); });
   }
@@ -1073,7 +1392,7 @@ function renderLog(){
   const dg=diagnostics(), list=$("logList"); list.innerHTML="";
   const icon=s=>s==="ok"?"✓":s==="warn"?"!":"×";
   dg.items.forEach(it=>{ const d=el("div","log-item "+it.sev);
-    d.innerHTML='<span class="ic">'+icon(it.sev)+'</span><div class="body"><span class="msg">'+txt(it.msg)+'</span>'+(it.fix?'<span class="fix">→ '+txt(it.fix)+'</span>':'')+'</div>';
+    d.innerHTML='<span class="ic">'+icon(it.sev)+'</span><div class="body"><span class="msg">'+txt(it.msg)+'</span>'+(it.fix?'<span class="fix">Fix: '+txt(it.fix)+'</span>':'')+'</div>';
     list.appendChild(d); });
   const badge=$("logBadge"), sum=$("logSummary");
   if(dg.errors){ badge.className="log-badge err"; badge.textContent=dg.errors+" error"+(dg.errors>1?"s":""); sum.textContent="· "+dg.errors+" error"+(dg.errors>1?"s":"")+(dg.warns?", "+dg.warns+" warning"+(dg.warns>1?"s":""):""); }
@@ -1102,17 +1421,72 @@ function renderSupplyReadout(V, A, mode){
   ar.classList.toggle("cc", mode==="CC");
   if(supplyGroup) updateSupplyDisplays(supplyGroup, V, A, mode);
 }
+/* local mass formatter — exp-04 has no fmtMass() of its own */
+function rwMass(g){
+  if(typeof fmtMass === "function") return fmtMass(g);
+  return g >= 1000 ? (g/1000).toFixed(2)+" kg" : (g<10 && g>0 ? g.toFixed(1) : Math.round(g))+" g";
+}
+/* Draw a random component from the reward category and REMEMBER the draw, so the
+   card doesn't reshuffle on every re-render. Kept in localStorage under its own
+   key (not the experiment's state schema, which differs per experiment) so a
+   fresh play-through can award a different part. */
+let _rewardPick = null;
+function rewardPick(r){
+  if(!r || !r.pool || !r.pool.length) return null;
+  if(_rewardPick && r.pool.indexOf(_rewardPick) !== -1) return _rewardPick;
+  const KEY = "dtl-reward-" + (r.category || "x");
+  let id = null; try{ id = localStorage.getItem(KEY); }catch(e){}
+  let p = id ? r.pool.filter(function(o){ return o.id === id; })[0] : null;
+  if(!p){
+    p = r.pool[Math.floor(Math.random()*r.pool.length)];
+    try{ localStorage.setItem(KEY, p.id); }catch(e){}
+  }
+  _rewardPick = p;
+  return p;
+}
 function renderReward(){
-  const body=$("rewardBody"), unlocked=allDone();
-  $("rewardBadge").textContent=(unlocked?1:0)+" / 1"; body.innerHTML="";
-  if(unlocked){
-    const r=ESC_DB.reward; const d=el("div","reward-open");
-    d.innerHTML='<div class="view"><canvas width="280" height="190"></canvas></div><div class="meta"><b>★ '+txt(r.name)+'</b><p>'+txt(r.desc)+'</p></div>';
+  const body = $("rewardBody"); if(!body) return;
+  const DB = (typeof DRONE_DB !== "undefined" && DRONE_DB) ? DRONE_DB
+           : (typeof ESC_DB   !== "undefined" && ESC_DB)   ? ESC_DB : null;
+  const r = (DB && DB.reward) || { pool: [] };
+  const unlocked = allDone();
+  const badge = $("rewardBadge");
+  body.innerHTML = "";
+  // capstone: the experiment IS the showdown, so there is nothing to unlock
+  if(!r.category){
+    if(badge) badge.textContent = unlocked ? "PASS" : "—";
+    const d = el("div","reward-locked"+(unlocked?" reward-final":""));
+    d.innerHTML = '<div class="lock">'+(unlocked?"🏆":"🔒")+'</div><p>'+
+      (unlocked ? "Full system verified — the build flies."
+                : txt(r.desc || "Complete every check to clear the flight test."))+'</p>';
     body.appendChild(d);
-    const cv=d.querySelector("canvas"); registerPreview(cv, { catKey:"reward", fallback:r.fallback, files:r.files });
+    return;
+  }
+  if(badge) badge.textContent = (unlocked?1:0)+" / 1";
+  if(unlocked){
+    const pick = rewardPick(r);
+    const d = el("div","reward-open");
+    const specs = (pick && pick.specs && pick.specs.length)
+      ? pick.specs.slice(0,3).map(function(s){ return '<span><i>'+txt(s[0])+'</i>'+txt(s[1])+'</span>'; }).join("")
+      : "";
+    d.innerHTML =
+      '<div class="view"><canvas width="280" height="190"></canvas></div>'+
+      '<div class="meta"><span class="rw-kind">'+txt(r.name)+' unlocked</span>'+
+      '<b>'+txt(pick ? pick.name : r.name)+'</b>'+
+      (specs ? '<div class="rw-specs mono">'+specs+'</div>' : '')+
+      (pick && pick.mass ? '<div class="rw-specs mono"><span><i>Mass</i>'+rwMass(pick.mass)+
+        (pick.qty>1?" × "+pick.qty:"")+'</span></div>' : '')+
+      '</div>';
+    body.appendChild(d);
+    // pick is a REAL catalogue option, so it carries catKey → fitUnit applies the
+    // same orientation rule this component uses everywhere else in the lab.
+    registerPreview(d.querySelector("canvas"), pick || { fallback:r.fallback });
   }else{
-    const total=allExperiments().length; const d=el("div","reward-locked");
-    d.innerHTML='<div class="lock">🔒</div><p>Complete all '+total+' stages<br>to unlock a reward component</p>'; body.appendChild(d);
+    const total = allExperiments().length;
+    const d = el("div","reward-locked");
+    d.innerHTML = '<div class="lock">🔒</div><p>Complete all '+total+' experiments<br>to unlock a '+
+      txt((r.name||"reward component").toLowerCase())+'</p>';
+    body.appendChild(d);
   }
 }
 function refreshAfterSelection(key){
@@ -1239,7 +1613,7 @@ function drawAnalysisChart(){
   if(!cfg){ ChartHub.kill("analysisChart"); const cv=$("analysisChart"); if(cv){ const g=cv.getContext("2d"); g.clearRect(0,0,cv.width,cv.height); } return; }
   ChartHub.put("analysisChart", cfg);
 }
-function chartDefs(){
+function plotDefsAll(){
   return [
     { id:"scope", title:"PWM oscilloscope · Expected vs Obtained", cfg:()=>scopeMapConfig(false) },
     { id:"maperr", title:"Throttle-map error", cfg:()=>mapErrorConfig(false) },
@@ -1248,7 +1622,7 @@ function chartDefs(){
     { id:"pvi", title:"ESC loss vs phase current (2 W line)", cfg:()=>pViConfig(false) },
     { id:"tisweep", title:"Junction T vs sustained current", cfg:()=>tiSweepConfig(false) },
     { id:"coldhot", title:"Cold vs hot conduction loss", cfg:()=>coldHotConfig(false) },
-    { id:"sankey", title:"Power flow · supply → mech + loss", dom:renderSankeyDOM }
+    { id:"sankey", title:"Power flow · supply to mech + loss", dom:renderSankeyDOM }
   ];
 }
 function renderSankeyDOM(host){
@@ -1342,24 +1716,75 @@ function openChartsDetail(){
   pending.forEach(pc=>ChartHub.put(pc.id, pc.cfg));
   wrap.appendChild(el("p","calc-footnote","Curves recompute live from the selected components' spec.json and the bench supply. BEMT-lite propeller model feeds the phase current; ESC loss = conduction I²R(T) + switching + capacitor ESR."));
 }
-function openSingleChart(def){
-  const body=openModal(txt(def.title)+' <em>· detail</em>', "#c65d3b", '<button type="button" class="modal-back" id="chartBack">‹ all charts</button>');
+/* ── Graphs vs Charts split ───────────────────────────────────────────────────
+   A plot belongs on the Graphs card when it is drawn as a CURVE — a line chart,
+   or a scatter with showLine (the sweep / CDF style). Everything else — bars,
+   radars, doughnuts, clouds, histograms — stays in Charts. The kind is read off
+   the built config, so a new plot lands in the right panel without a flag. A def
+   with an `empty` fallback is a recorded-run plot: it is a line too, and the
+   Graphs modal shows it as the full-width live block instead of a tile. */
+function plotIsLine(def){
+  if(def.dom) return false;
+  if(def.empty) return true;
+  try{
+    const c = def.cfg();
+    if(!c) return true;
+    if(c.type === "line") return true;
+    return c.type === "scatter" && (c.data.datasets||[]).some(d=>d.showLine);
+  }catch(e){ return false; }
+}
+function graphDefs(){ return plotDefsAll().filter(plotIsLine); }
+function chartDefs(){
+  const out = plotDefsAll().filter(d=>!plotIsLine(d));
+  // Some experiments plot nothing but curves — say so instead of an empty panel.
+  return out.length ? out : [{ id:"nocharts", title:"No non-line charts in this experiment",
+    cfg:()=>null, empty:"Every plot here is a curve — they are all on the Graphs card." }];
+}
+/* gallery body shared by the Graphs modal: one block per def + expand button */
+function renderGraphBlocks(wrap, defs){
+  const pending = [];
+  defs.forEach(def=>{
+    const block = el("div","calc-block gchart");
+    const head = el("div","gchart-head");
+    head.innerHTML = '<h3>'+txt(def.title)+'</h3><button type="button" class="gchart-expand" title="Expand">⤢</button>';
+    head.querySelector("button").addEventListener("click", ()=>openSingleChart(def, "graphs"));
+    block.appendChild(head);
+    const cfg = def.cfg();
+    if(cfg){ const box = el("div","chart-box-lg");
+      box.innerHTML = '<canvas id="gc_'+def.id+'"></canvas>'; block.appendChild(box);
+      pending.push({ id:"gc_"+def.id, cfg }); }
+    else block.appendChild(el("div","runs-empty", txt(def.empty||"No data yet.")));
+    if(def.note) block.appendChild(el("p","chart-footnote", txt(def.note())));
+    wrap.appendChild(block);
+  });
+  return pending;
+}
+function openSingleChart(def, backTo){
+  const body=openModal(txt(def.title)+' <em>· detail</em>', "#c65d3b", '<button type="button" class="modal-back" id="chartBack">‹ all '+(backTo==="graphs"?"graphs":"charts")+'</button>');
   const wrap=el("div"); wrap.style.cssText="height:62vh;min-height:340px;position:relative";
   if(def.dom){ wrap.style.height="auto"; def.dom(wrap); } else { wrap.innerHTML='<canvas id="gc_single"></canvas>'; }
   body.appendChild(wrap);
   if(def.cfg) ChartHub.put("gc_single", def.cfg());
-  const back=$("chartBack"); if(back) back.addEventListener("click", openChartsDetail);
+  const back=$("chartBack"); if(back) back.addEventListener("click", backTo==="graphs"?openGraphDetail:openChartsDetail);
 }
 function openGraphDetail(){
+  ChartHub.killPrefix("gc_");
   const { exp }=currentExp(), metric=exp.metric;
-  const body=openModal('Live Graph <em>· '+txt(exp.name)+'</em>', "#4f6d9e");
-  const wrap=el("div"); wrap.style.cssText="height:62vh;min-height:340px;position:relative";
-  wrap.innerHTML='<canvas id="gc_single"></canvas>'; body.appendChild(wrap);
+  const body=openModal('Graphs <em>· live run + parameter sweeps</em>', "#4f6d9e");
+  const wrap=el("div","calc-blocks");
+  const live=el("div","calc-block gchart");
+  live.innerHTML='<div class="gchart-head"><h3>Live run · '+txt(exp.name)+'</h3></div>';
+  const box=el("div","chart-box-lg");
+  box.innerHTML='<canvas id="gc_live"></canvas>'; live.appendChild(box);
+  wrap.appendChild(live);
+  const pending=renderGraphBlocks(wrap, graphDefs().filter(d=>!d.empty));
+  body.appendChild(wrap);
   let cfg;
   if(metric==="map") cfg=scopeMapConfig(false);
   else if(metric==="latency") cfg=latencyScopeConfig(false,0);
   else cfg=tiSweepConfig(false);
-  ChartHub.put("gc_single", cfg);
+  ChartHub.put("gc_live", cfg);
+  pending.forEach(p=>ChartHub.put(p.id, p.cfg));
 }
 
 /* ════════════ 12 · SIMULATION RUNNER ════════════ */
@@ -1404,7 +1829,7 @@ function stopSim(completed){
 function resetSim(){
   if(simActive) stopSim(false);
   if(currentExp().exp.metric==="map"){ state.pulse=1000; $("pulseSlider").value=1000; $("pulseVal").textContent="1000 µs"; }
-  sim.data=[]; sim.labels=[]; sim.temp=state.ambient; heatT=state.ambient;
+  sim.data=[]; sim.labels=[]; sim.temp=state.ambient; heatT=state.ambient; sim.lastRpm=0;
   updateTelemetry({}); drawLiveGraph(); drawAnalysisChart(); renderCalcChips();
 }
 function showVerdictToast(text, ok){
@@ -1511,7 +1936,7 @@ const SFX_FILES={ tick:"assets/audio/sfx/click.mp3", start:"assets/audio/sfx/sta
 function sfx(kind){ if(state.sfxVol<=0) return; const v=state.sfxVol/100, file=SFX_FILES[kind]; if(file){ try{ const a=new Audio(file); a.volume=Math.min(v,1); a.play().catch(()=>toneFallback(kind)); return; }catch(e){} } toneFallback(kind); }
 function toneFallback(kind){ const v=.22; try{ if(kind==="tick") tone(880,0,.07,v); else if(kind==="start"){ tone(392,0,.09,v); tone(587,.09,.12,v); } else if(kind==="done"){ tone(660,0,.1,v); tone(880,.12,.18,v); } else if(kind==="error"){ tone(200,0,.12,v,"square"); tone(150,.12,.18,v,"square"); } else if(kind==="unlock"){ [523,659,784,1047].forEach((f,i)=>tone(f,i*.13,.22,v)); } else if(kind==="warn"){ tone(330,0,.14,v,"triangle"); } }catch(e){} }
 const VOICE_FILES={ esc_burnt:"assets/audio/voice/fault_short_circuit.mp3", reverse:"assets/audio/voice/fault_reverse_polarity.mp3", reversed_rot:"assets/audio/voice/fault_reversed_rotation.mp3", pass:"assets/audio/voice/verdict_pass.mp3" };
-const INTRO_FILES={ "m1:anatomy":"assets/audio/voice/m1_intro.mp3", "m1:commission":"assets/audio/voice/m1_intro.mp3", "m2:protocol":"assets/audio/voice/m2_intro.mp3", "m2:thermal":"assets/audio/voice/m2_thermal_intro.mp3" };
+const INTRO_FILES={ "m1:anatomy":"assets/audio/voice/m1_intro.mp3", "m1:commission":"assets/audio/voice/m1_commission.mp3", "m2:protocol":"assets/audio/voice/m2_intro.mp3", "m2:thermal":"assets/audio/voice/m2_thermal_intro.mp3" };
 let currentVoice=null, lastVoiceUrl=null;
 function stopVoice(){ if(currentVoice){ try{ currentVoice.pause(); currentVoice.currentTime=0; }catch(e){} currentVoice=null; } }
 function playVoiceFile(url){ if(!url) return; lastVoiceUrl=url; if(state.voiceVol<=0) return; stopVoice(); try{ const a=new Audio(url); a.volume=Math.min(state.voiceVol/100,1); currentVoice=a; a.addEventListener("ended",()=>{ if(currentVoice===a) currentVoice=null; }); a.play().catch(()=>{}); }catch(e){} }
@@ -1524,7 +1949,7 @@ function audioStop(){ if(!engine||!actx) return; const e=engine; e.g.gain.setTar
 function audioUpdate(){ if(!engine||!actx) return; const ctx=actx; const rpm=engine.cur+((sim.lastRpm||0)-engine.cur)*0.15; engine.cur=rpm; const rev=rpm/60, p=propulsionParams(), blade=rev*(p.blades||2); engine.rumble.frequency.setTargetAtTime(Math.max(rev,10),ctx.currentTime,.05); engine.whine.frequency.setTargetAtTime(Math.max(blade,40),ctx.currentTime,.05); engine.bp.frequency.setTargetAtTime(Math.min(400+blade*1.4,5200),ctx.currentTime,.05); const lvl=Math.min(0.25+rpm/9000*0.7,1.0); engine.g.gain.setTargetAtTime(lvl,ctx.currentTime,.08); }
 function voiceBlip(){ if(state.voiceVol<=0) return; try{ const ctx=ac(); const o=ctx.createOscillator(), g=ctx.createGain(); o.type="triangle"; o.frequency.value=523; const vol=Math.min(state.voiceVol/100,1)*0.22; g.gain.setValueAtTime(0,ctx.currentTime); g.gain.linearRampToValueAtTime(vol,ctx.currentTime+.02); g.gain.exponentialRampToValueAtTime(.0001,ctx.currentTime+.18); o.connect(g); g.connect(ctx.destination); o.start(); o.stop(ctx.currentTime+.22); }catch(e){} }
 function playVoice(){ const step=ESC_DB.instructor[state.instrStep]; if(step&&step.audio){ playVoiceFile(step.audio); return; } if(state.voiceVol<=0) return; try{ [392,494,587].forEach((f,i)=>tone(f,i*.16,.2,(state.voiceVol/100)*.18,"triangle")); }catch(e){} }
-function replayVoice(){ playVoiceFile(lastVoiceUrl || INTRO_FILES[currentIntroKey()]); }
+function replayVoice(){ const step=ESC_DB.instructor[state.instrStep]; playVoiceFile(lastVoiceUrl || (step&&step.audio) || INTRO_FILES[currentIntroKey()]); }
 function renderInstr(){ const steps=ESC_DB.instructor; $("instrText").textContent=steps[state.instrStep].text; $("instrStepTxt").textContent="step "+(state.instrStep+1)+" / "+steps.length; $("instrPanel").hidden=!state.instrOpen; }
 function instrGo(n){ state.instrStep=Math.max(0,Math.min(n,ESC_DB.instructor.length-1)); saveState(); renderInstr(); }
 function instrEvent(evt){ const map={picker:1,select:2,run:3,runDone:4}; const target=map[evt]; if(target!=null && state.instrStep<target){ instrGo(target); playVoice(); } }
@@ -1537,6 +1962,15 @@ document.addEventListener("keydown", e=>{ if(e.key==="Escape" && !$("modalOverla
 
 let lastT=0, graphEvery=0;
 sim._g=0;
+/* ── propeller spin ─────────────────────────────────────────────────────────
+   True shaft speed is ω = rpm/60·2π rad/s. Drawing that literally only strobes
+   (a 2-blade prop at 9 000 rpm passes a blade every 3 ms — far under a frame),
+   so the view runs at a fixed fraction of real ω: PROP_VIS. Every rpm RATIO
+   stays exact — double the rpm, double the on-screen rate — and the result is
+   integrated against dt, so it no longer runs faster on a 120 Hz display than
+   on a 60 Hz one the way the old per-frame constant did. */
+const PROP_VIS = 1/12;
+function propSpinRate(rpm){ return Math.max(0, (rpm||0)/60*2*Math.PI*PROP_VIS); }
 function loop(t){
   requestAnimationFrame(loop); frameNo++;
   const dt=Math.min((t-lastT)/1000,.05)||.016; lastT=t;
@@ -1547,10 +1981,24 @@ function loop(t){
     updateTelemetry({ throttle:c.throttle, rpm:c.rpm, volts:c.duty>0?c.V:state.vset, cur:c.duty>0?c.phaseI:0, pesc:c.duty>0?c.Ptot:0, temp:heatT, lat:(sceneMode()==="latency"?(c.latency<1?(c.latency*1000).toFixed(0)+" µs":c.latency.toFixed(2)+" ms"):undefined), stateTxt:state.escDead?"BURNT":state.armed?"ARMED":"DISARMED", phase:state.escDead?"ESC FAULT":state.armed?"ARMED · IDLE":"DISARMED", phaseCls:state.escDead?"danger":"" });
   }
   if(simActive){ simStep(dt); audioUpdate(); }
-  // spin the propeller when the motor turns
-  if(propSpinner){ const w=evalWiring(); const spin=(sim.lastRpm||0)>10 ? Math.min((sim.lastRpm||0)/1600,3.2)+.12 : 0; propSpinner.rotation.y += spin*(w.spinDir||1); }
+  // Once the sim stops, nothing else drives sim.lastRpm — without this the rotor
+  // would keep turning at the last speed for ever and Stop would look dead.
+  // Coast it down instead, the way a real bell decelerates.
+  else if(sim.lastRpm > 0){ sim.lastRpm = sim.lastRpm > 20 ? sim.lastRpm * 0.94 : 0; }
+  // spin the rotor bell + propeller together. spinDir is 0 unless all three phases
+  // are wired one-to-one, and −1 when any two are swapped — so an incomplete or
+  // crossed harness must not turn the motor at all.
+  {
+    const rotorPivot = motorGroup && motorGroup.userData.rotor;
+    if(propSpinner || rotorPivot){
+      const w = evalWiring(), rpm = sim.lastRpm || 0;
+      const spin = (w.spinDir && rpm > 10) ? propSpinRate(rpm) * w.spinDir : 0;
+      if(propSpinner) propSpinner.rotation.y += spin*dt;
+      if(rotorPivot && spin) rotorPivot.rotateOnAxis(rotorPivot.userData.spinAxis, spin);
+    }
+  }
   // ESC junction heatmap
-  if(escGroup && escGroup.userData.mosfets){ const k=smokeRamp(heatT,40,180); escGroup.userData.mosfets.forEach(m=>{ if(m.material){ const c=new THREE.Color(0x1a1d22).lerp(new THREE.Color(0xff5522),k); m.material.color.copy(c); m.material.emissive && m.material.emissive.copy(c).multiplyScalar(k*0.6); } }); }
+  if(escGroup && escGroup.userData.mosfets){ const k=smokeRamp(heatT,40,180); escGroup.userData.mosfets.forEach(m=>{ if(m.material){ const c=new THREE.Color(m.userData.baseColor!=null?m.userData.baseColor:0x1a1d22).lerp(new THREE.Color(0xff5522),k); m.material.color.copy(c); m.material.emissive && m.material.emissive.copy(c).multiplyScalar(k*0.6); } }); }
   // FX intensity from junction temp / dead esc
   FX.kindIntensity("esc", state.escDead?1:smokeRamp(heatT,120,200));
   FX.tick(dt); blitPreviews();
@@ -1573,15 +2021,7 @@ function populateSelects(){
   const ps=$("protocolSelect"); if(ps){ ps.innerHTML=""; ESC_DB.protocols.forEach(pr=>{ const o=el("option"); o.value=pr.id; o.textContent=pr.label; ps.appendChild(o); }); ps.value=state.protocol; }
 }
 async function boot(){
-  // 1 · file:// blocks fetch of the catalog → surface a clear message, not a white screen
-  if(location.protocol === "file:"){
-    bootFatal("Open this lab over HTTP, not from a file path",
-      "The browser blocks loading the component catalog and 3D models from a <b>file://</b> path. Serve the folder instead:<br><br>"+
-      "<code style='font-family:monospace;background:#eef1ef;padding:2px 5px;border-radius:4px'>python3 -m http.server 8731</code><br><br>"+
-      "then open <b>http://localhost:8731/index.html</b>.");
-    return;
-  }
-  // 2 · required 3D libraries (CDN) must be present
+  // required 3D libraries (CDN) must be present
   if(typeof THREE === "undefined" || !THREE.OrbitControls || !THREE.GLTFLoader){
     bootFatal("3D libraries failed to load",
       "three.js / OrbitControls / GLTFLoader could not be fetched from the CDN — a network block, ad-blocker or offline session will do this. Check your connection (or unblock cdnjs.cloudflare.com and cdn.jsdelivr.net) and reload.");
@@ -1638,7 +2078,8 @@ async function boot(){
   $("sfxVol").addEventListener("change", ()=>sfx("tick"));
   window.addEventListener("resize", resizeViewport);
   let _rz=0; window.addEventListener("resize", ()=>{ clearTimeout(_rz); _rz=setTimeout(()=>{ drawLiveGraph(); drawAnalysisChart(); },140); });
-  if(state.instrOpen) playIntroVoice(currentIntroKey());
+  // the panel opens on the current instructor step — speak that step, not the stage intro
+  if(state.instrOpen) playVoice();
   let primed=false; const prime=()=>{ if(primed) return; primed=true; try{ if(actx&&actx.state==="suspended") actx.resume(); }catch(e){} };
   window.addEventListener("pointerdown", prime, {once:true}); window.addEventListener("keydown", prime, {once:true});
   bootProgress("ready", 1); hideBoot();

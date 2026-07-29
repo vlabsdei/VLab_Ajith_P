@@ -1,0 +1,592 @@
+{
+  "format": "daruka.mounts",
+  "formatVersion": "1.0",
+  "generator": "DARUKA Drone Authoring Toolkit v1.0.0",
+  "generatorVersion": "1.0.0",
+  "exported": "2026-07-10T03:03:23",
+  "frame": "10 inch Assem",
+  "coordinateSystem": "three.js (right-handed, Y-up)",
+  "units": "meters",
+  "mountCount": 14,
+  "mounts": [
+    {
+      "name": "Battery",
+      "mountType": "battery",
+      "componentCategory": "power",
+      "position": [
+        9.67e-06,
+        0.01501084,
+        0.00629683
+      ],
+      "quaternion": [
+        0.0,
+        -0.70670557,
+        0.0,
+        0.70750776
+      ],
+      "scale": [
+        1.0,
+        1.0,
+        1.0
+      ],
+      "orientation": [
+        0.0,
+        1.0,
+        0.0
+      ],
+      "maximumDimensions": [
+        140.0,
+        45.0,
+        38.0
+      ],
+      "maximumWeight": 650.0,
+      "compatibleMountPattern": "strap / tray",
+      "voltage": 22.2,
+      "current": 120.0,
+      "coolingRequirement": "airflow",
+      "confidence": 0.9207536694431088,
+      "evidence": [
+        "tray plate area=0.02087",
+        "underslung"
+      ],
+      "armIndex": -1
+    },
+    {
+      "name": "Camera",
+      "mountType": "camera",
+      "componentCategory": "payload",
+      "position": [
+        -0.0020825564861297607,
+        -0.005569150671362877,
+        0.1347053200006485
+      ],
+      "quaternion": [
+        -5.338507236274381e-08,
+        0.7071067690849304,
+        0.7071067690849304,
+        5.338508657359853e-08
+      ],
+      "scale": [
+        1.0,
+        1.0000001192092896,
+        1.0
+      ],
+      "orientation": [
+        0.0,
+        0.0,
+        1.0
+      ],
+      "maximumDimensions": [
+        22.0,
+        26.0,
+        26.0
+      ],
+      "maximumWeight": 30.0,
+      "compatibleMountPattern": "19mm / 20mm cage",
+      "voltage": 5.0,
+      "current": 0.6,
+      "coolingRequirement": "none",
+      "confidence": 0.8599991597614935,
+      "evidence": [
+        "front lens opening"
+      ],
+      "armIndex": -1
+    },
+    {
+      "name": "ESC_FL",
+      "mountType": "esc",
+      "componentCategory": "propulsion",
+      "position": [
+        0.14074504,
+        0.00342347,
+        0.13967128
+      ],
+      "quaternion": [
+        0.0,
+        -0.3802923,
+        0.0,
+        0.92486635
+      ],
+      "scale": [
+        1.0,
+        1.0,
+        1.0
+      ],
+      "orientation": [
+        0.0,
+        1.0,
+        0.0
+      ],
+      "maximumDimensions": [
+        30.0,
+        15.0,
+        8.0
+      ],
+      "maximumWeight": 12.0,
+      "compatibleMountPattern": "zip-tie / heatshrink / 20x20",
+      "voltage": 25.2,
+      "current": 55.0,
+      "coolingRequirement": "airflow",
+      "confidence": 0.9405,
+      "evidence": [
+        "arm centerline @ 60%"
+      ],
+      "armIndex": 3
+    },
+    {
+      "name": "ESC_FR",
+      "mountType": "esc",
+      "componentCategory": "propulsion",
+      "position": [
+        -0.14071405,
+        0.00500711,
+        0.1397085
+      ],
+      "quaternion": [
+        0.0,
+        -0.92478627,
+        0.0,
+        0.380487
+      ],
+      "scale": [
+        1.0,
+        1.0,
+        1.0
+      ],
+      "orientation": [
+        0.0,
+        1.0,
+        0.0
+      ],
+      "maximumDimensions": [
+        30.0,
+        15.0,
+        8.0
+      ],
+      "maximumWeight": 12.0,
+      "compatibleMountPattern": "zip-tie / heatshrink / 20x20",
+      "voltage": 25.2,
+      "current": 55.0,
+      "coolingRequirement": "airflow",
+      "confidence": 0.9405,
+      "evidence": [
+        "arm centerline @ 60%"
+      ],
+      "armIndex": 2
+    },
+    {
+      "name": "ESC_RL",
+      "mountType": "esc",
+      "componentCategory": "propulsion",
+      "position": [
+        0.13970667,
+        0.00500165,
+        -0.14395937
+      ],
+      "quaternion": [
+        0.0,
+        0.39011565,
+        0.0,
+        0.92076587
+      ],
+      "scale": [
+        1.0,
+        1.0,
+        1.0
+      ],
+      "orientation": [
+        0.0,
+        1.0,
+        0.0
+      ],
+      "maximumDimensions": [
+        30.0,
+        15.0,
+        8.0
+      ],
+      "maximumWeight": 12.0,
+      "compatibleMountPattern": "zip-tie / heatshrink / 20x20",
+      "voltage": 25.2,
+      "current": 55.0,
+      "coolingRequirement": "airflow",
+      "confidence": 0.9405,
+      "evidence": [
+        "arm centerline @ 60%"
+      ],
+      "armIndex": 0
+    },
+    {
+      "name": "ESC_RR",
+      "mountType": "esc",
+      "componentCategory": "propulsion",
+      "position": [
+        -0.13991623,
+        0.00499819,
+        -0.14409377
+      ],
+      "quaternion": [
+        0.0,
+        0.92078644,
+        0.0,
+        0.39006708
+      ],
+      "scale": [
+        1.0,
+        1.0,
+        1.0
+      ],
+      "orientation": [
+        0.0,
+        1.0,
+        0.0
+      ],
+      "maximumDimensions": [
+        30.0,
+        15.0,
+        8.0
+      ],
+      "maximumWeight": 12.0,
+      "compatibleMountPattern": "zip-tie / heatshrink / 20x20",
+      "voltage": 25.2,
+      "current": 55.0,
+      "coolingRequirement": "airflow",
+      "confidence": 0.9405,
+      "evidence": [
+        "arm centerline @ 60%"
+      ],
+      "armIndex": 1
+    },
+    {
+      "name": "FlightController",
+      "mountType": "flight_controller",
+      "componentCategory": "avionics",
+      "position": [
+        9.67e-06,
+        0.01501084,
+        -0.00321205
+      ],
+      "quaternion": [
+        0.0,
+        -0.92387933,
+        0.0,
+        0.38268391
+      ],
+      "scale": [
+        1.0,
+        1.0,
+        1.0
+      ],
+      "orientation": [
+        0.0,
+        1.0,
+        0.0
+      ],
+      "maximumDimensions": [
+        40.0,
+        40.0,
+        14.0
+      ],
+      "maximumWeight": 15.0,
+      "compatibleMountPattern": "30.5x30.5mm",
+      "voltage": 5.0,
+      "current": 2.0,
+      "coolingRequirement": "none",
+      "confidence": 0.9603276229919213,
+      "evidence": [
+        "30.5x30.5mm hole pattern"
+      ],
+      "armIndex": -1
+    },
+    {
+      "name": "GPS",
+      "mountType": "gps",
+      "componentCategory": "avionics",
+      "position": [
+        9.67e-06,
+        0.01501085,
+        0.10869242
+      ],
+      "quaternion": [
+        0.0,
+        0.7068817,
+        0.0,
+        0.70733179
+      ],
+      "scale": [
+        1.0,
+        1.0,
+        1.0
+      ],
+      "orientation": [
+        0.0,
+        1.0,
+        0.0
+      ],
+      "maximumDimensions": [
+        35.0,
+        35.0,
+        12.0
+      ],
+      "maximumWeight": 25.0,
+      "compatibleMountPattern": "adhesive / M2",
+      "voltage": 5.0,
+      "current": 0.2,
+      "coolingRequirement": "none",
+      "confidence": 0.8491380426326115,
+      "evidence": [
+        "highest flat mounting area"
+      ],
+      "armIndex": -1
+    },
+    {
+      "name": "Motor_FL",
+      "mountType": "motor",
+      "componentCategory": "propulsion",
+      "position": [
+        0.18405579,
+        0.0064322,
+        0.18283896
+      ],
+      "quaternion": [
+        0.0,
+        -0.3802923,
+        0.0,
+        0.92486635
+      ],
+      "scale": [
+        1.0,
+        1.0,
+        1.0
+      ],
+      "orientation": [
+        0.0,
+        1.0,
+        0.0
+      ],
+      "maximumDimensions": [
+        32.0,
+        32.0,
+        42.0
+      ],
+      "maximumWeight": 95.0,
+      "compatibleMountPattern": "M3 16x16 / 19x19",
+      "voltage": 25.2,
+      "current": 45.0,
+      "coolingRequirement": "airflow",
+      "confidence": 0.9721982900504627,
+      "evidence": [
+        "flat mounting plate",
+        "11 bolt hole(s)"
+      ],
+      "armIndex": 3
+    },
+    {
+      "name": "Motor_FR",
+      "mountType": "motor",
+      "componentCategory": "propulsion",
+      "position": [
+        -0.18403643,
+        0.00802365,
+        0.18283896
+      ],
+      "quaternion": [
+        0.0,
+        -0.92478627,
+        0.0,
+        0.380487
+      ],
+      "scale": [
+        1.0,
+        1.0,
+        1.0
+      ],
+      "orientation": [
+        0.0,
+        1.0,
+        0.0
+      ],
+      "maximumDimensions": [
+        32.0,
+        32.0,
+        42.0
+      ],
+      "maximumWeight": 95.0,
+      "compatibleMountPattern": "M3 16x16 / 19x19",
+      "voltage": 25.2,
+      "current": 45.0,
+      "coolingRequirement": "airflow",
+      "confidence": 0.9721984548326184,
+      "evidence": [
+        "flat mounting plate",
+        "11 bolt hole(s)"
+      ],
+      "armIndex": 2
+    },
+    {
+      "name": "Motor_RL",
+      "mountType": "motor",
+      "componentCategory": "propulsion",
+      "position": [
+        0.18377753,
+        0.00802359,
+        -0.18898284
+      ],
+      "quaternion": [
+        0.0,
+        0.39011565,
+        0.0,
+        0.92076587
+      ],
+      "scale": [
+        1.0,
+        1.0,
+        1.0
+      ],
+      "orientation": [
+        0.0,
+        1.0,
+        0.0
+      ],
+      "maximumDimensions": [
+        32.0,
+        32.0,
+        42.0
+      ],
+      "maximumWeight": 95.0,
+      "compatibleMountPattern": "M3 16x16 / 19x19",
+      "voltage": 25.2,
+      "current": 45.0,
+      "coolingRequirement": "airflow",
+      "confidence": 0.9523070426042529,
+      "evidence": [
+        "flat mounting plate",
+        "11 bolt hole(s)"
+      ],
+      "armIndex": 0
+    },
+    {
+      "name": "Motor_RR",
+      "mountType": "motor",
+      "componentCategory": "propulsion",
+      "position": [
+        -0.18403642,
+        0.00802359,
+        -0.18926309
+      ],
+      "quaternion": [
+        0.0,
+        0.92078644,
+        0.0,
+        0.39006708
+      ],
+      "scale": [
+        1.0,
+        1.0,
+        1.0
+      ],
+      "orientation": [
+        0.0,
+        1.0,
+        0.0
+      ],
+      "maximumDimensions": [
+        32.0,
+        32.0,
+        42.0
+      ],
+      "maximumWeight": 95.0,
+      "compatibleMountPattern": "M3 16x16 / 19x19",
+      "voltage": 25.2,
+      "current": 45.0,
+      "coolingRequirement": "airflow",
+      "confidence": 0.9721978830949211,
+      "evidence": [
+        "flat mounting plate",
+        "11 bolt hole(s)"
+      ],
+      "armIndex": 1
+    },
+    {
+      "name": "Payload",
+      "mountType": "payload",
+      "componentCategory": "payload",
+      "position": [
+        9.67e-06,
+        -0.02298391,
+        0.00629683
+      ],
+      "quaternion": [
+        0.0,
+        -0.70670557,
+        0.0,
+        0.70750776
+      ],
+      "scale": [
+        1.0,
+        1.0,
+        1.0
+      ],
+      "orientation": [
+        0.0,
+        1.0,
+        0.0
+      ],
+      "maximumDimensions": [
+        120.0,
+        120.0,
+        80.0
+      ],
+      "maximumWeight": 800.0,
+      "compatibleMountPattern": "rail / M3 grid",
+      "voltage": 12.0,
+      "current": 5.0,
+      "coolingRequirement": "airflow",
+      "confidence": 0.8,
+      "evidence": [
+        "bottom accessory plate"
+      ],
+      "armIndex": -1
+    },
+    {
+      "name": "Receiver",
+      "mountType": "receiver",
+      "componentCategory": "avionics",
+      "position": [
+        9.67e-06,
+        0.01501083,
+        -0.04394371
+      ],
+      "quaternion": [
+        0.0,
+        -0.70710665,
+        0.0,
+        0.70710691
+      ],
+      "scale": [
+        1.0,
+        1.0,
+        1.0
+      ],
+      "orientation": [
+        0.0,
+        1.0,
+        0.0
+      ],
+      "maximumDimensions": [
+        22.0,
+        14.0,
+        6.0
+      ],
+      "maximumWeight": 5.0,
+      "compatibleMountPattern": "adhesive / heatshrink",
+      "voltage": 5.0,
+      "current": 0.1,
+      "coolingRequirement": "none",
+      "confidence": 0.8162784795431332,
+      "evidence": [
+        "derived: behind flight controller"
+      ],
+      "armIndex": -1
+    }
+  ]
+}

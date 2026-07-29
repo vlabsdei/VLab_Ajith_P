@@ -1,0 +1,22 @@
+{
+  "name": "Nano 2-Axis Gimbal",
+  "mass_g": 95,
+  "qty": 1,
+  "size_mm": [
+    42,
+    58,
+    38
+  ],
+  "model": "assets/attachments/gimbal/NL_DRONE_GIMBAL_GC.glb",
+  "specs": {
+    "Axes": "2 (brushless)",
+    "Payload": "Micro cam, 40 g",
+    "Tilt": "-90° / +20°"
+  },
+  "physics": {
+    "payload": true,
+    "mount_type": "payload",
+    "axes": 2,
+    "max_payload_g": 40
+  }
+}

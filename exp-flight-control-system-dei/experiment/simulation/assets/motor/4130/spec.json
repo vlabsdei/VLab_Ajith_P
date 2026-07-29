@@ -1,5 +1,5 @@
 {
-  "name": "4130 \u2014 400 KV",
+  "name": "4130 — 1300 KV",
   "mass_g": 108,
   "qty": 4,
   "size_mm": [
@@ -12,16 +12,16 @@
     "rotar.glb"
   ],
   "specs": {
-    "KV": "400 rpm/V",
-    "Max current": "40 A",
-    "Stator": "41 \u00d7 30"
+    "KV": "1300 rpm/V",
+    "Max current": "62 A",
+    "Stator": "41 × 30"
   },
   "physics": {
-    "kv": 400,
-    "rm_ohm": 0.085,
-    "i0_a": 0.6,
-    "max_current_a": 40,
-    "max_power_w": 1250,
+    "kv": 1300,
+    "rm_ohm": 0.0128,
+    "i0_a": 1.5,
+    "max_current_a": 62,
+    "max_power_w": 2250,
     "k_fe": 0.0007,
     "max_cells": 8
   }

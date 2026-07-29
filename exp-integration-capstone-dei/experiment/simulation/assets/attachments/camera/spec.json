@@ -1,0 +1,19 @@
+{
+  "name": "FPV Camera",
+  "mass_g": 8,
+  "qty": 1,
+  "size_mm": [
+    19,
+    19,
+    20
+  ],
+  "model": "camera.glb",
+  "specs": {
+    "Type": "Analog FPV",
+    "FOV": "160\u00b0"
+  },
+  "physics": {
+    "payload": true,
+    "mount_type": "camera"
+  }
+}

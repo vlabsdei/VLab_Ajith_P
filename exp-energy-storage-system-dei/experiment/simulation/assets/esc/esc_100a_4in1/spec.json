@@ -1,0 +1,25 @@
+{
+  "name": "100 A 4-in-1",
+  "mass_g": 16,
+  "qty": 1,
+  "size_mm": [
+    40,
+    40,
+    7
+  ],
+  "model": "assets/esc/_model/esc_single.glb",
+  "specs": {
+    "Current": "100 A",
+    "Firmware": "BLHeli_32",
+    "Config": "4-in-1 stack",
+    "Note": "High-power 4-in-1 — 6S"
+  },
+  "physics": {
+    "current_a": 100,
+    "burst_current_a": 130,
+    "rds_on_ohm": 0.0011,
+    "r_th_c_per_w": 9,
+    "max_cells": 6,
+    "form_factor": "4in1"
+  }
+}

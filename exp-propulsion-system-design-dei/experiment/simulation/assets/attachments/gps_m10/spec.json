@@ -1,0 +1,23 @@
+{
+  "name": "M10 GNSS (multi-band)",
+  "mass_g": 16,
+  "qty": 1,
+  "size_mm": [
+    32,
+    32,
+    9
+  ],
+  "model": "assets/attachments/gps/gps.glb",
+  "specs": {
+    "System": "GPS/GLONASS/Galileo/BeiDou",
+    "Compass": "QMC5883L",
+    "Update": "18 Hz",
+    "Accuracy": "1.5 m CEP"
+  },
+  "physics": {
+    "payload": true,
+    "mount_type": "gps",
+    "cep_m": 1.5,
+    "channels": 128
+  }
+}

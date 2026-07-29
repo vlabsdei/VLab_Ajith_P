@@ -40,7 +40,12 @@
         "esc_65a",
         "Dakefpv_120A",
         "UH300",
-        "esc_4in1_50a"
+        "esc_4in1_50a",
+        "esc_20a",
+        "esc_30a",
+        "esc_80a",
+        "esc_40a_4in1",
+        "esc_100a_4in1"
       ]
     },
     {
@@ -52,7 +57,14 @@
         "4s_1500",
         "4s_3300",
         "6s_4000",
-        "6s_5000"
+        "6s_5000",
+        "3s_1300",
+        "4s_2200",
+        "6s_1300",
+        "6s_3000",
+        "4s_5200",
+        "4s_1300_lowc",
+        "4s_1500_highc"
       ]
     },
     {
@@ -83,20 +95,82 @@
       "fallback": "gimbal",
       "multi": true,
       "options": [
-        "gimbal",
-        "camera",
-        "gps",
-        "thermal_cam"
+        "gps_m8n",
+        "gps_m10",
+        "gps_rtk",
+        "gimbal_nano",
+        "gimbal_2axis",
+        "gimbal_3axis",
+        "cam_fpv",
+        "cam_hd",
+        "cam_4k",
+        "cam_cinema",
+        "thermal_256",
+        "thermal_640"
       ]
     }
   ],
   "airfoils": [
-    { "id": "naca0012", "name": "NACA 0012", "m": 0.00, "p": 0.00, "t": 0.12, "cl_max_ref": 1.20, "a_stall_ref": 14.0, "re_ref": 500000 },
-    { "id": "naca1408", "name": "NACA 1408", "m": 0.01, "p": 0.40, "t": 0.08, "cl_max_ref": 1.25, "a_stall_ref": 12.5, "re_ref": 500000 },
-    { "id": "naca2412", "name": "NACA 2412", "m": 0.02, "p": 0.40, "t": 0.12, "cl_max_ref": 1.40, "a_stall_ref": 14.0, "re_ref": 500000 },
-    { "id": "naca4412", "name": "NACA 4412", "m": 0.04, "p": 0.40, "t": 0.12, "cl_max_ref": 1.60, "a_stall_ref": 13.0, "re_ref": 500000 },
-    { "id": "naca2415", "name": "NACA 2415", "m": 0.02, "p": 0.40, "t": 0.15, "cl_max_ref": 1.45, "a_stall_ref": 15.0, "re_ref": 500000 },
-    { "id": "naca6409", "name": "NACA 6409", "m": 0.06, "p": 0.40, "t": 0.09, "cl_max_ref": 1.70, "a_stall_ref": 11.5, "re_ref": 500000 }
+    {
+      "id": "naca0012",
+      "name": "NACA 0012",
+      "m": 0.0,
+      "p": 0.0,
+      "t": 0.12,
+      "cl_max_ref": 1.2,
+      "a_stall_ref": 14.0,
+      "re_ref": 500000
+    },
+    {
+      "id": "naca1408",
+      "name": "NACA 1408",
+      "m": 0.01,
+      "p": 0.4,
+      "t": 0.08,
+      "cl_max_ref": 1.25,
+      "a_stall_ref": 12.5,
+      "re_ref": 500000
+    },
+    {
+      "id": "naca2412",
+      "name": "NACA 2412",
+      "m": 0.02,
+      "p": 0.4,
+      "t": 0.12,
+      "cl_max_ref": 1.4,
+      "a_stall_ref": 14.0,
+      "re_ref": 500000
+    },
+    {
+      "id": "naca4412",
+      "name": "NACA 4412",
+      "m": 0.04,
+      "p": 0.4,
+      "t": 0.12,
+      "cl_max_ref": 1.6,
+      "a_stall_ref": 13.0,
+      "re_ref": 500000
+    },
+    {
+      "id": "naca2415",
+      "name": "NACA 2415",
+      "m": 0.02,
+      "p": 0.4,
+      "t": 0.15,
+      "cl_max_ref": 1.45,
+      "a_stall_ref": 15.0,
+      "re_ref": 500000
+    },
+    {
+      "id": "naca6409",
+      "name": "NACA 6409",
+      "m": 0.06,
+      "p": 0.4,
+      "t": 0.09,
+      "cl_max_ref": 1.7,
+      "a_stall_ref": 11.5,
+      "re_ref": 500000
+    }
   ],
   "defaults": {
     "chasis": "fpv5",
@@ -122,7 +196,13 @@
       "label": "Module 1",
       "sub": "Airfoil Lab",
       "experiments": [
-        { "id": "polar", "name": "Airfoil Polar", "unit": "Cl", "metric": "cl", "type": "airfoil" }
+        {
+          "id": "polar",
+          "name": "Airfoil Polar",
+          "unit": "Cl",
+          "metric": "cl",
+          "type": "airfoil"
+        }
       ]
     },
     {
@@ -130,28 +210,81 @@
       "label": "Module 2",
       "sub": "Forward Flight",
       "experiments": [
-        { "id": "drag", "name": "Frame Drag", "unit": "N", "metric": "drag", "type": "wind" },
-        { "id": "cruise", "name": "Cruise Efficiency", "unit": "%", "metric": "eta", "type": "wind" }
+        {
+          "id": "forward",
+          "name": "Forward Flight",
+          "unit": "",
+          "metric": "m2",
+          "type": "wind"
+        }
       ]
     }
   ],
   "instructor": [
-    { "text": "Welcome to the Aerodynamic Analysis lab. We will profile a NACA airfoil in a virtual wind tunnel, then mount that same blade section on a propeller and study forward-flight drag and cruise efficiency.", "audio": null },
-    { "text": "Module 1 · Airfoil Lab — pick a NACA airfoil in Input Parameters and sweep the Angle of Attack slider. Watch the Cl curve build in the live graph as stall approaches.", "audio": "audio/voice/m1_pick_airfoil.mp3" },
-    { "text": "Run the Airfoil Polar experiment — it sweeps AoA automatically from below zero-lift to past stall, plotting Cl and Cd the whole way.", "audio": "audio/voice/m1_sweep_alpha.mp3" },
-    { "text": "Watch the wind tunnel closely near the top of the sweep — separated flow and turbulent streamlines appear once the airfoil stalls.", "audio": "audio/voice/m1_stall_observed.mp3" },
-    { "text": "Profile a few different NACA sections and compare their polars overlaid in the Charts panel — thinner symmetric sections stall later but lift less; cambered sections lift more but stall earlier.", "audio": "audio/voice/m1_all_profiled.mp3" },
-    { "text": "Module 2 · Forward Flight unlocks once Module 1 is complete. The same airfoil now forms the procedural propeller blade on the assembled drone in the wind tunnel.", "audio": "audio/voice/m2_tunnel_intro.mp3" },
-    { "text": "Toggle Rotor Wash on the Operating Point card — it raises the effective drag coefficient the way a spinning rotor disturbs the airflow over the frame.", "audio": "audio/voice/m2_wash_on.mp3" },
-    { "text": "Run Frame Drag — it sweeps airspeed and fits a line through F_D vs V², confirming the quadratic drag law with a live R² value.", "audio": "audio/voice/m2_regression.mp3" },
-    { "text": "Cruise Efficiency sweeps airspeed up to the zero-thrust advance ratio and tracks propulsive efficiency versus advance ratio J.", "audio": "audio/voice/m2_cruise_intro.mp3" },
-    { "text": "Efficiency should rise, peak somewhere around J ≈ 0.5, then fall back toward zero as the propeller windmills — that peak is the propeller's best cruise point.", "audio": "audio/voice/m2_peak_eta.mp3" },
-    { "text": "Excellent — every experiment is complete. The Propeller Blade Profile reward is now unlocked in the Outputs panel.", "audio": "audio/voice/verdict_pass.mp3" }
+    {
+      "text": "Welcome to the Aerodynamic Analysis lab. We will profile a NACA airfoil in a virtual wind tunnel, then mount that same blade section on a propeller and study forward-flight drag and cruise efficiency.",
+      "audio": "audio/voice/m0_welcome.mp3"
+    },
+    {
+      "text": "Module 1 · Airfoil Lab — pick a NACA airfoil in Input Parameters and sweep the Angle of Attack slider. Watch the Cl curve build in the live graph as stall approaches.",
+      "audio": "audio/voice/m1_pick_airfoil.mp3"
+    },
+    {
+      "text": "Run the Airfoil Polar experiment — it sweeps AoA automatically from below zero-lift to past stall, plotting Cl and Cd the whole way.",
+      "audio": "audio/voice/m1_sweep_alpha.mp3"
+    },
+    {
+      "text": "Watch the wind tunnel closely near the top of the sweep — separated flow and turbulent streamlines appear once the airfoil stalls.",
+      "audio": "audio/voice/m1_stall_observed.mp3"
+    },
+    {
+      "text": "Profile a few different NACA sections and compare their polars overlaid in the Charts panel — thinner symmetric sections stall later but lift less; cambered sections lift more but stall earlier.",
+      "audio": "audio/voice/m1_all_profiled.mp3"
+    },
+    {
+      "text": "Module 2 · Forward Flight unlocks once Module 1 is complete. The same airfoil now forms the procedural propeller blade on the assembled drone in the wind tunnel.",
+      "audio": "audio/voice/m2_tunnel_intro.mp3"
+    },
+    {
+      "text": "Toggle Rotor Wash on the Operating Point card — it raises the effective drag coefficient the way a spinning rotor disturbs the airflow over the frame.",
+      "audio": "audio/voice/m2_wash_on.mp3"
+    },
+    {
+      "text": "Run Frame Drag — it sweeps airspeed and fits a line through F_D vs V², confirming the quadratic drag law with a live R² value.",
+      "audio": "audio/voice/m2_regression.mp3"
+    },
+    {
+      "text": "Cruise Efficiency sweeps airspeed up to the zero-thrust advance ratio and tracks propulsive efficiency versus advance ratio J.",
+      "audio": "audio/voice/m2_cruise_intro.mp3"
+    },
+    {
+      "text": "Efficiency should rise, peak somewhere around J ≈ 0.5, then fall back toward zero as the propeller windmills — that peak is the propeller's best cruise point.",
+      "audio": "audio/voice/m2_peak_eta.mp3"
+    },
+    {
+      "text": "Excellent — every experiment is complete. The Propeller Blade Profile reward is now unlocked in the Outputs panel.",
+      "audio": "audio/voice/verdict_pass.mp3"
+    }
   ],
   "reward": {
-    "name": "Propeller Blade Profile",
-    "desc": "Unlocked build reward — a showcase render of the procedural NACA propeller blade generated from your Module 1 airfoil and Module 2 blade geometry.",
-    "fallback": "prop",
-    "model": null
+    "category": "propeller",
+    "name": "Propeller Set",
+    "desc": "A profiled propeller set, drawn at random from the catalogue.",
+    "options": [
+      "2.7in_tri",
+      "3in_tri",
+      "5in_tri",
+      "6in_bi",
+      "6in_tri",
+      "7in_bi",
+      "8in_bi",
+      "9in_bi",
+      "10in_bi",
+      "11in_bi",
+      "13in_bi",
+      "15in_bi",
+      "16in_bi"
+    ],
+    "fallback": "prop"
   }
 }

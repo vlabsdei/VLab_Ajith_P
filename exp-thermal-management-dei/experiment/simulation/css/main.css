@@ -129,11 +129,16 @@ input[type=range]::-moz-range-thumb{width:12px;height:12px;border-radius:50%;bac
 .viewport{position:absolute;inset:0}
 .viewport canvas{display:block}
 
-.vp-modules{position:absolute;top:10px;left:10px;right:196px;display:flex;gap:6px;flex-wrap:wrap;z-index:5}
+/* One scrolling row, never wrapping: a second row of module tabs used to land on
+   top of the thermal-cam / reality-probe chips below it. */
+.vp-modules{position:absolute;top:10px;left:10px;right:186px;display:flex;gap:6px;
+  flex-wrap:nowrap;overflow-x:auto;overflow-y:hidden;padding-bottom:2px;
+  scrollbar-width:none;z-index:5}
+.vp-modules::-webkit-scrollbar{display:none}
 .vp-modules button{
-  border:1px solid var(--line);border-radius:8px;padding:6px 13px;cursor:pointer;
+  border:1px solid var(--line);border-radius:8px;padding:6px 11px;cursor:pointer;
   font-size:10.5px;font-weight:700;background:#fff;color:var(--ink);
-  box-shadow:0 1px 3px rgba(20,40,40,.08);
+  box-shadow:0 1px 3px rgba(20,40,40,.08);flex:none;white-space:nowrap;
 }
 .vp-modules button small{font-weight:500;opacity:.72;font-size:9px}
 .vp-modules button.active{background:var(--amber);border-color:var(--amber);color:#fff}
@@ -189,9 +194,9 @@ input[type=range]::-moz-range-thumb{width:12px;height:12px;border-radius:50%;bac
 .chart-box{position:relative;width:100%;height:160px;background:#fbfcfc;border-radius:7px;padding:5px 6px;box-sizing:border-box;overflow:hidden}
 button.out-card:hover{border-color:var(--slate)}
 
-.reward-card{flex:1;min-height:150px}
+.reward-card{flex:0 0 auto;min-height:0}
 .head-unlock{margin-top:6px}
-.reward-body{flex:1;display:flex;flex-direction:column;min-height:120px}
+.reward-body{flex:1;display:flex;flex-direction:column;min-height:0}
 .reward-locked{
   flex:1;border-radius:9px;background:#f2f5f4;border:1px dashed #ccd6d2;
   display:flex;flex-direction:column;align-items:center;justify-content:center;gap:6px;padding:14px;
@@ -200,7 +205,10 @@ button.out-card:hover{border-color:var(--slate)}
 .reward-locked p{margin:0;font-size:9.5px;font-weight:600;color:var(--muted);text-align:center;line-height:1.5}
 .reward-open{
   flex:1;border-radius:9px;border:1px solid #e8cabc;overflow:hidden;display:flex;flex-direction:column;
-  background:linear-gradient(165deg,rgba(198,93,59,.10),rgba(31,58,147,.06));
+  /* neutral studio backdrop — a soft vignette so the component reads as a lit
+     object on a sweep, instead of the old amber/navy wash that tinted the mesh */
+  background:
+    radial-gradient(120% 90% at 50% 28%, #ffffff 0%, #f2f5f4 46%, #e3e9e7 100%);
   animation:cardIn .5s ease;
 }
 .reward-open .view{flex:1;min-height:96px}
@@ -344,33 +352,40 @@ button.out-card:hover{border-color:var(--slate)}
   .col{overflow:visible}
   .col-right{grid-column:1/-1;border-left:none;border-top:1px solid var(--line)}
   .out-pair{display:grid;grid-template-columns:1fr 1fr;gap:12px}
-  .reward-card{min-height:210px}
+  .reward-card{min-height:0}
 }
 @media (max-width:820px){
   .lab{display:flex;flex-direction:column;gap:12px;padding:12px 12px 80px}
   .col{display:contents}
-  /* mobile order: viewport → inputs (slidable) → altitude → mass → calc → outputs → diagnostics → unlocked */
+  /* mobile order: viewport → run → env&cooling → calc → inputs (slidable) →
+     altitude → mass → outputs → diagnostics → unlocked.  The rig controls and the
+     numbers they drive stay directly under the bench, matching the desktop column. */
   .viewport-frame{order:1;height:min(52vh,460px)}
   .run-row{order:2}
-  .head-inputs{order:3}
-  .param-grid{order:4;display:flex;overflow-x:auto;gap:9px;padding-bottom:6px;scroll-snap-type:x mandatory;-webkit-overflow-scrolling:touch}
+  .envcool-card{order:3}
+  .calc-card{order:4}
+  .head-inputs{order:5}
+  .param-grid{order:6;display:flex;overflow-x:auto;gap:9px;padding-bottom:6px;scroll-snap-type:x mandatory;-webkit-overflow-scrolling:touch}
   .param-grid .tile{flex:0 0 148px;scroll-snap-align:start}
-  .slider-card{order:5}
-  .mass-card{order:6}
-  .calc-card{order:7}
-  .head-outputs{order:8}
-  .out-pair{order:9;display:grid;grid-template-columns:1fr 1fr;gap:10px}
-  .log-card{order:10}                 /* Diagnostics Log: below Outputs, above Components */
-  .head-unlock{order:11;margin-top:2px}
-  .reward-card{order:12;min-height:200px}
+  .slider-card{order:7}
+  .mass-card{order:8}
+  .head-outputs{order:9}
+  .out-pair{order:10;display:grid;grid-template-columns:1fr 1fr;gap:10px}
+  .log-card{order:11}                 /* Diagnostics Log: below Outputs, above Components */
+  .head-unlock{order:12;margin-top:2px}
+  .reward-card{order:13;min-height:0}
   .chart-box{height:132px}
   .tabbar{display:flex}
   .instructor{bottom:76px;right:12px}
   .modal{max-height:82vh}
   .progress-wrap{margin-left:auto}
+  .cam-hud{width:104px;top:80px;padding:6px 7px}
+  .cam-bar-wrap{height:64px}
 }
 @media (max-width:400px){
-  .vp-telemetry{width:132px;padding:6px 8px}
+  /* telemetry/HUD narrow-screen sizing lives at the very end of this file —
+     see the note there about source order beating this block. */
+  .cam-hud{padding:5px 6px}
 }
 
 /* ─────────── telemetry (6 rows) ─────────── */
@@ -477,18 +492,43 @@ button.out-card:hover{border-color:var(--slate)}
 
 /* ═══════════ Exp 09 Thermal Management — additive UI (Phases 2–5) ═══════════ */
 
-/* Environment & Cooling card */
-#envCoolCard{gap:9px}
-.cool-tray{border-top:1px dashed var(--line);padding-top:9px;margin-top:2px;display:flex;flex-direction:column;gap:7px}
-.cool-tray-lbl{font-size:9px;font-weight:600;color:var(--muted);letter-spacing:.02em}
+/* ── Environment & Cooling card (centre column, above Calculations) ──
+   Laid out as a responsive control strip so it reads like the run row it sits
+   under: four equal control columns on desktop, wrapping to two then one. */
+.envcool-card{gap:9px}
+.envcool-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px 18px;align-items:start}
+.ec-col{display:flex;flex-direction:column;gap:5px;min-width:0}
+.ec-col input[type=range]{margin:2px 0 0}
+.ec-col .scale{display:flex;justify-content:space-between;font-size:8px;color:var(--faint)}
+.ec-lbl{font-size:8.5px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--muted)}
+.ec-lbl em{font-style:normal;font-weight:500;text-transform:none;letter-spacing:0}
+.ec-col .mode-group{align-self:flex-start}
+.ec-col .mode-btn{padding:6px 12px}
+.ec-note{font-size:8px;color:var(--faint)}
+.ec-tray{grid-column:1/-1;border-top:1px dashed var(--line);padding-top:9px}
 .cool-chips{display:flex;gap:6px;flex-wrap:wrap}
 .cool-chip{
   border:1px solid #d5ddda;background:#fff;border-radius:8px;padding:7px 10px;
   font-size:10px;font-weight:600;color:var(--ink-2);cursor:grab;touch-action:none;user-select:none;
 }
+.cool-chip b{font-family:'IBM Plex Mono',monospace;font-size:8.5px;font-weight:600;color:var(--muted);margin-left:3px}
 .cool-chip:hover{border-color:var(--slate);color:var(--slate)}
+.cool-chip:hover b{color:var(--slate)}
 .cool-chip:active{cursor:grabbing}
-.cool-mounted{font-size:8.5px;color:var(--muted);line-height:1.5}
+.cool-chip.armed{background:var(--slate);border-color:var(--slate);color:#fff}
+.cool-chip.armed b{color:rgba(255,255,255,.72)}
+/* mounted-part pills — click the × to unmount */
+.cool-mounted{display:flex;flex-wrap:wrap;gap:5px;font-size:8.5px;color:var(--muted);line-height:1.5;align-items:center}
+.cool-pill{
+  display:inline-flex;align-items:center;gap:5px;border:1px solid rgba(31,138,91,.3);
+  background:rgba(31,138,91,.08);border-radius:20px;padding:3px 4px 3px 9px;
+  font-family:'IBM Plex Mono',monospace;font-size:8.5px;font-weight:600;color:#1f6a48;
+}
+.cool-pill button{
+  border:none;background:rgba(31,138,91,.16);color:#1f6a48;border-radius:50%;
+  width:14px;height:14px;line-height:1;font-size:9px;cursor:pointer;padding:0;
+}
+.cool-pill button:hover{background:var(--danger);color:#fff}
 .drag-ghost{
   position:fixed;left:0;top:0;z-index:150;transform:translate(-50%,-130%);
   background:var(--slate);color:#fff;font-size:10px;font-weight:600;
@@ -525,8 +565,37 @@ button.out-card:hover{border-color:var(--slate)}
 .probe-row.hot b{color:var(--danger)}
 .probe-gap{margin-top:4px;padding-top:4px;border-top:1px dashed var(--line);color:var(--muted);font-size:8.5px}
 
-/* thermal-cam false-colour mode — cheap CSS filter over the whole viewport */
-#vpFrame.thermal-cam-mode .viewport{filter:sepia(1) saturate(6) hue-rotate(180deg) brightness(1.06) contrast(1.25)}
+/* ── thermal-camera mode ──────────────────────────────────────────────────────
+   The false colour is rendered in three.js from the real temperature field (see
+   applyCamMode in main.js) — NOT a CSS filter, which only recoloured whatever
+   the visible-light render happened to look like. The frame just goes dark so
+   the IR image reads like a camera feed. */
+#vpFrame.thermal-cam-mode{background:#07090c;border-color:#2f3b46}
+#vpFrame.thermal-cam-mode .vp-hint{background:rgba(10,14,18,.6);color:#7f8b96}
+#vpFrame.thermal-cam-mode .vp-exps button:not(.active){background:rgba(16,22,28,.86);color:#c4cdd6;border-color:#39434e}
+#vpFrame.thermal-cam-mode .vp-modules button:not(.active){background:rgba(16,22,28,.86);color:#c4cdd6;border-color:#39434e}
+#vpFrame.thermal-cam-mode .vp-chip:not(.active){background:rgba(16,22,28,.86);color:#c4cdd6;border-color:#39434e}
+
+/* IR HUD — calibration bar + spot readings */
+.cam-hud{
+  position:absolute;left:10px;top:88px;z-index:7;width:126px;
+  background:rgba(8,12,16,.78);border:1px solid #39434e;border-radius:9px;
+  padding:8px 9px;color:#e8eef3;box-shadow:0 4px 16px rgba(0,0,0,.45);
+}
+.cam-hud[hidden]{display:none}
+.cam-title{font-size:8px;font-weight:700;letter-spacing:.1em;color:#9fb2bd;margin-bottom:6px}
+.cam-bar-wrap{display:flex;gap:6px;height:82px}
+/* IRONBOW — must stay in step with the IRONBOW stops in main.js §8d */
+.cam-bar{
+  width:12px;border-radius:3px;flex:none;
+  background:linear-gradient(to top,#08051f 0%,#2b0f63 18%,#6a1f8c 36%,#c3395f 54%,#f07c1f 72%,#ffd23f 88%,#ffffff 100%);
+  border:1px solid #4a5561;
+}
+.cam-ticks{flex:1;display:flex;flex-direction:column;justify-content:space-between;font-size:8px;color:#9fb2bd}
+.cam-spots{margin-top:7px;border-top:1px dashed #39434e;padding-top:6px;display:flex;flex-direction:column;gap:3px;font-size:8.5px}
+.cam-spots div{display:flex;justify-content:space-between;gap:8px;color:#a9b7c2}
+.cam-spots b{font-weight:600;color:#fff}
+.cam-spots div.hot b{color:#ff9a7a}
 
 /* τ-cursor overlay canvas (created by initTauCursor in js) */
 #tauOverlay{touch-action:none}
@@ -534,3 +603,52 @@ button.out-card:hover{border-color:var(--slate)}
 /* threshold legend used across the thermal charts modal */
 .thermal-legend{display:flex;gap:12px;flex-wrap:wrap;margin-top:4px;font-size:9px;color:var(--ink-3)}
 .thermal-legend i{display:inline-block;width:10px;height:10px;border-radius:3px;margin-right:4px;vertical-align:middle}
+
+/* ── small-screen viewport overlays ───────────────────────────────────────────
+   These live at the END of the file on purpose. The `.vp-telemetry{width:170px}`
+   rule further up is declared AFTER the responsive block, so a narrow-screen
+   override written inside that block loses on source order and the telemetry card
+   stayed 170 px wide on a 375 px phone — wide enough to sit on top of the module
+   tabs and clip its own labels. */
+@media (max-width:820px){
+  .vp-telemetry{width:136px;padding:6px 8px}
+  .vp-telemetry .tel-rows{font-size:8.5px}
+  .vp-telemetry .tel-head{font-size:7.5px;letter-spacing:.06em}
+  .vp-telemetry .tel-phase{font-size:8px}
+  .vp-modules{right:150px}
+  .vp-modules button{padding:5px 9px;font-size:10px}
+  .vp-modules button small{display:none}
+  .vp-thermal-chips{top:46px}
+  .vp-chip{padding:4px 8px;font-size:9px}
+  .vp-hint{display:none}                 /* touch: no mouse hint to give */
+  .vp-exps{max-width:calc(100% - 20px)}
+  .probe-readout{bottom:auto;top:80px;left:10px;min-width:0;font-size:8.5px;padding:6px 8px}
+  .cam-hud{top:auto;bottom:74px;left:10px}
+  .esc-badge{font-size:8px;padding:3px 7px}
+}
+@media (max-width:420px){
+  .vp-telemetry{width:124px}
+  .vp-telemetry .tel-rows{font-size:8px;gap:1.5px}
+  .vp-modules{right:138px}
+}
+/* Same source-order trap as the telemetry card: the base .envcool-grid rule is
+   declared after the responsive section, so its column count must be narrowed
+   from here to take effect. */
+@media (max-width:1180px){ .envcool-grid{grid-template-columns:repeat(2,minmax(0,1fr))} }
+@media (max-width:620px){ .envcool-grid{grid-template-columns:1fr;gap:12px} }
+
+/* ─────────── reward card (unlocked component) ─────────── */
+.reward-open .view{position:relative}
+.reward-open .view::after{            /* contact shadow under the floating part */
+  content:"";position:absolute;left:50%;bottom:8%;transform:translateX(-50%);
+  width:52%;height:9px;border-radius:50%;pointer-events:none;
+  background:radial-gradient(ellipse at center, rgba(30,42,41,.20), rgba(30,42,41,0) 70%);
+}
+.reward-open .meta{display:flex;flex-direction:column;gap:3px;border-top:1px solid rgba(232,202,188,.7)}
+.rw-kind{font-size:8px;font-weight:700;letter-spacing:.10em;text-transform:uppercase;color:var(--amber)}
+.reward-open .meta b{font-size:11px;line-height:1.25;color:var(--ink)}
+.rw-specs{display:flex;flex-wrap:wrap;gap:4px 10px;margin-top:1px}
+.rw-specs span{display:flex;gap:4px;font-size:8.5px;color:var(--ink-3);white-space:nowrap}
+.rw-specs i{font-style:normal;color:var(--faint)}
+.reward-final .lock{background:#fdf1d8;color:#9a7a1e}
+.reward-final p{color:var(--amber-ink)}

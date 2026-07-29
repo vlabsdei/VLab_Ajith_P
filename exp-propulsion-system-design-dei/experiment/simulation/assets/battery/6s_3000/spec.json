@@ -1,0 +1,25 @@
+{
+  "name": "6S LiPo — 3000 mAh",
+  "mass_g": 430,
+  "qty": 1,
+  "size_mm": [
+    140,
+    45,
+    46
+  ],
+  "model": "assets/battery/_model/Battery_Drone.fbx",
+  "specs": {
+    "Voltage": "22.2 V (6S)",
+    "Capacity": "3000 mAh",
+    "Discharge": "75C burst / 45C cont.",
+    "Note": "6S cruise pack — endurance on higher voltage"
+  },
+  "physics": {
+    "cells": 6,
+    "voltage_nominal_v": 22.2,
+    "capacity_mah": 3000,
+    "c_rating": 75,
+    "c_rating_cont": 45,
+    "cell_ir_mohm": 6.5
+  }
+}

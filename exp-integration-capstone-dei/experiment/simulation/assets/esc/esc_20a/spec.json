@@ -1,0 +1,24 @@
+{
+  "name": "Micro 20 A (single)",
+  "mass_g": 5,
+  "qty": 4,
+  "size_mm": [
+    22,
+    13,
+    6
+  ],
+  "model": "assets/esc/_model/esc_single.glb",
+  "specs": {
+    "Current": "20 A",
+    "Firmware": "BLHeli_32",
+    "Config": "4 × single",
+    "Note": "Light micro ESC — 2–4S"
+  },
+  "physics": {
+    "current_a": 20,
+    "burst_current_a": 28,
+    "rds_on_ohm": 0.004,
+    "r_th_c_per_w": 22,
+    "max_cells": 4
+  }
+}

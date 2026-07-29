@@ -1,5 +1,5 @@
 {
-  "name": "4530 \u2014 300 KV",
+  "name": "4530 — 1250 KV",
   "mass_g": 152,
   "qty": 4,
   "size_mm": [
@@ -12,16 +12,16 @@
     "rotar.glb"
   ],
   "specs": {
-    "KV": "300 rpm/V",
-    "Max current": "45 A",
-    "Stator": "45 \u00d7 30"
+    "KV": "1250 rpm/V",
+    "Max current": "70 A",
+    "Stator": "45 × 30"
   },
   "physics": {
-    "kv": 300,
-    "rm_ohm": 0.11,
-    "i0_a": 0.5,
-    "max_current_a": 45,
-    "max_power_w": 1650,
+    "kv": 1250,
+    "rm_ohm": 0.014,
+    "i0_a": 1.43,
+    "max_current_a": 70,
+    "max_power_w": 2750,
     "k_fe": 0.0008,
     "max_cells": 12
   }

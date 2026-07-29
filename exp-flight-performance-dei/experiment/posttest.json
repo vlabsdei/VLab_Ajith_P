@@ -138,21 +138,21 @@
       "difficulty": "advanced"
     },
     {
-      "question": "Q9. Using momentum theory (FoM = 0.7), the reference 500 g build hovers on about 44 W. What is its hover efficiency?",
+      "question": "Q9. Momentum theory puts the reference build's ideal hover efficiency near 11 g/W, yet the simulator's Thrust eff. chip reads about 2.65 g/W. What explains the fourfold gap?",
       "answers": {
-        "a": "About 4 g/W",
-        "b": "About 11.4 g/W",
-        "c": "About 44 g/W",
-        "d": "About 0.09 g/W"
+        "a": "The simulator is miscalibrated and the theoretical figure is the correct one",
+        "b": "They are different quantities: the chip is an electrically measured full-throttle figure including copper, ESC and profile losses, while momentum theory is an idealised hover-power floor",
+        "c": "The difference is manufacturing tolerance on the figure of merit",
+        "d": "The chip reports watts per gram rather than grams per watt"
       },
       "explanations": {
-        "a": "Incorrect — recompute mass/power.",
-        "b": "Correct — efficiency = total mass / hover power = 500 g / 44 W = 11.36 g/W.",
-        "c": "Incorrect — that is the power figure, not the efficiency.",
-        "d": "Incorrect — that is W/g inverted; efficiency is g/W = 11.4."
+        "a": "Incorrect — both numbers are right for what they measure; the error is in comparing them.",
+        "b": "Correct — the chip is maximum thrust divided by the electrical power drawn to make it, labelled `g/W @ full` in the Calculations card. Momentum theory ignores every electrical and profile loss and evaluates at hover, not full throttle.",
+        "c": "Incorrect — a figure of merit spanning 0.55 to 0.75 could only move the ideal figure between roughly 9 and 13 g/W. It cannot account for a factor of four.",
+        "d": "Incorrect — inverting the units would give about 0.38 W/g, not 2.65."
       },
       "correctAnswer": "b",
-      "difficulty": "intermediate"
+      "difficulty": "advanced"
     },
     {
       "question": "Q10. Which two changes most improve a multirotor's hover efficiency (g/W)?",
@@ -164,7 +164,7 @@
       },
       "explanations": {
         "a": "Incorrect — both reduce efficiency.",
-        "b": "Correct — a bigger disk lowers induced power for the same thrust, and a lighter craft needs less thrust (and power scales as thrust^1.5), so both raise g/W.",
+        "b": "Correct — a bigger disk lowers induced power for the same thrust, and a lighter craft needs less thrust (power scales as thrust^1.5), so both raise hover g/W. Note that only the disk-area effect shows on the simulator's full-throttle Thrust eff. chip, which is payload-independent.",
         "c": "Incorrect — a heavier frame lowers efficiency; KV alone does not set hover efficiency.",
         "d": "Incorrect — those affect control latency and endurance, not hover g/W directly."
       },

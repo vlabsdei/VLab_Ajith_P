@@ -1,0 +1,21 @@
+{
+  "name": "4\" Tri-blade  (2.5 pitch)",
+  "mass_g": 3.5,
+  "qty": 4,
+  "size_mm": [
+    101.6,
+    6.1,
+    101.6
+  ],
+  "model": "4inch_tri.glb",
+  "specs": {
+    "Diameter": "4 in",
+    "Pitch": "2.5 in",
+    "Blades": "3"
+  },
+  "physics": {
+    "diameter_in": 4.0,
+    "pitch_in": 2.5,
+    "blades": 3
+  }
+}

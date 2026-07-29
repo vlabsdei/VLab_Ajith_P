@@ -1,4 +1,175 @@
 {
   "version": 2.0,
-  "questions": []
+  "questions": [
+    {
+      "question": "Q1. On the bench, a 4S 1300 mAh low-C pack (12C continuous, 24 mOhm per cell) fails both the C-rating check and the sag check at once. What single physical property explains both failures?",
+      "answers": {
+        "a": "Its low capacity",
+        "b": "Its high cell internal resistance",
+        "c": "Its low cell count",
+        "d": "Its light mass"
+      },
+      "explanations": {
+        "a": "Incorrect — capacity sets endurance, not the current limit or the sag magnitude.",
+        "b": "Correct — high internal resistance is what caps the C-rating in the first place, and it is the same R in the I x R term that collapses terminal voltage under load. One property, two failures.",
+        "c": "Incorrect — it is a 4S pack, the same cell count as the packs that pass.",
+        "d": "Incorrect — mass affects hover current slightly, but it does not cause either failure mode."
+      },
+      "correctAnswer": "b",
+      "difficulty": "intermediate"
+    },
+    {
+      "question": "Q2. Swapping from the default 4S 5200 mAh pack to a 4S 1500 mAh high-C pack, the measured current draw rises from roughly 80 A to roughly 91 A. Why does the smaller pack pull more current?",
+      "answers": {
+        "a": "Smaller packs are always less efficient and waste current as heat",
+        "b": "Its much lower internal resistance holds bus voltage higher under load, so the motors see more voltage and draw more current",
+        "c": "The ESC compensates for the reduced capacity by increasing current",
+        "d": "The measurement is an artefact; current cannot depend on the pack"
+      },
+      "explanations": {
+        "a": "Incorrect — the extra current is delivered to the motors as useful power, not lost internally.",
+        "b": "Correct — at 3.2 mOhm per cell the pack sags far less, so V_applied stays high, RPM rises and the motors draw more. The stiffer pack lets the propulsion system reach its real operating point.",
+        "c": "Incorrect — the ESC applies a duty cycle; it does not regulate current to a target.",
+        "d": "Incorrect — current depends directly on the pack, through the sag term in the loop equation."
+      },
+      "correctAnswer": "b",
+      "difficulty": "advanced"
+    },
+    {
+      "question": "Q3. Under the simulator's Peukert model, a pack rated 30C continuous or better keeps its full nameplate capacity, while a 12C pack keeps only about 72%. What does that difference represent physically?",
+      "answers": {
+        "a": "A manufacturing tolerance applied at random",
+        "b": "A high-resistance cell loses more of its stored energy internally at a given discharge rate, so less reaches the load",
+        "c": "Low-C packs are always physically smaller",
+        "d": "The nameplate capacity of low-C packs is simply misprinted"
+      },
+      "explanations": {
+        "a": "Incorrect — the derating is deterministic and follows from the pack's own continuous C-rating.",
+        "b": "Correct — the property that caps a pack's C-rating is high internal resistance, and that same resistance burns a larger fraction of the stored charge as internal heat at any given rate. The low-C pack is penalised twice: once on safe current, once on deliverable capacity.",
+        "c": "Incorrect — the 3300 mAh 25C pack is larger than the 1500 mAh 100C pack, yet it derates more.",
+        "d": "Incorrect — the nameplate is a genuine low-rate capacity; the shortfall appears only under load."
+      },
+      "correctAnswer": "b",
+      "difficulty": "advanced"
+    },
+    {
+      "question": "Q4. The naive fuel gauge integrates against nameplate capacity while the true gauge integrates against Peukert-derated capacity. What does a pilot actually experience because of the gap?",
+      "answers": {
+        "a": "The gauge reads optimistically high, so the pack can brown out while the display still shows charge remaining",
+        "b": "The gauge reads pessimistically low, so flights are cut short unnecessarily",
+        "c": "The two gauges agree except at exactly 0% and 100%",
+        "d": "The gauge becomes non-monotonic and jumps around"
+      },
+      "explanations": {
+        "a": "Correct — dividing the same amp-hours drawn by a larger assumed capacity yields a smaller apparent depletion, so the readout lags reality and the error grows as the pack empties.",
+        "b": "Incorrect — this is the wrong direction. Integrating against too large a capacity is optimistic, not conservative.",
+        "c": "Incorrect — they diverge progressively throughout the discharge.",
+        "d": "Incorrect — both counters are monotonic; they simply run down at different rates."
+      },
+      "correctAnswer": "a",
+      "difficulty": "intermediate"
+    },
+    {
+      "question": "Q5. Effective cell resistance R_cell,eff grows sharply once state of charge falls below about 0.30. What is the flight consequence?",
+      "answers": {
+        "a": "Nothing, because the ESC compensates automatically",
+        "b": "Sag worsens as the pack empties, so the last part of a flight has the least voltage margin and is where brownout is most likely",
+        "c": "The pack regains capacity at low SoC",
+        "d": "The motors run cooler at low SoC"
+      },
+      "explanations": {
+        "a": "Incorrect — the ESC has no way to create voltage that the pack cannot supply.",
+        "b": "Correct — the swelling resistance term compounds with the falling open-circuit voltage, so both terms in V_terminal = N x (V_oc - I x R_eff) move the wrong way at once. A pack that held up fine at 80% can brown out at 25% on the same load.",
+        "c": "Incorrect — capacity is being consumed, not restored.",
+        "d": "Incorrect — more voltage is dropped inside the pack, and holding the same thrust needs more throttle, so the system generally runs hotter."
+      },
+      "correctAnswer": "b",
+      "difficulty": "advanced"
+    },
+    {
+      "question": "Q6. A 4S 3300 mAh pack rated 25C draws about 81 A against an 82.5 A continuous limit and is reported as a pass. Why should this result still concern you?",
+      "answers": {
+        "a": "It should not; a pass is a pass",
+        "b": "The margin is under 2%, so any additional load, a warm day or normal cell ageing pushes it over the limit",
+        "c": "25C packs are never airworthy",
+        "d": "The current will fall as the pack ages, making it safer over time"
+      },
+      "explanations": {
+        "a": "Incorrect — engineering margin matters as much as the binary result.",
+        "b": "Correct — a pass with roughly 1.5 A of headroom is not a design, it is a coincidence. Cell resistance rises with age and temperature, and the limit will be crossed in service.",
+        "c": "Incorrect — 25C is perfectly airworthy on a lighter-drawing airframe; the mismatch here is with this build.",
+        "d": "Incorrect — ageing raises internal resistance and worsens both sag and heating."
+      },
+      "correctAnswer": "b",
+      "difficulty": "intermediate"
+    },
+    {
+      "question": "Q7. Why does the endurance-versus-capacity curve bend over rather than rising linearly?",
+      "answers": {
+        "a": "Because the ESC caps the maximum usable capacity",
+        "b": "Because added cells contribute mass, which raises hover thrust and therefore hover current, partly cancelling the extra amp-hours",
+        "c": "Because larger packs discharge faster by chemistry",
+        "d": "Because the flight controller limits flight time"
+      },
+      "explanations": {
+        "a": "Incorrect — no such cap exists in the model.",
+        "b": "Correct — endurance is capacity over hover current, and the denominator grows with the numerator. Beyond a point the extra cells are mostly lifting themselves, and eventually thrust-to-weight falls below one and the aircraft cannot hover at all.",
+        "c": "Incorrect — discharge rate is set by the load, not by pack size.",
+        "d": "Incorrect — the flight controller imposes no such limit here."
+      },
+      "correctAnswer": "b",
+      "difficulty": "intermediate"
+    },
+    {
+      "question": "Q8. The rig's auto-cut watches only the coulomb-counted readout that integrates against nameplate capacity. What failure does that design permit?",
+      "answers": {
+        "a": "The cut fires too early, wasting usable charge",
+        "b": "The cut can fire too late, because the naive readout believes charge remains when the pack is genuinely empty",
+        "c": "The cut fires at random intervals",
+        "d": "The cut has no effect on the pack"
+      },
+      "explanations": {
+        "a": "Incorrect — that would be the safe direction, and it is not what the optimistic naive count produces.",
+        "b": "Correct — this is exactly the trap the module demonstrates. A cheap gauge with no direct per-cell measurement can permit an over-discharge, which is why the run can end reporting a genuinely empty resting cell voltage.",
+        "c": "Incorrect — the cut fires deterministically at its threshold on the naive readout.",
+        "d": "Incorrect — an over-discharged cell is permanently degraded."
+      },
+      "correctAnswer": "b",
+      "difficulty": "advanced"
+    },
+    {
+      "question": "Q9. On this airframe the default 4S 5200 mAh pack passes every check but weighs 480 g, while the 4S 1500 mAh high-C pack also passes at 175 g. What is the correct engineering reading of that comparison?",
+      "answers": {
+        "a": "Always choose the largest pack that passes",
+        "b": "Pack selection is a trade between endurance and mass, and passing the electrical checks is a constraint rather than an objective",
+        "c": "The two packs are interchangeable in every respect",
+        "d": "The lighter pack is strictly better in all cases"
+      },
+      "explanations": {
+        "a": "Incorrect — the largest pack that passes may cost more in mass than it returns in endurance.",
+        "b": "Correct — both packs clear the safety constraints, so the decision moves to what you need: the 5200 mAh pack buys flight time at 305 g of extra mass, the 1500 mAh pack buys agility and payload headroom. Neither is the answer without a mission.",
+        "c": "Incorrect — they differ by more than a factor of three in capacity and endurance.",
+        "d": "Incorrect — the lighter pack gives up substantial flight time."
+      },
+      "correctAnswer": "b",
+      "difficulty": "advanced"
+    },
+    {
+      "question": "Q10. Which single measurement best predicts whether a given pack will pass both the C-rating check and the sag check on an unfamiliar airframe?",
+      "answers": {
+        "a": "The pack's capacity in mAh",
+        "b": "The pack's mass",
+        "c": "The pack's internal resistance per cell, compared against the airframe's full-throttle current draw",
+        "d": "The pack's nominal voltage"
+      },
+      "explanations": {
+        "a": "Incorrect — capacity predicts endurance, not survivability under load.",
+        "b": "Incorrect — mass is a consequence of construction, and is a weak proxy at best.",
+        "c": "Correct — cell resistance sets the sag directly through I x R and caps the C-rating, so combined with the airframe's actual draw it predicts both outcomes. This is why the current draw has to be measured on the real build rather than assumed.",
+        "d": "Incorrect — nominal voltage follows from cell count and is the same across all the 4S options here."
+      },
+      "correctAnswer": "c",
+      "difficulty": "intermediate"
+    }
+  ]
 }

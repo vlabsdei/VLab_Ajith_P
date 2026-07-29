@@ -1,0 +1,219 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Drone Technology Lab</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="./css/main.css?v=rw6">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/GLTFLoader.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/DRACOLoader.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/libs/fflate.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/FBXLoader.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+</head>
+<body>
+
+<div class="boot-overlay" id="bootOverlay">
+  <div class="boot-card">
+    <div class="boot-spin"></div>
+    <div class="boot-title">DRONE TECHNOLOGY LAB</div>
+    <div class="boot-sub mono" id="bootSub">loading component catalog\u2026</div>
+    <div class="boot-track"><div class="boot-fill" id="bootFill"></div></div>
+  </div>
+</div>
+
+<main class="lab" id="labRoot">
+
+  <!-- ══════════ LEFT · INPUT PARAMETERS ══════════ -->
+  <section class="col col-left" id="secInputs" data-screen-label="Input Parameters">
+    <header class="col-head head-inputs" id="headInputs">
+      <span class="dot dot-teal"></span>
+      <h1>Input Parameters</h1>
+      <span class="cfg-code mono" id="cfgCode">CFG-0000</span>
+    </header>
+
+    <div class="param-grid" id="paramGrid"><!-- component tiles injected --></div>
+
+    <div class="card slider-card">
+      <div class="row-between">
+        <span class="card-title">Density Altitude <em>(environment)</em></span>
+        <span class="mono accent" id="altVal">0 m</span>
+      </div>
+      <input type="range" id="altSlider" min="0" max="3000" step="50" value="0" aria-label="Density altitude">
+      <div class="scale mono"><span>0 m</span><span>1500 m</span><span>3000 m</span></div>
+      <div class="row-between" style="font-size:9.5px">
+        <span style="color:var(--muted)">Air density ρ</span>
+        <span class="mono" id="rhoVal">1.2250 kg/m³</span>
+      </div>
+    </div>
+
+    <button class="card mass-card" id="massCard" type="button" data-comment-anchor="mass-budget-card">
+      <div class="row-between">
+        <span class="card-title">Mass Budget</span>
+        <span class="link-hint">detailed view ›</span>
+      </div>
+      <div class="mass-mini" id="massMini"><!-- top rows injected --></div>
+      <div class="mass-total row-between">
+        <span>Total drone mass</span>
+        <span class="mono accent big" id="massTotal">— kg</span>
+      </div>
+    </button>
+  </section>
+
+  <!-- ══════════ CENTER · 3D VIEWPORT ══════════ -->
+  <section class="col col-center" id="secViewport" data-screen-label="3D Viewport">
+    <div class="viewport-frame" id="vpFrame">
+      <div class="viewport" id="viewport"></div>
+
+      <div class="vp-modules" id="moduleTabs"><!-- module tabs injected --></div>
+
+      <div class="vp-telemetry">
+        <div class="tel-head"><span class="tel-dot" id="telDot"></span>LIVE TELEMETRY</div>
+        <div class="tel-rows mono">
+          <div><span>Thrust</span><b id="telThrust">0.00 N</b></div>
+          <div><span>RPM</span><b id="telRpm">0</b></div>
+          <div><span>Current</span><b id="telCur">0.0 A</b></div>
+          <div><span>Power</span><b id="telPwr">0 W</b></div>
+          <div><span>Motor T</span><b id="telTemp">25 °C</b></div>
+          <div><span>ESC T</span><b id="telEsc">25 °C</b></div>
+          <div><span>Battery</span><b id="telBat">100 %</b></div>
+          <div><span>Z-Pos</span><b id="telAlt">0.00 m</b></div>
+        </div>
+        <div class="tel-phase mono" id="telPhase">STANDBY</div>
+      </div>
+
+      <div class="ff-badge mono" id="ffBadge" hidden>60× FAST-FORWARD</div>
+
+      <div class="vp-exps" id="expTabs"><!-- experiment tabs injected --></div>
+      <div class="vp-hint mono">drag · orbit &nbsp; scroll · zoom</div>
+    </div>
+
+    <div class="run-row">
+      <button class="btn btn-run" id="runBtn" type="button">▶ Run Sim</button>
+      <button class="btn btn-ghost" id="resetBtn" type="button">Reset</button>
+      <div class="throttle-wrap" id="throttleWrap" hidden>
+        <span class="progress-label" id="throttleLabel">THROTTLE</span>
+        <input type="range" id="throttleSlider" min="0" max="100" step="1" value="0" aria-label="Throttle">
+        <span class="mono accent" id="throttleVal">0%</span>
+      </div>
+      <div class="progress-wrap">
+        <span class="progress-label">EXPERIMENT PROGRESS</span>
+        <div class="progress-track"><div class="progress-fill" id="progressFill"></div></div>
+        <span class="mono accent" id="progressTxt">0 / 5</span>
+      </div>
+    </div>
+
+    <button class="card calc-card" id="calcCard" type="button" data-screen-label="Calculations">
+      <div class="row-between">
+        <span class="card-title">Calculations</span>
+        <span class="link-hint">full derivation ›</span>
+      </div>
+      <div class="calc-chips" id="calcChips"><!-- chips injected --></div>
+    </button>
+
+    <div class="card log-card" id="logCard" data-screen-label="Diagnostics Log">
+      <button class="log-head row-between" id="logHead" type="button">
+        <span class="card-title">Diagnostics Log <em id="logSummary">· running checks…</em></span>
+        <span class="log-badge" id="logBadge">—</span>
+      </button>
+      <div class="log-list" id="logList"><!-- diagnostics injected --></div>
+    </div>
+  </section>
+
+  <!-- ══════════ RIGHT · OUTPUTS ══════════ -->
+  <section class="col col-right" id="secOutputs" data-screen-label="Outputs">
+    <header class="col-head head-outputs" id="headOutputs">
+      <span class="dot dot-slate"></span>
+      <h1>Outputs</h1>
+    </header>
+
+    <div class="out-pair">
+    <button class="card out-card" id="graphCard" type="button">
+      <div class="row-between">
+        <span class="card-title">Graphs <em>· live + sweeps</em></span>
+        <span class="link-hint slate">all graphs ⤢</span>
+      </div>
+      <div class="chart-box"><canvas id="liveGraph"></canvas></div>
+      <div class="mono caption" id="graphCaption">waiting for first run…</div>
+    </button>
+
+    <button class="card out-card" id="chartCard" type="button">
+      <div class="row-between">
+        <span class="card-title">Charts <em>· analysis</em></span>
+        <span class="link-hint slate">all charts ⤢</span>
+      </div>
+      <div class="chart-box"><canvas id="massChart"></canvas></div>
+    </button>
+    </div>
+
+    <header class="col-head head-unlock" data-screen-label="Components Unlocked">
+      <span class="dot dot-amber"></span>
+      <h1>Components Unlocked</h1>
+      <span class="cfg-code mono" id="rewardBadge">0 / 1</span>
+    </header>
+    <div class="card reward-card" id="rewardCard">
+      <div class="reward-body" id="rewardBody"><!-- locked / unlocked state injected --></div>
+    </div>
+  </section>
+</main>
+
+<!-- ══════════ INSTRUCTOR ══════════ -->
+<div class="instructor" data-screen-label="Instructor">
+  <div class="instr-panel" id="instrPanel" hidden>
+    <div class="instr-head">
+      <span class="instr-live"></span>
+      <span>LAB INSTRUCTOR</span>
+      <span class="mono step" id="instrStepTxt">step 1 / 6</span>
+    </div>
+    <p class="instr-text" id="instrText"></p>
+    <div class="instr-nav">
+      <button type="button" id="instrPrev">‹ Back</button>
+      <button type="button" id="instrReplay" class="primary">Replay audio</button>
+      <button type="button" id="instrNext" class="solid">Next ›</button>
+    </div>
+    <div class="instr-audio">
+      <div class="vol-row">
+        <span>SPEAKER</span>
+        <input type="range" id="voiceVol" min="0" max="100" value="80" aria-label="Instructor voice volume">
+        <b class="mono" id="voiceVolTxt">80</b>
+      </div>
+      <div class="vol-row">
+        <span>SFX</span>
+        <input type="range" id="sfxVol" min="0" max="100" value="60" aria-label="Sound effects volume">
+        <b class="mono" id="sfxVolTxt">60</b>
+      </div>
+    </div>
+  </div>
+  <button class="instr-orb" id="instrOrb" type="button" title="Lab instructor" aria-label="Toggle lab instructor">
+    <svg width="24" height="24" viewBox="0 0 24 24" fill="none"><path d="M4 10a8 8 0 0 1 16 0v5a2 2 0 0 1-2 2h-1v-6h3M4 10v6h3v-6H4" stroke="#fff" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/><path d="M9 21h6" stroke="#9fd8c3" stroke-width="1.8" stroke-linecap="round"/></svg>
+  </button>
+</div>
+
+<!-- ══════════ MOBILE TAB BAR ══════════ -->
+<nav class="tabbar" id="tabbar" aria-label="Sections">
+  <button type="button" data-target="vpFrame"><span class="ic">◈</span>Viewport</button>
+  <button type="button" data-target="headInputs"><span class="ic">⬒</span>Inputs</button>
+  <button type="button" data-target="headOutputs"><span class="ic">▤</span>Outputs</button>
+</nav>
+
+<!-- ══════════ FLOATING WINDOW ROOT ══════════ -->
+<div class="modal-overlay" id="modalOverlay" hidden>
+  <div class="modal" id="modalBox" role="dialog" aria-modal="true">
+    <header class="modal-head">
+      <span class="dot" id="modalDot"></span>
+      <h2 id="modalTitle"></h2>
+      <button class="modal-close" id="modalClose" type="button" aria-label="Close">✕</button>
+    </header>
+    <div class="modal-body" id="modalBody"></div>
+    <footer class="modal-foot mono" id="modalFoot" hidden></footer>
+  </div>
+</div>
+
+<script src="./js/main.js?v=rw6"></script>
+<script src="./js/capstone.js?v=920"></script>
+</body>
+</html>

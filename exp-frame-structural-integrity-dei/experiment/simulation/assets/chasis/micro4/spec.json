@@ -19,7 +19,7 @@
     "wheelbase_mm": 228,
     "recommended_prop_in": [
       3,
-      4
+      6
     ],
     "frontal_area_m2": 0.0073,
     "cd": 1.05,

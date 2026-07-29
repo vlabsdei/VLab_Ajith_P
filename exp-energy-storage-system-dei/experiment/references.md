@@ -1,18 +1,15 @@
 # Academic References
 
-The C-rating and discharge-limit model, internal-resistance voltage-sag model, Peukert-style capacity derating, and coulomb-counting state-of-charge estimation implemented in this experiment are derived from the following battery-engineering and electrochemistry literature:
+The C-rating, voltage-sag, Peukert-derating and state-of-charge models in this experiment are based on the following laboratory manual (primary) and textbooks.
 
-1. **D. Linden and T. B. Reddy (eds.)**, *Handbook of Batteries*, 4th ed. New York, NY: McGraw-Hill, 2011.  
-   *(Standard reference for cell capacity, C-rate discharge behaviour, and the rate-dependence of usable capacity underlying the continuous/burst discharge-limit model.)*
+**Laboratory manual (primary)**
 
-2. **G. L. Plett**, *Battery Management Systems, Volume I: Battery Modeling*. Norwood, MA: Artech House, 2015.  
-   *(Source for the equivalent-circuit cell model, internal-resistance/terminal-voltage relationship, coulomb-counting, and open-circuit-voltage-to-state-of-charge inversion used in Sections 2 and 4.)*
+1. **J. C. Bose University of Science & Technology (YMCA), Faridabad**, *Electric Vehicle Laboratory Manual*. Experiment No. 2 — constant-current mode of charging / discharging the EV battery pack (p16–22).
+   https://www.jcboseust.ac.in/assets/dept_electrical/uploads/media/EV_lab_manuel_updated.pdf
 
-3. **D. Doerffel and S. A. Sharkh**, "A critical review of using the Peukert equation for determining the remaining capacity of lead-acid and lithium-ion batteries," *Journal of Power Sources*, vol. 155, no. 2, pp. 395–400, 2006.  
-   *(Basis for the practical, empirical Peukert-style derating that shrinks a pack's usable capacity as discharge rate rises, used in Section 3.)*
+**Textbooks**
 
-4. **M. Chen and G. A. Rincón-Mora**, "Accurate Electrical Battery Model Capable of Predicting Runtime and I-V Performance," *IEEE Transactions on Energy Conversion*, vol. 21, no. 2, pp. 504–511, 2006.  
-   *(Provides the nonlinear open-circuit-voltage curve, the internal-resistance voltage-sag model, and the runtime/state-of-charge prediction that underpin Sections 2 and 4.)*
+2. **D. Linden and T. B. Reddy (eds.)**, *Handbook of Batteries*, McGraw-Hill. Cell capacity, C-rate discharge behaviour and rate-dependent usable capacity.
+3. **G. L. Plett**, *Battery Management Systems, Vol. I: Battery Modeling*, Artech House. Internal-resistance / terminal-voltage model, coulomb-counting and OCV-to-SoC.
 
-5. **L. W. Traub**, "Range and Endurance Estimates for Battery-Powered Aircraft," *Journal of Aircraft*, vol. 48, no. 2, pp. 703–707, 2011.  
-   *(Derives how effective pack capacity and pack mass convert into hover/endurance time for electric aircraft, used in the endurance section.)*
+*Note: the Peukert, coulomb-counting and Voc–SoC equations are analytical and are not printed in any Indian bench lab manual; they are cited to the textbooks above.*

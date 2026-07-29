@@ -1,0 +1,25 @@
+{
+  "name": "3S LiPo — 1300 mAh",
+  "mass_g": 120,
+  "qty": 1,
+  "size_mm": [
+    76,
+    34,
+    26
+  ],
+  "model": "assets/battery/_model/Battery_Drone.fbx",
+  "specs": {
+    "Voltage": "11.1 V (3S)",
+    "Capacity": "1300 mAh",
+    "Discharge": "100C burst / 60C cont.",
+    "Note": "Light 3S race pack — high C, short flight"
+  },
+  "physics": {
+    "cells": 3,
+    "voltage_nominal_v": 11.1,
+    "capacity_mah": 1300,
+    "c_rating": 100,
+    "c_rating_cont": 60,
+    "cell_ir_mohm": 6.0
+  }
+}

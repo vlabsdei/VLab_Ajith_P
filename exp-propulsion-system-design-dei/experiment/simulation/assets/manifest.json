@@ -21,6 +21,9 @@
         "2.7in_tri",
         "3in_tri",
         "5in_tri",
+        "6in_bi",
+        "6in_tri",
+        "7in_bi",
         "8in_bi",
         "9in_bi",
         "10in_bi",
@@ -57,7 +60,12 @@
         "esc_65a",
         "Dakefpv_120A",
         "UH300",
-        "esc_4in1_50a"
+        "esc_4in1_50a",
+        "esc_20a",
+        "esc_30a",
+        "esc_80a",
+        "esc_40a_4in1",
+        "esc_100a_4in1"
       ]
     },
     {
@@ -69,7 +77,14 @@
         "4s_1500",
         "4s_3300",
         "6s_4000",
-        "6s_5000"
+        "6s_5000",
+        "3s_1300",
+        "4s_2200",
+        "6s_1300",
+        "6s_3000",
+        "4s_5200",
+        "4s_1300_lowc",
+        "4s_1500_highc"
       ]
     },
     {
@@ -100,10 +115,18 @@
       "fallback": "gimbal",
       "multi": true,
       "options": [
-        "gimbal",
-        "camera",
-        "gps",
-        "thermal_cam"
+        "gps_m8n",
+        "gps_m10",
+        "gps_rtk",
+        "gimbal_nano",
+        "gimbal_2axis",
+        "gimbal_3axis",
+        "cam_fpv",
+        "cam_hd",
+        "cam_4k",
+        "cam_cinema",
+        "thermal_256",
+        "thermal_640"
       ]
     }
   ],
@@ -202,9 +225,20 @@
     }
   ],
   "reward": {
-    "name": "Reward Component",
-    "desc": "Unlocked build reward — drop reward.glb in assets/reward/ to display it here.",
-    "fallback": "lidar",
-    "model": "assets/reward/reward.glb"
+    "category": "motor",
+    "name": "Motor",
+    "desc": "A matched bell motor for the build — one of the catalogue's nine, drawn at random.",
+    "options": [
+      "1405",
+      "1806",
+      "2310",
+      "2806",
+      "3015",
+      "4130",
+      "4530",
+      "5010",
+      "9030"
+    ],
+    "fallback": "motor"
   }
 }

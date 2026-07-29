@@ -6,7 +6,7 @@
 <title>Drone Structural Lab &middot; CoG Balancing &amp; Cantilever Stress</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="./css/main.css">
+<link rel="stylesheet" href="./css/main.css?v=acc2">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/GLTFLoader.js"></script>
@@ -36,13 +36,6 @@
     </header>
 
     <div class="param-grid" id="paramGrid"><!-- component tiles injected by main.js --></div>
-
-    <div class="card mat-picker" id="matPicker" hidden>
-      <div class="row-between">
-        <span class="card-title">Frame Material <em>(Module 2)</em></span>
-      </div>
-      <div class="mat-picker-grid" id="matPickerGrid"><!-- material tiles injected by main.js --></div>
-    </div>
 
     <button class="card mass-card" id="massCard" type="button" data-comment-anchor="mass-budget-card">
       <div class="row-between">
@@ -97,22 +90,37 @@
         <div class="vp-hint mono">drag &middot; orbit &nbsp; scroll &middot; zoom</div>
       </div>
 
-      <div class="side-frame heat-frame" id="heatFrame">
+      <!-- M1: arm-load heatmap · M2: this slot holds the material + matrix bench -->
+      <div class="side-frame heat-frame m1-only" id="heatFrame">
         <canvas id="heatCanvas" width="640" height="420"></canvas>
+      </div>
+
+      <!-- Module-2 material selection + interactive test matrix (beside the viewport) -->
+      <div class="card m2-bench" id="m2Bench" hidden data-screen-label="Material &amp; Test Matrix">
+        <div class="row-between">
+          <span class="card-title">Frame Material <em>&middot; pick &amp; test the arm</em></span>
+        </div>
+        <div class="mat-picker-grid" id="matPickerGrid"><!-- material tiles injected by main.js --></div>
+        <div class="row-between matrix-head">
+          <span class="card-title">Test Matrix <em>&middot; material &times; arm length</em></span>
+          <span class="matrix-rec mono" id="matrixRec">tap a cell to test</span>
+        </div>
+        <div class="sf-matrix" id="sfMatrix"><!-- interactive cells injected by main.js --></div>
+        <p class="matrix-hint mono">Tap any cell to load that material &amp; arm length and run the cantilever test. Compare the measured safety factors, then keep the material with the best margin.</p>
       </div>
     </div>
 
-    <!-- Row 2: top-view blueprint  ‖  placement sliders -->
-    <div class="visual-row row-2">
-      <div class="side-frame plan-frame" id="planFrame">
+    <!-- Row 2 · Module 1 only: top-view blueprint ‖ placement sliders -->
+    <div class="visual-row row-2 m1-only" id="row2">
+      <div class="side-frame plan-frame m1-only" id="planFrame">
         <canvas id="planCanvas" width="640" height="420"></canvas>
       </div>
 
       <input type="checkbox" id="sliderSheetToggle" class="slider-sheet-toggle" hidden>
-      <label for="sliderSheetToggle" class="slider-fab" id="sliderFab"><span class="ic">&#9881;&#65039;</span>Placement</label>
+      <label for="sliderSheetToggle" class="slider-fab m1-only" id="sliderFab"><span class="ic">&#9881;&#65039;</span>Placement</label>
       <label for="sliderSheetToggle" class="slider-backdrop" id="sliderBackdrop"></label>
 
-      <div class="card slider-panel" id="sliderPanel">
+      <div class="card slider-panel m1-only" id="sliderPanel">
         <div class="sheet-head" id="sliderSheetHead">
           <span class="card-title">Placement Sliders</span>
           <label for="sliderSheetToggle" class="sheet-done">&#10005; Done</label>
@@ -128,31 +136,6 @@
       </div>
       <div class="calc-chips" id="calcChips"><!-- chips injected --></div>
     </button>
-
-    <!-- Module-2-only structural charts -->
-    <div class="card m2-charts" id="m2Charts" hidden data-screen-label="Structural Charts">
-      <div class="row-between">
-        <span class="card-title">Structural Charts <em>&middot; Module 2</em></span>
-      </div>
-      <div class="m2-chart-grid">
-        <div class="chart-block">
-          <div class="chart-label mono">SHEAR FORCE DIAGRAM</div>
-          <canvas id="sfdCanvas" width="360" height="220"></canvas>
-        </div>
-        <div class="chart-block">
-          <div class="chart-label mono">BENDING MOMENT DIAGRAM</div>
-          <canvas id="bmdCanvas" width="360" height="220"></canvas>
-        </div>
-        <div class="chart-block">
-          <div class="chart-label mono">ROOT STRESS</div>
-          <canvas id="stressBarCanvas" width="360" height="220"></canvas>
-        </div>
-      </div>
-      <div class="row-between">
-        <span class="card-title">Safety-Factor Matrix <em>&middot; material &times; arm length</em></span>
-      </div>
-      <div class="sf-matrix" id="sfMatrix"><!-- 3x3 grid injected by cantilever.js --></div>
-    </div>
 
     <div class="card log-card" id="logCard" data-screen-label="Diagnostics Log">
       <button class="log-head row-between" id="logHead" type="button">
@@ -170,23 +153,43 @@
       <h1>Outputs</h1>
     </header>
 
-    <div class="out-pair">
-    <button class="card out-card" id="graphCard" type="button">
-      <div class="row-between">
-        <span class="card-title">Graphs <em>&middot; live</em></span>
-        <span class="link-hint slate">all runs &rsaquo;</span>
-      </div>
-      <canvas id="liveGraph" width="560" height="260"></canvas>
-      <div class="mono caption" id="graphCaption">waiting for first run&hellip;</div>
-    </button>
+    <!-- Graphs section — collapsible; expand to see every graph, click one to open -->
+    <div class="card graphs-card collapsed" id="graphsCard">
+      <button class="graphs-head row-between" id="graphsHead" type="button">
+        <span class="card-title">Graphs <em id="graphsSub">&middot; tap to expand</em></span>
+        <span class="graphs-caret mono" id="graphsCaret">&rsaquo;</span>
+      </button>
+      <div class="graphs-body" id="graphsBody">
+      <button class="graph-item" id="graphCard" type="button">
+        <span class="gi-label mono" id="graphItemLabel">Assemble &amp; Balance</span>
+        <canvas id="liveGraph" width="560" height="240"></canvas>
+        <div class="mono caption" id="graphCaption">waiting for first run&hellip;</div>
+      </button>
 
-    <button class="card out-card" id="chartCard" type="button">
-      <div class="row-between">
-        <span class="card-title">Charts <em>&middot; mass distribution</em></span>
-        <span class="link-hint slate">expand &rsaquo;</span>
+      <!-- Module-2 structural charts — inside the Graphs section, same theme -->
+      <div class="struct-graphs" id="structCharts" hidden>
+        <button class="graph-item struct-card" type="button" data-chart="sfd">
+          <span class="gi-label mono">Shear Force &middot; V(x)</span>
+          <canvas id="sfdCanvas" width="520" height="150"></canvas>
+        </button>
+        <button class="graph-item struct-card" type="button" data-chart="bmd">
+          <span class="gi-label mono">Bending Moment &middot; M(x)</span>
+          <canvas id="bmdCanvas" width="520" height="150"></canvas>
+        </button>
+        <button class="graph-item struct-card" type="button" data-chart="stress">
+          <span class="gi-label mono">Root Stress &middot; &sigma; vs yield</span>
+          <canvas id="stressBarCanvas" width="520" height="150"></canvas>
+        </button>
+        <button class="graph-item struct-card" type="button" data-chart="sfcurve">
+          <span class="gi-label mono">Safety Factor &middot; vs arm length</span>
+          <canvas id="sfCurveCanvas" width="520" height="160"></canvas>
+        </button>
+        <button class="graph-item struct-card" type="button" data-chart="deflcurve">
+          <span class="gi-label mono">Tip Deflection &middot; vs arm length</span>
+          <canvas id="deflCurveCanvas" width="520" height="160"></canvas>
+        </button>
       </div>
-      <canvas id="massChart" width="560" height="240"></canvas>
-    </button>
+      </div><!-- /graphs-body -->
     </div>
 
     <header class="col-head head-unlock" data-screen-label="Components Unlocked">
@@ -252,6 +255,6 @@
   </div>
 </div>
 
-<script src="./js/main.js"></script>
+<script src="./js/main.js?v=acc2"></script>
 </body>
 </html>

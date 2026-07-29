@@ -1,4 +1,175 @@
 {
   "version": 2.0,
-  "questions": []
+  "questions": [
+    {
+      "question": "Q1. The Wall preset spreads satellites in azimuth but places them all at high elevation. It produces a low HDOP and a large VDOP. Why does the module treat this as a failure?",
+      "answers": {
+        "a": "Because HDOP below 2 is never acceptable",
+        "b": "Because a low horizontal DOP conceals poor vertical geometry, and an aircraft flying on that fix has an unreliable altitude despite a confident-looking horizontal position",
+        "c": "Because fewer than four satellites are visible",
+        "d": "Because high-elevation satellites have weaker signals"
+      },
+      "explanations": {
+        "a": "Incorrect — HDOP below 2 is the pass condition for the horizontal component.",
+        "b": "Correct — this is the trap the preset exists to spring. Reporting only a 2-D DOP hides a vertical solution that is badly conditioned, which matters enormously to an aircraft.",
+        "c": "Incorrect — the preset uses the full satellite count you have selected.",
+        "d": "Incorrect — high-elevation satellites generally have the best signal path; geometry, not signal strength, is the problem."
+      },
+      "correctAnswer": "b",
+      "difficulty": "intermediate"
+    },
+    {
+      "question": "Q2. Keeping the constellation fixed and switching ranging from Open-sky (UERE 3.0 m) to Urban (UERE 7.5 m) causes the fix cloud to expand by a factor of 2.5. What does that show about DOP?",
+      "answers": {
+        "a": "DOP changes with the environment",
+        "b": "DOP is a pure geometry multiplier; the metres of error come from multiplying it by the ranging error, so identical geometry gives very different accuracy in different environments",
+        "c": "Urban environments reduce the number of satellites",
+        "d": "CEP is independent of UERE"
+      },
+      "explanations": {
+        "a": "Incorrect — DOP is unchanged here, which is precisely the point of holding the constellation fixed.",
+        "b": "Correct — CEP = HDOP x UERE. Good geometry cannot rescue poor ranging, and the same constellation is worth 2.5 times less in a multipath environment.",
+        "c": "Incorrect — the satellite count is unchanged in this comparison.",
+        "d": "Incorrect — CEP is directly proportional to UERE."
+      },
+      "correctAnswer": "b",
+      "difficulty": "intermediate"
+    },
+    {
+      "question": "Q3. Module 1 passes only when HDOP is below 2 AND CEP is below 4 m. Why are two conditions required rather than one?",
+      "answers": {
+        "a": "They are redundant; either alone would do",
+        "b": "They test different things: HDOP checks that the geometry is well conditioned, CEP checks that the resulting position error in metres is actually small enough to fly on",
+        "c": "CEP is a backup in case HDOP cannot be computed",
+        "d": "The second condition only applies below four satellites"
+      },
+      "explanations": {
+        "a": "Incorrect — good geometry with poor ranging passes the first and fails the second, as the urban case demonstrates.",
+        "b": "Correct — a dimensionless conditioning number and a physical distance are separate criteria. Requiring both prevents a well-conditioned but inaccurate solution from being accepted.",
+        "c": "Incorrect — both are computed whenever a solution exists.",
+        "d": "Incorrect — below four satellites there is no solution at all."
+      },
+      "correctAnswer": "b",
+      "difficulty": "intermediate"
+    },
+    {
+      "question": "Q4. A GPS fix requires at least four satellites. Given that position is three coordinates, why is the fourth needed?",
+      "answers": {
+        "a": "For redundancy in case one signal is lost",
+        "b": "To solve for receiver clock bias, which is a fourth unknown because the receiver has no atomic clock of its own",
+        "c": "To improve the signal-to-noise ratio",
+        "d": "To determine which satellites are healthy"
+      },
+      "explanations": {
+        "a": "Incorrect — redundancy is a benefit of extra satellites beyond four, not the reason for the fourth.",
+        "b": "Correct — the receiver measures pseudoranges contaminated by an unknown clock offset. With four unknowns you need at least four independent measurements.",
+        "c": "Incorrect — signal quality is a separate matter from the number of unknowns.",
+        "d": "Incorrect — satellite health is broadcast in the navigation message."
+      },
+      "correctAnswer": "b",
+      "difficulty": "intermediate"
+    },
+    {
+      "question": "Q5. Individual fixes are drawn from a Rayleigh radial distribution whose median radius equals the current CEP. What does CEP therefore mean?",
+      "answers": {
+        "a": "The maximum possible error, which is never exceeded",
+        "b": "The radius within which half of all fixes fall, so half of them land outside it",
+        "c": "The average of all radial errors",
+        "d": "The error at exactly one standard deviation"
+      },
+      "explanations": {
+        "a": "Incorrect — this is a common and dangerous misreading. CEP bounds nothing.",
+        "b": "Correct — Circular Error Probable is the 50% radius. Half your fixes are worse than the quoted figure, which is why an obstacle clearance sized to CEP is inadequate.",
+        "c": "Incorrect — for a Rayleigh distribution the mean radius is slightly larger than the median.",
+        "d": "Incorrect — one sigma corresponds to roughly 68% for a normal variable, a different quantity."
+      },
+      "correctAnswer": "b",
+      "difficulty": "advanced"
+    },
+    {
+      "question": "Q6. The barometric sweep runs 0 to 3000 m automatically and ignores the True Altitude slider. Why does the module sweep instead of testing a single altitude?",
+      "answers": {
+        "a": "To make the run take longer",
+        "b": "Because the diagnostic information is in how the error grows with height, which distinguishes random sensor noise from a systematic modelling bias",
+        "c": "Because the sensor cannot be read at a fixed altitude",
+        "d": "Because the slider is broken in this module"
+      },
+      "explanations": {
+        "a": "Incorrect — the sweep exists to produce a curve, not to consume time.",
+        "b": "Correct — a coarse sensor scatters roughly uniformly with height, while a temperature inversion produces a bias proportional to height. Only the shape of the curve separates them, and a single point cannot.",
+        "c": "Incorrect — it can, and the telemetry does so continuously outside a run.",
+        "d": "Incorrect — the slider is used by Module 3; this module deliberately overrides it."
+      },
+      "correctAnswer": "b",
+      "difficulty": "advanced"
+    },
+    {
+      "question": "Q7. A temperature inversion is described as a systematic bias rather than added noise. Why does that distinction matter to a flight controller?",
+      "answers": {
+        "a": "It does not; both raise the reported error equally",
+        "b": "Noise averages out over time while a bias does not, so filtering removes the first and leaves the second intact in the altitude estimate",
+        "c": "Bias only affects horizontal position",
+        "d": "Noise is always the more dangerous of the two"
+      },
+      "explanations": {
+        "a": "Incorrect — they behave completely differently under filtering, which is the practical difference.",
+        "b": "Correct — a low-pass filter or a longer averaging window reduces zero-mean noise but is powerless against a consistent offset. The aircraft holds a confident, smooth, wrong altitude.",
+        "c": "Incorrect — the inversion bias is a barometric altitude error, so it is vertical.",
+        "d": "Incorrect — noise is generally the more tractable of the two, precisely because it can be filtered."
+      },
+      "correctAnswer": "b",
+      "difficulty": "advanced"
+    },
+    {
+      "question": "Q8. Module 3 combines horizontal and vertical errors as Total = sqrt(CEP^2 + h_err^2) rather than adding them. What does that assume, and what is the consequence?",
+      "answers": {
+        "a": "It assumes the errors are identical and simply averages them",
+        "b": "It assumes the two error sources are statistically independent, so they combine in quadrature; the larger term therefore dominates and reducing the smaller one buys very little",
+        "c": "It assumes the vertical error is always negligible",
+        "d": "It assumes both errors are worst-case and adds a safety factor"
+      },
+      "explanations": {
+        "a": "Incorrect — quadrature combination is not an average.",
+        "b": "Correct — GNSS geometry and barometric pressure sensing are unrelated mechanisms, so a root-sum-square is appropriate. The practical consequence is that engineering effort belongs on whichever term is larger.",
+        "c": "Incorrect — the vertical term is explicitly included and can dominate.",
+        "d": "Incorrect — RSS is a statistical combination, not a conservative worst case; simple addition would be more conservative."
+      },
+      "correctAnswer": "b",
+      "difficulty": "advanced"
+    },
+    {
+      "question": "Q9. A build reports CEP of 3.0 m and barometric error of 1.3 m, giving a 3-D radius of about 3.3 m against a 5 m safety threshold. Which improvement would help most, and why?",
+      "answers": {
+        "a": "Improving the barometer, because 1.3 m is the easier number to reduce",
+        "b": "Improving the horizontal fix, because in quadrature the 3.0 m term contributes about 9.0 of the 10.7 total, so the vertical term is nearly irrelevant",
+        "c": "Both contribute equally, so either is fine",
+        "d": "Neither, since the build already passes"
+      },
+      "explanations": {
+        "a": "Incorrect — even eliminating the barometric error entirely would only move the total from 3.3 m to 3.0 m.",
+        "b": "Correct — squaring exaggerates the dominant term. Effort spent on the smaller contributor is almost entirely wasted, which is the main practical use of an error budget.",
+        "c": "Incorrect — they contribute in a roughly 9 to 1.7 ratio once squared.",
+        "d": "Incorrect — it passes, but understanding which term dominates is what lets you keep it passing as conditions worsen."
+      },
+      "correctAnswer": "b",
+      "difficulty": "advanced"
+    },
+    {
+      "question": "Q10. Modules 2 and 3 stay locked until the constellation check passes. What is the engineering justification for that ordering?",
+      "answers": {
+        "a": "It is purely a user-interface convention with no technical basis",
+        "b": "The horizontal fix is an input to the combined error budget, so characterising the altimeter or synthesising a total radius is meaningless until the horizontal solution is known to be valid",
+        "c": "The barometer cannot physically operate without GPS lock",
+        "d": "The modules share a sensor that can only be used by one at a time"
+      },
+      "explanations": {
+        "a": "Incorrect — the dependency is real, not cosmetic.",
+        "b": "Correct — Module 3 consumes the CEP from Module 1 and the altitude error from Module 2. Building a budget on an invalid or singular horizontal solution would produce a number with no meaning.",
+        "c": "Incorrect — a barometer is entirely independent of GNSS and works with no satellites at all.",
+        "d": "Incorrect — the sensors are separate and operate simultaneously."
+      },
+      "correctAnswer": "b",
+      "difficulty": "intermediate"
+    }
+  ]
 }

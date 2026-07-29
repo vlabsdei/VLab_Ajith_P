@@ -1,1 +1,1 @@
-## Power Electronics: ESC Calibration, PWM Mapping & Dead-Band Verification
+## Power Electronics: ESC Anatomy, Commissioning, Protocol Latency & Thermal Sizing

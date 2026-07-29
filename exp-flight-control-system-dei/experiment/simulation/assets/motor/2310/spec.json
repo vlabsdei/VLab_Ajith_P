@@ -1,5 +1,5 @@
 {
-  "name": "2310 \u2014 2400 KV",
+  "name": "2310 — 2750 KV",
   "mass_g": 33,
   "qty": 4,
   "size_mm": [
@@ -12,16 +12,16 @@
     "rotar.glb"
   ],
   "specs": {
-    "KV": "2400 rpm/V",
-    "Max current": "30 A",
-    "Stator": "23 \u00d7 10"
+    "KV": "2750 rpm/V",
+    "Max current": "46 A",
+    "Stator": "23 × 10"
   },
   "physics": {
-    "kv": 2400,
-    "rm_ohm": 0.06,
-    "i0_a": 0.9,
-    "max_current_a": 30,
-    "max_power_w": 650,
+    "kv": 2750,
+    "rm_ohm": 0.0437,
+    "i0_a": 1.01,
+    "max_current_a": 46,
+    "max_power_w": 990,
     "k_fe": 0.0004,
     "max_cells": 6
   }

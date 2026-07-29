@@ -6,7 +6,7 @@
 <title>Energy Storage System Lab</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="./css/main.css?v=2">
+<link rel="stylesheet" href="./css/main.css?v=rw41">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/GLTFLoader.js"></script>
@@ -88,6 +88,12 @@
 
       <div class="ff-badge mono" id="ffBadge" hidden>60× FAST-FORWARD</div>
 
+      <div class="vp-callouts" id="vpCallouts"><!-- 3D-anchored labels injected --></div>
+      <div class="vp-stage" id="vpStage" hidden>
+        <span class="stage-tag mono" id="stageTag">STEP 1</span>
+        <span class="stage-txt" id="stageTxt"></span>
+      </div>
+
       <div class="vp-exps" id="expTabs"><!-- experiment tabs injected --></div>
       <div class="vp-hint mono">drag · orbit &nbsp; scroll · zoom</div>
     </div>
@@ -105,6 +111,15 @@
         <div class="progress-track"><div class="progress-fill" id="progressFill"></div></div>
         <span class="mono accent" id="progressTxt">0 / 5</span>
       </div>
+    </div>
+
+    <!-- the bench protocol, ticked off live as the run progresses -->
+    <div class="card proc-card" id="procCard" data-screen-label="Procedure">
+      <div class="row-between">
+        <span class="card-title">Procedure <em id="procTitle">· bench protocol</em></span>
+        <span class="proc-stage mono" id="procStage" hidden></span>
+      </div>
+      <ol class="proc-list" id="procList"><!-- steps injected --></ol>
     </div>
 
     <button class="card calc-card" id="calcCard" type="button" data-screen-label="Calculations">
@@ -134,10 +149,15 @@
     <div class="out-pair">
     <button class="card out-card" id="graphCard" type="button">
       <div class="row-between">
-        <span class="card-title">Graphs <em>· live</em></span>
-        <span class="link-hint slate">expand ⤢</span>
+        <span class="card-title">Graphs <em>· live + sweeps</em></span>
+        <span class="link-hint slate">all graphs ⤢</span>
       </div>
-      <div class="chart-box"><canvas id="liveGraph"></canvas></div>
+      <div class="graph-grid" id="graphGrid">
+        <div class="gg-cell"><span class="gg-lab mono" id="ggLab1"></span><div class="chart-box"><canvas id="liveGraph"></canvas></div></div>
+        <div class="gg-cell"><span class="gg-lab mono" id="ggLab2"></span><div class="chart-box"><canvas id="liveGraph2"></canvas></div></div>
+        <div class="gg-cell"><span class="gg-lab mono" id="ggLab3"></span><div class="chart-box"><canvas id="liveGraph3"></canvas></div></div>
+        <div class="gg-cell"><span class="gg-lab mono" id="ggLab4"></span><div class="chart-box"><canvas id="liveGraph4"></canvas></div></div>
+      </div>
       <div class="mono caption" id="graphCaption">waiting for first run…</div>
     </button>
 
@@ -172,7 +192,7 @@
     <p class="instr-text" id="instrText"></p>
     <div class="instr-nav">
       <button type="button" id="instrPrev">‹ Back</button>
-      <button type="button" id="instrReplay" class="primary">↻ Replay audio</button>
+      <button type="button" id="instrReplay" class="primary">Replay audio</button>
       <button type="button" id="instrNext" class="solid">Next ›</button>
     </div>
     <div class="instr-audio">
@@ -213,6 +233,6 @@
   </div>
 </div>
 
-<script src="./js/main.js?v=1"></script>
+<script src="./js/main.js?v=rw41"></script>
 </body>
 </html>

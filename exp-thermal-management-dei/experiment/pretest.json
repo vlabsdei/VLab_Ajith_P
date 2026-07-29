@@ -1,4 +1,175 @@
 {
   "version": 2.0,
-  "questions": []
+  "questions": [
+    {
+      "question": "Q1. Where does the heat in a motor winding come from?",
+      "answers": {
+        "a": "Friction between the propeller and the air",
+        "b": "Resistive loss in the copper, P = I^2 x R",
+        "c": "Heat conducted back from the battery",
+        "d": "Sunlight absorbed by the motor bell"
+      },
+      "explanations": {
+        "a": "Incorrect — aerodynamic drag loads the motor, but the heat that raises winding temperature is generated electrically inside the copper.",
+        "b": "Correct — current through the winding resistance dissipates I^2 x R watts, and that is the dominant heat source.",
+        "c": "Incorrect — the battery has its own losses, but it does not heat the motor.",
+        "d": "Incorrect — irrelevant on a bench and negligible in flight."
+      },
+      "correctAnswer": "b",
+      "difficulty": "beginner"
+    },
+    {
+      "question": "Q2. If the steady temperature rise above ambient is proportional to the square of current, what happens to the rise when you halve the current?",
+      "answers": {
+        "a": "It halves",
+        "b": "It falls to a quarter",
+        "c": "It stays the same",
+        "d": "It doubles"
+      },
+      "explanations": {
+        "a": "Incorrect — that would be true if the relationship were linear, but the loss goes as I^2.",
+        "b": "Correct — halving I quarters I^2, so the heat and the steady rise both fall to a quarter. Backing a motor off slightly does far more for its temperature than it costs in thrust.",
+        "c": "Incorrect — less current means less loss and a lower steady temperature.",
+        "d": "Incorrect — this is the wrong direction entirely."
+      },
+      "correctAnswer": "b",
+      "difficulty": "beginner"
+    },
+    {
+      "question": "Q3. The bench reports both a case temperature and a winding temperature. Which is higher, and why does the distinction matter?",
+      "answers": {
+        "a": "The case, because it is exposed to the air",
+        "b": "The winding, because heat is generated there and has to flow outward to reach the case, so a case sensor always under-reads the hotspot",
+        "c": "They are always identical",
+        "d": "The winding, but only when the motor is switched off"
+      },
+      "explanations": {
+        "a": "Incorrect — being exposed to air makes the case cooler, not hotter.",
+        "b": "Correct — heat flows from winding to case to air down a temperature gradient, so the winding is the hotspot. A sensor can only reach the case, which is why the reading always flatters the real condition.",
+        "c": "Incorrect — they converge only when no heat is being generated.",
+        "d": "Incorrect — the gradient exists whenever the motor is dissipating power, and vanishes once it is off."
+      },
+      "correctAnswer": "b",
+      "difficulty": "intermediate"
+    },
+    {
+      "question": "Q4. What does a thermal resistance R_th, in degrees Celsius per watt, tell you?",
+      "answers": {
+        "a": "How many watts a part can dissipate before failing",
+        "b": "How many degrees the part rises above ambient for each watt of heat it has to shed",
+        "c": "How fast the part heats up",
+        "d": "The electrical resistance of the part at temperature"
+      },
+      "explanations": {
+        "a": "Incorrect — that follows from R_th combined with a temperature limit, but is not what R_th states.",
+        "b": "Correct — steady rise = P x R_th. A part with a high R_th is a poor heat path and runs hot for modest power.",
+        "c": "Incorrect — the speed of heating is set by the time constant, which also involves thermal capacitance.",
+        "d": "Incorrect — that is electrical resistance, a different quantity despite the similar name."
+      },
+      "correctAnswer": "b",
+      "difficulty": "beginner"
+    },
+    {
+      "question": "Q5. Two motors are identical except that one is heavier. How does the extra mass affect its thermal behaviour?",
+      "answers": {
+        "a": "It reaches the same steady temperature but takes longer to get there",
+        "b": "It reaches a lower steady temperature instantly",
+        "c": "Mass has no thermal effect at all",
+        "d": "It heats up faster because there is more metal to warm"
+      },
+      "explanations": {
+        "a": "Correct — mass sets thermal capacitance C_th, which lengthens the time constant tau = R_th x C_th. More metal means more heat can be absorbed before the temperature moves, so it tolerates longer bursts.",
+        "b": "Incorrect — the steady temperature is set by R_th and the power, not by mass.",
+        "c": "Incorrect — mass directly determines how much heat the part stores per degree.",
+        "d": "Incorrect — more thermal mass slows the temperature rise, it does not accelerate it."
+      },
+      "correctAnswer": "a",
+      "difficulty": "intermediate"
+    },
+    {
+      "question": "Q6. On a first-order heating curve, the thermal time constant tau is read at what point?",
+      "answers": {
+        "a": "Where the curve first becomes visible",
+        "b": "Where the temperature has risen 63.2% of the way from ambient to its final steady value",
+        "c": "Where the curve becomes completely flat",
+        "d": "At exactly half the final temperature"
+      },
+      "explanations": {
+        "a": "Incorrect — that depends on the resolution of the display, not on the physics.",
+        "b": "Correct — after one time constant an exponential rise has completed 1 - 1/e, or about 63.2%, of its journey.",
+        "c": "Incorrect — the curve approaches its final value asymptotically and never truly flattens.",
+        "d": "Incorrect — 50% corresponds to about 0.69 tau, a different and less conventional marker."
+      },
+      "correctAnswer": "b",
+      "difficulty": "intermediate"
+    },
+    {
+      "question": "Q7. Winding insulation fails when it gets too hot. What is the practical consequence of a motor exceeding its insulation limit?",
+      "answers": {
+        "a": "The motor simply runs less efficiently until it cools",
+        "b": "The enamel breaks down, turns between windings short together, and the motor burns out",
+        "c": "The ESC automatically reduces power to protect it",
+        "d": "The propeller detaches"
+      },
+      "explanations": {
+        "a": "Incorrect — insulation breakdown is permanent damage, not a temporary efficiency loss.",
+        "b": "Correct — once the enamel melts, adjacent turns short, current rises further, and the failure is irreversible.",
+        "c": "Incorrect — a basic ESC has no winding temperature sensor and cannot protect the motor this way.",
+        "d": "Incorrect — propeller retention is a mechanical matter, unrelated to winding temperature."
+      },
+      "correctAnswer": "b",
+      "difficulty": "beginner"
+    },
+    {
+      "question": "Q8. Copper resistance rises with temperature, at roughly 0.39% per degree Celsius. Why is this a concern rather than a curiosity?",
+      "answers": {
+        "a": "It makes the motor quieter as it warms",
+        "b": "It creates a feedback loop: hotter copper draws more current for the same voltage, which makes more heat, which raises resistance again",
+        "c": "It only affects the ESC, not the motor",
+        "d": "It causes the motor to spin faster as it warms"
+      },
+      "explanations": {
+        "a": "Incorrect — resistance has no bearing on acoustic output.",
+        "b": "Correct — this is the thermal runaway loop. If cooling cannot keep pace with the growth in loss, temperature diverges instead of settling.",
+        "c": "Incorrect — MOSFET resistance also rises with temperature, but the effect is present in both.",
+        "d": "Incorrect — higher resistance reduces current and torque, which lowers RPM under load."
+      },
+      "correctAnswer": "b",
+      "difficulty": "intermediate"
+    },
+    {
+      "question": "Q9. Why does a spinning propeller help cool the motor beneath it?",
+      "answers": {
+        "a": "The propeller shades the motor from radiant heat",
+        "b": "Forced convection from the induced downwash removes heat far faster than still air, lowering the effective thermal resistance",
+        "c": "The propeller absorbs heat through the shaft and radiates it",
+        "d": "It does not; the propeller only adds load"
+      },
+      "explanations": {
+        "a": "Incorrect — radiation is a minor term here and shading is not the mechanism.",
+        "b": "Correct — moving air raises the convective heat transfer coefficient, which lowers R_th, which lowers the steady temperature for the same dissipated power.",
+        "c": "Incorrect — conduction through the shaft is a small path compared with convection from the bell.",
+        "d": "Incorrect — the propeller does add load, but its wash is also a significant cooling mechanism."
+      },
+      "correctAnswer": "b",
+      "difficulty": "intermediate"
+    },
+    {
+      "question": "Q10. In the simulator, what is the ESC over-temperature limit?",
+      "answers": {
+        "a": "50 degrees Celsius",
+        "b": "80 degrees Celsius",
+        "c": "150 degrees Celsius",
+        "d": "240 degrees Celsius"
+      },
+      "explanations": {
+        "a": "Incorrect — 50 C is a comfortable operating temperature, not a limit.",
+        "b": "Correct — the bench flags ESC over-temperature above 80 C, and the same 80 C ceiling is used as the motor's safe operating limit in the cooling module.",
+        "c": "Incorrect — 150 C is in the region of motor winding insulation limits, well above what an ESC board tolerates.",
+        "d": "Incorrect — this is far beyond any survivable board temperature."
+      },
+      "correctAnswer": "b",
+      "difficulty": "beginner"
+    }
+  ]
 }

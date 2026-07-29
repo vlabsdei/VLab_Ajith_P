@@ -6,7 +6,7 @@
 <title>Aerodynamic Analysis Lab</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="./css/main.css?v=1">
+<link rel="stylesheet" href="./css/main.css?v=rw6">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/GLTFLoader.js"></script>
@@ -36,12 +36,20 @@
       <span class="cfg-code mono" id="cfgCode">CFG-0000</span>
     </header>
 
-    <div class="param-grid" id="paramGrid"><!-- airfoil / blade-count / airframe tiles injected --></div>
+    <div class="param-grid" id="paramGrid"><!-- component tiles injected (drone from assets) --></div>
+
+    <button class="card" id="airfoilCard" type="button">
+      <div class="row-between">
+        <span class="card-title">Blade Airfoil <em id="airfoilName">NACA 2412</em></span>
+        <span class="link-hint">section library ›</span>
+      </div>
+      <div class="tile-view airfoil-view" style="height:64px"><canvas id="airfoilCanvas" width="260" height="128"></canvas></div>
+    </button>
 
     <div class="card slider-card" id="bladeGeomCard">
       <div class="row-between">
         <span class="card-title">Blade Geometry</span>
-        <span class="link-hint">rebuilds prop live</span>
+        <span class="link-hint">designs the propeller</span>
       </div>
       <div class="mini-slider">
         <div class="row-between"><span>Diameter</span><span class="mono accent" id="diaVal">5.0 in</span></div>
@@ -56,34 +64,42 @@
         <input type="range" id="tipSlider" min="4" max="20" step="0.5" value="8" aria-label="Tip chord (mm)">
       </div>
       <div class="mini-slider">
-        <div class="row-between"><span>Pitch / twist angle</span><span class="mono accent" id="pitchVal">12.0°</span></div>
+        <div class="row-between"><span>Pitch / twist</span><span class="mono accent" id="pitchVal">12.0°</span></div>
         <input type="range" id="pitchSlider" min="2" max="24" step="0.5" value="12" aria-label="Pitch angle (deg)">
+      </div>
+      <div class="row-between" style="margin-top:2px"><span style="font-size:9.5px;color:var(--muted)">Blade count</span></div>
+      <div class="blade-count" id="bladeCount">
+        <button type="button" data-b="2">2-blade</button>
+        <button type="button" data-b="3">3-blade</button>
+        <button type="button" data-b="4">4-blade</button>
       </div>
     </div>
 
-    <div class="card slider-card" id="opCard">
-      <div class="row-between">
-        <span class="card-title">Operating Point</span>
-      </div>
+    <!-- Operating Point — inline card on desktop; floating bottom-sheet (via FAB) on mobile, like exp2 -->
+    <input type="checkbox" id="opSheetToggle" class="slider-sheet-toggle" hidden>
+    <label for="opSheetToggle" class="slider-fab" id="opFab"><span class="ic">⚙</span>Operating Point</label>
+    <label for="opSheetToggle" class="slider-backdrop" id="opBackdrop"></label>
+    <div class="card slider-card slider-panel" id="opCard">
+      <div class="sheet-head"><span class="card-title">Operating Point</span><label for="opSheetToggle" class="sheet-done">✕ Done</label></div>
       <div class="mini-slider">
         <div class="row-between"><span>RPM</span><span class="mono accent" id="rpmVal">6000</span></div>
         <input type="range" id="rpmSlider" min="1000" max="12000" step="50" value="6000" aria-label="Rotor RPM">
       </div>
       <div class="mini-slider" id="aoaRow">
-        <div class="row-between"><span>Angle of Attack (M1)</span><span class="mono accent" id="aoaVal">5.0°</span></div>
+        <div class="row-between"><span>Angle of Attack <em style="color:var(--muted)">(M1)</em></span><span class="mono accent" id="aoaVal">5.0°</span></div>
         <input type="range" id="aoaSlider" min="-5" max="20" step="0.5" value="5" aria-label="Angle of attack (deg)">
       </div>
       <div class="mini-slider" id="windRow">
-        <div class="row-between"><span>Airspeed V (M2)</span><span class="mono accent" id="windVal">8.0 m/s</span></div>
+        <div class="row-between"><span>Airspeed V <em style="color:var(--muted)">(M2)</em></span><span class="mono accent" id="windVal">8.0 m/s</span></div>
         <input type="range" id="windSlider" min="0" max="20" step="0.2" value="8" aria-label="Airspeed (m/s)">
       </div>
       <div class="row-between wash-row" id="washRow">
-        <span class="card-title" style="font-size:9.5px">Rotor Wash Interference (M2)</span>
+        <span style="font-size:9.5px;color:var(--ink-2);font-weight:600">Rotor Wash Interference <em style="color:var(--muted)">(M2)</em></span>
         <button class="toggle" id="washToggle" type="button" role="switch" aria-checked="false"><i></i></button>
       </div>
     </div>
 
-    <div class="card slider-card">
+    <div class="card slider-card" id="altCard">
       <div class="row-between">
         <span class="card-title">Density Altitude <em>(environment)</em></span>
         <span class="mono accent" id="altVal">0 m</span>
@@ -96,10 +112,10 @@
       </div>
     </div>
 
-    <button class="card mass-card" id="aeroCard" type="button" data-comment-anchor="aero-summary-card">
+    <button class="card mass-card" id="aeroCard" type="button">
       <div class="row-between">
         <span class="card-title">Aero Summary</span>
-        <span class="link-hint">detailed view ›</span>
+        <span class="link-hint">full derivation ›</span>
       </div>
       <div class="mass-mini aero-mini" id="aeroMini"><!-- rows injected --></div>
     </button>
@@ -114,13 +130,13 @@
 
       <div class="vp-telemetry">
         <div class="tel-head"><span class="tel-dot" id="telDot"></span>LIVE TELEMETRY</div>
-        <div class="tel-rows mono" id="telRows">
+        <div class="tel-rows mono">
           <div><span id="telL0">α</span><b id="telV0">0.0°</b></div>
           <div><span id="telL1">Cl</span><b id="telV1">0.00</b></div>
           <div><span id="telL2">Cd</span><b id="telV2">0.000</b></div>
           <div><span id="telL3">L/D</span><b id="telV3">0.0</b></div>
           <div><span id="telL4">Re</span><b id="telV4">0</b></div>
-          <div><span id="telL5">Tip Mach</span><b id="telV5">0.00</b></div>
+          <div><span id="telL5">Tip M</span><b id="telV5">0.00</b></div>
         </div>
         <div class="tel-phase mono" id="telPhase">STANDBY</div>
       </div>
@@ -166,8 +182,8 @@
     <div class="out-pair">
     <button class="card out-card" id="graphCard" type="button">
       <div class="row-between">
-        <span class="card-title">Graphs <em>· live</em></span>
-        <span class="link-hint slate">expand ⤢</span>
+        <span class="card-title">Graphs <em>· live + sweeps</em></span>
+        <span class="link-hint slate">all graphs ⤢</span>
       </div>
       <div class="chart-box"><canvas id="liveGraph"></canvas></div>
       <div class="mono caption" id="graphCaption">waiting for first run…</div>
@@ -199,12 +215,12 @@
     <div class="instr-head">
       <span class="instr-live"></span>
       <span>LAB INSTRUCTOR</span>
-      <span class="mono step" id="instrStepTxt">step 1 / 6</span>
+      <span class="mono step" id="instrStepTxt">step 1 / 11</span>
     </div>
     <p class="instr-text" id="instrText"></p>
     <div class="instr-nav">
       <button type="button" id="instrPrev">‹ Back</button>
-      <button type="button" id="instrReplay" class="primary">↻ Replay audio</button>
+      <button type="button" id="instrReplay" class="primary">Replay audio</button>
       <button type="button" id="instrNext" class="solid">Next ›</button>
     </div>
     <div class="instr-audio">
@@ -245,6 +261,6 @@
   </div>
 </div>
 
-<script src="./js/main.js?v=1"></script>
+<script src="./js/main.js?v=rw6"></script>
 </body>
 </html>

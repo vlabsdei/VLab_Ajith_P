@@ -129,10 +129,10 @@
         "d": "25.72 N"
       },
       "explanations": {
-        "a": "Incorrect — This appears to be missing the velocity squared term.",
-        "b": "Incorrect — This is half the correct value.",
-        "c": "Incorrect — This is 5 times the correct value.",
-        "d": "Correct — $F_D = 0.5 \\times 1.225 \\times 10^2 \\times 1.05 \\times 0.02 = 0.5 \\times 1.225 \\times 100 \\times 1.05 \\times 0.02 = 1.286$ N. Wait, let me recalculate: $F_D = 0.5 \\times 1.225 \\times 100 \\times 1.05 \\times 0.02 = 1.286$ N. The closest answer is (a)."
+        "a": "Correct — $F_D = \\tfrac{1}{2}\\rho V^2 C_d A = 0.5 \\times 1.225 \\times 10^2 \\times 1.05 \\times 0.02 = 1.29$ N.",
+        "b": "Incorrect — This is twice the correct value, which comes from dropping the factor of one half.",
+        "c": "Incorrect — This is ten times the correct value; check the powers of ten in the frontal area.",
+        "d": "Incorrect — This is twenty times the correct value, combining both of the errors above."
       },
       "correctAnswer": "a",
       "difficulty": "intermediate"

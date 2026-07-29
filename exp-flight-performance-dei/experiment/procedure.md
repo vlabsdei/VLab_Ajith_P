@@ -1,64 +1,98 @@
-# Lab Procedure: Thrust-to-Weight, Hover Throttle, Payload & Efficiency
+# Lab Procedure: Thrust-to-Weight, Hover Throttle, Control Margin & Payload
 
-This document outlines the step-by-step workflow for **Experiment 6: Flight Performance**. The experiment lives on a single page with two views: **Experiment** (the build controls and the live 3-D hover bay) and **Analysis** (all four result charts together, so you can watch them move in lockstep as you change the build). Every value is computed live from the inherited build, and your session is saved automatically — reloading the page resumes exactly where you left off.
+Everything the aircraft can and cannot do comes out of one ratio, and this experiment measures it two ways. Both sub-experiments sit under a single module, and you switch between them with the tabs under the viewport.
+
+| Sub-experiment | Reports |
+|---|---|
+| Hover & Control Margin | hover throttle and remaining authority, in % |
+| Payload Envelope | maximum payload, in g |
+
+The build comes in from the earlier experiments — empty mass from the frame work, propulsion from the propulsion work — and everything on the page recomputes from it live. The session saves itself.
 
 ---
 
-## **Stage 1: Configure the Build & Read TWR**
+## Reading the page
 
-### **Objective**
-Combine the Experiment-1 propulsion and the Experiment-2 mass into the thrust-to-weight ratio that defines the aircraft's class.
+The **Calculations** chips under the viewport carry the whole result set, and they update as you touch anything:
+
+- **T / W** — thrust-to-weight, with a `(fwd)` tag when forward flight is on
+- **Hover throttle** — where the craft sits to hold height
+- **Control margin** — two numbers, `% paper` and `% eff`. The paper figure is simply what is left above the hover throttle. The effective figure accounts for the fact that thrust goes with the square of throttle, so the top of the stick is worth less than the bottom. Trust the second one.
+- **Thrust eff.** — grams per watt
+- **Max payload** — `safe` at TWR 1.5, and `max` at the absolute lift limit
+
+The **Diagnostics Log** below them refuses to start a run while there is a blocking error, and the run button greys out to say so.
+
+---
+
+## Hover & Control Margin
+
+### Objective
+
+Find the throttle the aircraft actually hovers at, and how much authority is left above it.
 
 ![Free-body lift diagram: four motor thrusts versus weight and payload](./images/twr_lift_diagram.png)
 
-### **Step-by-Step Procedure**
-1. **Launch the Simulator:** Open the virtual lab page. It loads the **Experiment** view by default, with the live 3-D hover bay in the centre.
-2. **Note the inherited build.** The left panel shows the **empty mass** (inherited from Experiment 2 if available, otherwise the airframe typical mass) and the **propulsion** selector seeded with the motor chosen in Experiment 1.
-3. **Select a propulsion package.** Use the **Propulsion** selector (1806, 2204, 2207, 2212, 2808, 3508 motor/prop combos). The per-motor maximum thrust and propeller diameter update immediately.
-4. **Read the TWR.** The HUD and the Performance Summary cards show **TWR = N &times; T<sub>max</sub> / m<sub>total</sub>** and its class band. Confirm the reference build (2204, 620 g/motor, 500 g empty) gives **TWR = 4.96 (freestyle)**.
-5. **Watch the lift visual.** The centre view shows the quad with four thrust arrows scaled by the available thrust against the weight vector, and a traffic-light halo under the airframe — green when the build is comfortably flight-ready.
+1. Check the inherited build in the left panel — empty mass, and the propulsion package seeded from your earlier motor choice. Change the propulsion selector and the per-motor maximum thrust and propeller diameter update immediately.
 
----
+2. Read the thrust-to-weight ratio before you fly anything. TWR = N × T_max / m_total, and the class band next to it tells you what kind of aircraft you have built.
 
-## **Stage 2: Hover Throttle & Control Margin**
-
-### **Objective**
-Find the throttle the craft sits at to hover and the manoeuvre headroom that remains.
+3. Look at the centre view. Four thrust arrows scale against the weight vector, and the halo under the airframe goes green when the build is comfortably flight-ready.
 
 ![Quadratic thrust curve with the hover operating point](./images/hover_throttle_curve.png)
 
-### **Step-by-Step Procedure**
-1. **Open the Analysis view.** The **Hover Throttle & Margin** chart plots the **quadratic thrust curve** (thrust &prop; throttle<sup>2</sup>) with the hover operating point marked, right alongside the other three result charts.
-2. **Read the hover throttle.** The metric **hover throttle = &radic;(1/TWR)** shows where the craft balances. Confirm the reference build hovers at **44.9 %**.
-3. **Read the control margin.** The **control margin = (1 &minus; hover throttle)** reports the reserve above hover — about **55 %** for the reference build. Note the ideal is a hover near 50 %.
-4. **Explore the extremes.** Back on the Experiment view, select a high-thrust 6S combo (e.g. 2207) and watch the hover throttle drop toward 30 % (lots of margin, but twitchy); the relationship hover throttle = &radic;(1/TWR) updates live on the Analysis chart.
+4. Press **▶ Run Sim** and fly it. Trim the throttle until the aircraft holds a steady height — the verdict will not settle until it actually does.
+
+5. A good result reads *"Stable hover — throttle X%, control margin Y%"*. If the effective margin is thin the verdict calls the build **twitchy** and tells you to add thrust or shed payload. If the run never settles, it says so and asks you to re-fly rather than pretending you passed.
+
+6. Now turn on **forward flight**. The airframe pitches to 30°, which means only cos 30° of each motor's thrust is holding you up. Watch the effective T/W drop and the margin shrink. A build that hovers comfortably can still fail here, and that is the honest number for anything that has to go somewhere.
+
+### What to aim for
+
+Hovering near 50% throttle is the sweet spot. Much lower and the aircraft is over-powered and twitchy on the stick; much higher and there is nothing left for a gust. Try a high-thrust 6S combination and watch the hover throttle fall toward 30% — plenty of margin on paper, unpleasant to fly.
 
 ---
 
-## **Stage 3: Maximum Payload**
+## Payload Envelope
 
-### **Objective**
-Determine how much cargo the craft can carry before its thrust-to-weight ratio falls to the safe minimum.
+### Objective
+
+Work out how much cargo the aircraft can carry before its thrust-to-weight ratio drops through the floor.
 
 ![Thrust-to-weight ratio falling as payload is added](./images/payload_twr_curve.png)
 
-### **Step-by-Step Procedure**
-1. **Set the safety target.** In the left panel's Loadout group, use the **Minimum safe TWR** selector (1.5 / 2.0 / 2.5). The standard controllable-flight floor is **2.0**.
-2. **Read the maximum payload.** The Performance Summary and the derivation **payload = N&middot;T<sub>max</sub>/TWR<sub>min</sub> &minus; m<sub>empty</sub>** update together. Confirm the reference build can carry **740 g** at TWR<sub>min</sub> = 2.0.
-3. **Sweep the payload slider.** Drag **Payload** up from 0 g and watch the **TWR fall** on the Analysis view's Payload Envelope chart, the hover throttle climb, and the control margin shrink. The curve crosses the TWR<sub>min</sub> line exactly at the maximum payload — load beyond it and the verdict turns red. The **Load max payload at this TWR** button jumps straight to that limit.
+1. Switch to the **Payload Envelope** tab and drag the **Payload** slider up from zero.
+
+2. Watch three things move together: TWR falls, hover throttle climbs, and the control margin shrinks. They are the same fact seen three ways.
+
+3. The chips show two payload limits. The **safe** figure is where TWR hits 1.5 — the point past which there is no useful authority left. The **max** figure is where the aircraft simply cannot lift, at TWR 1.0.
+
+4. Fly it at increasing payloads. Inside the envelope the verdict reports the practical maximum. Between the two limits it calls the build **overloaded** and names the unusable band. Past the absolute maximum it reports *"Cannot lift"* with the payload figure that would have worked.
+
+5. Two other failures are worth provoking. An oversized propeller stalls the motor before it ever leaves the pad. A build that draws too much current for too long burns the powertrain out mid-flight and drops — the verdict gives you the motor and ESC temperatures that did it.
 
 ---
 
-## **Stage 4: Hover Efficiency**
-
-### **Objective**
-Estimate the lift produced per watt at hover, and see what improves it.
+## Thrust efficiency
 
 ![Hover efficiency versus all-up mass and disk area](./images/hover_efficiency_curve.png)
 
-### **Step-by-Step Procedure**
-1. **Read the Hover Efficiency chart** on the Analysis view — efficiency (g/W) against all-up mass for the selected propeller disk.
-2. **Read the momentum-theory result.** The fourth derivation panel and the Performance Analysis list show the **disk area** A = N&middot;&pi;(D/2)<sup>2</sup>, the **hover power** P = (m g)<sup>1.5</sup> / (FoM &middot; &radic;(2&rho;A)), and the **efficiency** = m / P. The reference build gives A = 0.0507 m<sup>2</sup> and, at the catalogue's nominal FoM = 0.70, P = 44.0 W / efficiency = **11.36 g/W** (theory.md §6) — but the simulator seeds a build-specific FoM within 0.55–0.75 to model real assembly variance, so your on-screen P and efficiency may land a bit below or above that, and that's expected, not an error.
-3. **Improve it two ways.** (a) Select a large-prop combo (10&Prime; or 13&Prime;) and watch efficiency climb toward ~17 g/W — a bigger disk moves more air for less power. (b) Reduce the payload and watch efficiency rise, because power grows as thrust<sup>1.5</sup>.
-4. **Compare ideal vs measured.** When Experiment 1's current draw is available, the Performance Analysis list adds a second **"Hover efficiency — measured"** row computed from the real V&middot;I at hover. It sits at or below the momentum-theory "ideal" row — the gap is exactly the electrical and mechanical losses the idealised formula doesn't model. This comparison is the sixth objective; open the Analysis view at least once to clear it.
-5. **Verify completion.** The right panel confirms the final TWR, hover throttle, control margin, maximum payload and hover efficiency are saved as all six objectives clear. The full flight-performance envelope of the aircraft assembled across the lab series is now characterised, completing **Experiment 6**.
+The **Thrust eff.** chip reports grams-force per watt, measured at full throttle: maximum thrust in grams divided by the electrical power it took to make it. Step 7 of the **Calculations** card shows it next to the peak motor efficiency, labelled `g/W @ full`.
+
+Read it as a property of the propulsion package, not of the loadout. Payload does not move it at all — payload changes what you ask the aircraft to lift, not how efficiently the motor and propeller convert watts into thrust.
+
+What does move it is disk area. Sweeping the propeller selector on the reference build:
+
+| Propeller | Thrust efficiency |
+|---|---|
+| 5″ tri | 2.65 g/W |
+| 8″ bi | 2.99 g/W |
+| 10″ bi | 3.62 g/W |
+| 13″ bi | 3.93 g/W |
+| 16″ bi | 4.00 g/W |
+
+A bigger disk moves more air more slowly for the same thrust, and slow air is cheap air. Notice also that the gain flattens: going 5″ to 10″ buys 0.97 g/W, and 10″ to 16″ buys only another 0.38 g/W. The chip turns amber below 3 g/W and green at 6 and above, so most small-prop builds sit in the middle band by design.
+
+---
+
+Clear both sub-experiments and the reward component unlocks in **Components Unlocked**, with the full performance envelope — TWR, hover throttle, control margin, maximum payload and hover efficiency — recorded for the aircraft you have assembled across the series.

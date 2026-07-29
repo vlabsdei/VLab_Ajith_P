@@ -11,13 +11,14 @@
   "specs": {
     "Voltage": "11.1 V (3S)",
     "Capacity": "2200 mAh",
-    "Discharge": "45 C"
+    "Discharge": "75C burst / 45C cont."
   },
   "physics": {
     "cells": 3,
     "voltage_nominal_v": 11.1,
     "capacity_mah": 2200,
-    "c_rating": 45,
+    "c_rating": 75,
+    "c_rating_cont": 45,
     "cell_ir_mohm": 5.5
   }
 }

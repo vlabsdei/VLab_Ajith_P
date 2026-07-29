@@ -1,0 +1,23 @@
+{
+  "name": "RTK F9P Rover",
+  "mass_g": 32,
+  "qty": 1,
+  "size_mm": [
+    38,
+    38,
+    12
+  ],
+  "model": "assets/attachments/gps/gps.glb",
+  "specs": {
+    "System": "Multi-band RTK",
+    "Compass": "Dual, IST8310",
+    "Update": "20 Hz",
+    "Accuracy": "0.02 m + 1 ppm"
+  },
+  "physics": {
+    "payload": true,
+    "mount_type": "gps",
+    "cep_m": 0.02,
+    "channels": 184
+  }
+}
